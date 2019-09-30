@@ -94,9 +94,11 @@ def test_model(rank, model, test_data, criterion=nn.NLLLoss()):
         output = model(data)
         test_loss += criterion(output, target).data.item()  # Variable.data
         # get the index of the max log-probability
+        pred = output.data.max(1)[1]
+        correct += pred.eq(target.data).sum().item()
 
-        prediction = torch.max(output, 1)
-        correct += np.sum(prediction[1].cpu().numpy() == target.cpu().numpy())
+        # prediction = torch.max(output, 1)
+        # correct += np.sum(prediction[1].cpu().numpy() == target.cpu().numpy())
 
     # loss function averages over batch size
     test_loss /= len(test_data)
