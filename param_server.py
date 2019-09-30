@@ -36,9 +36,10 @@ parser.add_argument('--len_train_data', type=int, default=60000)
 parser.add_argument('--epochs', type=int, default=1)
 parser.add_argument('--stale_threshold', type=int, default=1000)
 parser.add_argument('--backend', type=str, default="gloo")
+parser.add_argument('--display_step', type=int, default=100)
 
 args = parser.parse_args()
-
+display_step = args.display_step
 
 def run(model, test_data, queue, param_q, stop_signal):
     if args.model == 'MnistCNN':
@@ -48,8 +49,8 @@ def run(model, test_data, queue, param_q, stop_signal):
 
     print("====PS: get in run()")
     # 参数中的tensor转成numpy - convert gradient tensor to numpy structure
-    tmp = map(lambda item: (item[0], item[1].numpy()), model.state_dict().items())
-    _tmp = OrderedDict(tmp)
+    tmp = map(lambda item: (item[0], item[1].numpy), model.state_dict().items())
+    _tmp = OrderedDict(map(lambda item: (item[0], item[1].cpu().numpy()), model.state_dict().items()))
     workers = [int(v) for v in str(args.learners).split('-')]
     for _ in workers:
         param_q.put(_tmp)
@@ -78,6 +79,7 @@ def run(model, test_data, queue, param_q, stop_signal):
 
     f_trainloss = open(trainloss_file, 'w')
     f_staleness = open(staleness_file, 'w')
+    global_update = 0
 
     while True:
         if not queue.empty():
@@ -107,6 +109,7 @@ def run(model, test_data, queue, param_q, stop_signal):
 
             for idx, param in enumerate(model.parameters()):
                 param.data -= torch.from_numpy(delta_ws[idx]).cuda()
+            global_update += 1
 
             stale = int(staleness - learner_staleness[rank_src])
             staleness_sum_epoch += stale
@@ -124,7 +127,7 @@ def run(model, test_data, queue, param_q, stop_signal):
                     break
 
             handle_dur = time.time() - handle_start
-            print("Handle weight update takes {}", handle_dur)
+            
             if not isStale:
                 for i in range(len(stale_stack)):
                     rank_wait = stale_stack.pop()
@@ -133,8 +136,9 @@ def run(model, test_data, queue, param_q, stop_signal):
 
                     send_start = time.time()
                     for idx, param in enumerate(model.parameters()):
-                        dist.send(tensor=param.data, dst=rank_wait)
-                    print("Send out weight takes {}", time.time() - send_start)
+                        dist.send(tensor=param.data.cpu(), dst=rank_wait)
+                    if global_update % display_step == 0:
+                        print("Handle Wight {} | Send {}".format(handle_dur, time.time() - send_start))
             else:
                 continue
 

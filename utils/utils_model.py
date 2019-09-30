@@ -6,7 +6,8 @@ import random
 import torch
 import torch.nn as nn
 import torch.optim as optim
-
+from torch.autograd import Variable
+import numpy as np
 
 class MySGD(optim.SGD):
 

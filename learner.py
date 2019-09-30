@@ -43,6 +43,8 @@ parser.add_argument('--test_bsz', type=int, default=100)
 parser.add_argument('--heterogeneity', type=float, default=1.0)
 parser.add_argument('--hetero_allocation', type=str, default='1.0-1.0-1.0-1.0-1.0-1.0')
 parser.add_argument('--backend', type=str, default="gloo")
+parser.add_argument('--display_step', type=int, default=100)
+parser.add_argument('--upload_epho', type=int, default=1)
 
 args = parser.parse_args()
 #os.environ['CUDA_VISIBLE_DEVICES'] = '1'
@@ -76,10 +78,12 @@ def run(rank, model, train_data, test_data, queue, param_q, stop_flag):
 
     print('Begin!')
     local_step = 0
+    startTime = time.time()
 
     for epoch in range(int(args.epochs)):
         model.train()
         epoch_train_loss = 0
+        epoch_train_batch = 0
 
         for batch_idx, (data, target) in enumerate(train_data):
             it_start = time.time()
@@ -97,28 +101,38 @@ def run(rank, model, train_data, test_data, queue, param_q, stop_flag):
             # The "heterogeneity" is a ratio of the maximum computing capacity
             sleep_time = (1.0 / args.heterogeneity - 1.0) * it_duration
             time.sleep(sleep_time)
+
             local_step += 1
+            epoch_train_loss += loss.data.item()
+            epoch_train_batch += 1
 
             # noinspection PyBroadException
             try:  # 捕获异常，异常来源于ps进程的停止 - Capture the exception caused by the shutdown of parameter_server
-                send_start = time.time()
-                if delta_ws:
-                    queue.put({
-                        rank: [[v.cpu().numpy() for v in delta_ws], loss.data.cpu().numpy(), np.array(args.batch_size), False]
-                    })
+                send_dur = 0
+                rece_dur = 0
+                if local_step % args.upload_epho == 0:
+                    send_start = time.time()
+                    if delta_ws:
+                        queue.put({
+                            rank: [[v.cpu().numpy() for v in delta_ws], loss.data.cpu().numpy(), np.array(args.batch_size), False]
+                        })
 
-                send_dur = time.time() - send_start
+                    send_dur = time.time() - send_start
 
-                rece_start = time.time()
-                for idx, param in enumerate(model.parameters()):
-                    tmp_tensor = torch.zeros_like(param.data)
-                    dist.recv(tensor=tmp_tensor, src=0)
-                    param.data = tmp_tensor
-                rece_dur = time.time() - rece_start
+                    rece_start = time.time()
+                    for idx, param in enumerate(model.parameters()):
+                        tmp_tensor = torch.zeros_like(param.data).cpu()
+                        dist.recv(tensor=tmp_tensor, src=0)
+                        param.data = tmp_tensor.cuda()
+                    rece_dur = time.time() - rece_start
 
-                if local_step % display_step:
-                    print('LocalStep {}, Epoch {}, Batch {}/{}, Loss:{} | TotalTime {} | Comptime: {} | SendTime: {} | ReceTime: {}'
-                        .format(local_step, epoch, batch_idx, len(train_data), round(loss.data.item(), 4), round(time.time() - it_start, 2), round(it_duration, 2), round(send_dur,2), round(rece_dur, 2)))
+                else:
+                    for idx, param in enumerate(model.parameters()):
+                        param.data -= delta_ws[idx]
+
+                if local_step % args.display_step == 0:
+                        print('LocalStep {}, CumulTime {}, Epoch {}, Batch {}/{}, Loss:{} | TotalTime {} | Comptime: {} | SendTime: {} | ReceTime: {}'
+                            .format(local_step, time.time() - startTime, epoch, batch_idx, len(train_data), round(loss.data.item(), 4), round(time.time() - it_start, 2), round(it_duration, 2), round(send_dur,2), round(rece_dur, 2)))
 
             except Exception as e:
                 print(str(e))
@@ -126,10 +140,11 @@ def run(rank, model, train_data, test_data, queue, param_q, stop_flag):
                 break
 
         # 训练结束后进行top 1的test - Check the top 1 test accuracy after training
-        print("test Model:", epoch)
-        # test_model(rank, model, test_data, criterion=criterion)
-        if stop_flag.value:
-            break
+        #print("test Model:", epoch)
+        print("For epoch {}, training loss {}".format(epoch, epoch_train_loss/float(epoch_train_batch)))
+        test_model(rank, model, test_data, criterion=criterion)
+        #if stop_flag.value:
+        #    break
     queue.put({rank: [[], [], [], True]})
     print("Worker {} has completed epoch {}!".format(args.this_rank, epoch))
 
