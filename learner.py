@@ -77,6 +77,11 @@ def run(rank, model, train_data, test_data, queue, param_q, stop_flag):
         criterion = torch.nn.CrossEntropyLoss().cuda()
 
     print('Begin!')
+    with open("/tmp/log", "w") as fout:
+        pass
+
+    fstat = open("/tmp/log", "a")
+
     local_step = 0
     startTime = time.time()
 
@@ -130,8 +135,10 @@ def run(rank, model, train_data, test_data, queue, param_q, stop_flag):
                     for idx, param in enumerate(model.parameters()):
                         param.data -= delta_ws[idx]
 
+                fstat.write('LocalStep {}, CumulTime {}, Epoch {}, Batch {}/{}, Loss:{} | TotalTime {} | Comptime: {} | SendTime: {} | ReceTime: {} \n'
+                            .format(local_step, time.time() - startTime, epoch, batch_idx, len(train_data), round(loss.data.item(), 4), round(time.time() - it_start, 2), round(it_duration, 2), round(send_dur,2), round(rece_dur, 2)))
                 if local_step % args.display_step == 0:
-                        print('LocalStep {}, CumulTime {}, Epoch {}, Batch {}/{}, Loss:{} | TotalTime {} | Comptime: {} | SendTime: {} | ReceTime: {}'
+                    print('LocalStep {}, CumulTime {}, Epoch {}, Batch {}/{}, Loss:{} | TotalTime {} | Comptime: {} | SendTime: {} | ReceTime: {}'
                             .format(local_step, time.time() - startTime, epoch, batch_idx, len(train_data), round(loss.data.item(), 4), round(time.time() - it_start, 2), round(it_duration, 2), round(send_dur,2), round(rece_dur, 2)))
 
             except Exception as e:
@@ -140,13 +147,14 @@ def run(rank, model, train_data, test_data, queue, param_q, stop_flag):
                 break
 
         # 训练结束后进行top 1的test - Check the top 1 test accuracy after training
-        #print("test Model:", epoch)
         print("For epoch {}, training loss {}".format(epoch, epoch_train_loss/float(epoch_train_batch)))
-        test_model(rank, model, test_data, criterion=criterion)
+        test_loss, acc = test_model(rank, model, test_data, criterion=criterion)
+        fstat.write("For epoch {}, training loss {}, test_loss {}, test_accuracy {} \n".format(epoch, epoch_train_loss/float(epoch_train_batch), test_loss, acc))
         #if stop_flag.value:
         #    break
     queue.put({rank: [[], [], [], True]})
     print("Worker {} has completed epoch {}!".format(args.this_rank, epoch))
+    fstat.close()
 
 def init_myprocesses(rank, size, model,
                    train_dataset, test_dataset,
