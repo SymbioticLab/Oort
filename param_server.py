@@ -67,6 +67,9 @@ def run(model, test_data, queue, param_q, stop_signal):
 
     staleness = 0
     learner_staleness = {l: 0 for l in workers}
+    learner_local_step = {l: 0 for l in workers}
+    pendingWorkers = {}
+
     s_time = time.time()
     epoch_time = s_time
 
@@ -106,7 +109,10 @@ def run(model, test_data, queue, param_q, stop_signal):
             iteration_in_epoch += 1
             epoch_train_loss += iteration_loss
             data_size_epoch += batch_size
+            learner_local_step[rank_src] += 1
+            pendingWorkers[rank_src] = learner_local_step[rank_src]
 
+            # apply the update into the global model
             for idx, param in enumerate(model.parameters()):
                 param.data -= torch.from_numpy(delta_ws[idx]).cuda()
             global_update += 1
@@ -118,37 +124,59 @@ def run(model, test_data, queue, param_q, stop_signal):
             learner_staleness[rank_src] = staleness
             stale_stack.append(rank_src)
 
-            # judge if the staleness exceed the staleness threshold in SSP
-            isStale = False
-            for stale_each_worker in learner_staleness:
-                if (stale_each_worker not in stale_stack) & \
-                    (staleness - learner_staleness[stale_each_worker] > args.stale_threshold):
-                    isStale = True
-                    break
-
-            handle_dur = time.time() - handle_start
+            currentMinStep = 9999999999
             
-            if not isStale:
-                for i in range(len(stale_stack)):
-                    rank_wait = stale_stack.pop()
-                    # 相应learner下次更新的staleness - SSP: staleness upadate
-                    learner_staleness[rank_wait] = staleness
+            # get the current minimum local steps
+            for rankStep in learner_local_step:
+                currentMinStep = min(currentMinStep, learner_local_step[rankStep])
 
-                    send_start = time.time()
+            # release all pending requests, if the staleness does not exceed the staleness threshold in SSP 
+            keys = list(pendingWorkers)
+            for pworker in keys:
+                # check its staleness
+                if pendingWorkers[pworker] <= args.stale_threshold + currentMinStep:
+                    # start to send param, to avoid synchronization problem, first create a copy here?
                     for idx, param in enumerate(model.parameters()):
-                        dist.send(tensor=param.data.cpu(), dst=rank_wait)
-                    if global_update % display_step == 0:
-                        print("Handle Wight {} | Send {}".format(handle_dur, time.time() - send_start))
-            else:
-                continue
+                        dist.send(tensor=param.data.cpu(), dst=pworker)
 
-            #print('Done From Rank {}, Staleness {}!'
-            #      .format(rank_src, stale))
-            # epoch, rank, batch size, stale
-            f_staleness.write(str(epoch_count) +
-                        "\t" + str(rank_src) +
-                        "\t" + str(batch_size) +
-                        "\t" + str(stale) + '\n')
+                    # remove from the pending workers
+                    del pendingWorkers[pworker]
+                else:
+                    # lock the worker
+                    f_staleness.write("Lock worker " + str(pworker) + " with localStep " + str(pendingWorkers[pworker]) +
+                                        " , while globalStep is " + str(currentMinStep) + "\n")
+
+
+            # isStale = False
+            # for stale_each_worker in learner_staleness:
+            #     if (stale_each_worker not in stale_stack) & \
+            #         (staleness - learner_staleness[stale_each_worker] > args.stale_threshold):
+            #         isStale = True
+            #         break
+
+            # handle_dur = time.time() - handle_start
+            
+            # if not isStale:
+            #     for i in range(len(stale_stack)):
+            #         rank_wait = stale_stack.pop()
+            #         # 相应learner下次更新的staleness - SSP: staleness upadate
+            #         learner_staleness[rank_wait] = staleness
+
+            #         send_start = time.time()
+            #         for idx, param in enumerate(model.parameters()):
+            #             dist.send(tensor=param.data.cpu(), dst=rank_wait)
+            #         if global_update % display_step == 0:
+            #             print("Handle Wight {} | Send {}".format(handle_dur, time.time() - send_start))
+            # else:
+            #     continue
+
+            # #print('Done From Rank {}, Staleness {}!'
+            # #      .format(rank_src, stale))
+            # # epoch, rank, batch size, stale
+            # f_staleness.write(str(epoch_count) +
+            #             "\t" + str(rank_src) +
+            #             "\t" + str(batch_size) +
+            #             "\t" + str(stale) + '\n')
 
             # once reach an epoch, count the average train loss
             if(data_size_epoch >= args.len_train_data):
@@ -158,7 +186,8 @@ def run(model, test_data, queue, param_q, stop_signal):
                                  - (staleness_sum_epoch/iteration_in_epoch)**2
                 staleness_sum_suqare_epoch = 0
                 staleness_sum_epoch = 0
-                test_loss, test_acc = test_model(dist.get_rank(), model, test_data, criterion=criterion)
+                test_loss, test_acc = 0, 0
+                #test_model(dist.get_rank(), model, test_data, criterion=criterion)
                 # rank, trainloss, variance of stalness, time in one epoch, time till now
                 f_trainloss.write(str(args.this_rank) +
                                   "\t" + str(epoch_train_loss/float(iteration_in_epoch)) +
