@@ -1,0 +1,19 @@
+MnistCNN:
+python param_server.py --ps-ip=192.168.39.131 --ps-port=29500 --data-dir=~/Data/Mnist --this-rank=0 --learners=1-2 --epochs=10 --model=MnistCNN --threshold=0.001
+python learner.py --ps-ip=192.168.39.131 --ps-port=29500 --data-dir=~/Data/Mnist --this-rank=1 --learners=1-2 --model=MnistCNN --epochs=10 --threshold=0.001 --local=1
+
+
+AlexNet:
+python param_server.py --ps-ip=192.168.39.131 --ps-port=29500 --data-dir=/media/ec/LAB/data/ --this-rank=0 --learners=1-2-3-4 --epochs=100 --model=AlexNet --threshold=0.001
+
+
+
+python learner.py --ps-ip=192.168.39.131 --ps-port=29500 --data-dir=/media/ec/LAB/data/ --this-rank=1 --learners=1-2-3-4 --epochs=100 --threshold=0.001 --model=AlexNet --local=1
+
+python learner.py --ps-ip=192.168.39.131 --ps-port=29500 --data-dir=/media/ec/LAB/data/ --this-rank=2 --learners=1-2-3-4 --epochs=100 --threshold=0.001 --model=AlexNet --local=1
+
+python learner.py --ps-ip=192.168.39.131 --ps-port=29500 --data-dir=/media/ec/LAB/data/ --this-rank=3 --learners=1-2-3-4 --epochs=100 --threshold=0.001 --model=AlexNet --local=1
+
+python learner.py --ps-ip=192.168.39.131 --ps-port=29500 --data-dir=/media/ec/LAB/data/ --this-rank=4 --learners=1-2-3-4 --epochs=100 --threshold=0.001 --model=AlexNet --local=1
+
+
