@@ -34,7 +34,7 @@ parser.add_argument('--data_set', type=str, default='cifar10')
 parser.add_argument('--timeout', type=float, default=10000.0)
 parser.add_argument('--len_train_data', type=int, default=60000)
 parser.add_argument('--epochs', type=int, default=1)
-parser.add_argument('--stale_threshold', type=int, default=1000)
+parser.add_argument('--stale_threshold', type=int, default=0)
 parser.add_argument('--backend', type=str, default="gloo")
 parser.add_argument('--display_step', type=int, default=100)
 
@@ -68,6 +68,7 @@ def run(model, test_data, queue, param_q, stop_signal):
     staleness = 0
     learner_staleness = {l: 0 for l in workers}
     learner_local_step = {l: 0 for l in workers}
+    learner_cache_step = {l: 0 for l in workers}
     pendingWorkers = {}
 
     s_time = time.time()
@@ -91,6 +92,8 @@ def run(model, test_data, queue, param_q, stop_signal):
             rank_src = list(tmp_dict.keys())[0]
             isWorkerEnd = tmp_dict[rank_src][3]
 
+            #print("Receive update from worker {}".format(rank_src))
+
             if isWorkerEnd:
                 print("Worker {} has completed all its data computation!".format(rank_src))
                 learner_staleness.pop(rank_src)
@@ -110,7 +113,6 @@ def run(model, test_data, queue, param_q, stop_signal):
             epoch_train_loss += iteration_loss
             data_size_epoch += batch_size
             learner_local_step[rank_src] += 1
-            pendingWorkers[rank_src] = learner_local_step[rank_src]
 
             # apply the update into the global model
             for idx, param in enumerate(model.parameters()):
@@ -127,25 +129,46 @@ def run(model, test_data, queue, param_q, stop_signal):
             currentMinStep = 9999999999
             
             # get the current minimum local steps
-            for rankStep in learner_local_step:
+            for rankStep in learner_local_step.keys():
                 currentMinStep = min(currentMinStep, learner_local_step[rankStep])
+
+            # if the worker is within the staleness, then continue w/ local cache and do nothing
+            # Otherwise, block it 
+            if learner_local_step[rank_src] > args.stale_threshold + currentMinStep:
+                pendingWorkers[rank_src] = learner_local_step[rank_src]
+                # lock the worker
+                f_staleness.write("Lock worker " + str(rank_src) + " with localStep " + str(pendingWorkers[rank_src]) +
+                                        " , while globalStep is " + str(currentMinStep) + "\n")
+            
+            # if the local cache is too stale, then update it
+            elif learner_cache_step[rank_src] < learner_local_step[rank_src] - args.stale_threshold:
+                for idx, param in enumerate(model.parameters()):
+                        dist.send(tensor=param.data.cpu(), dst=rank_src)
+
+                # send out current minimum steps
+                dist.send(tensor=torch.tensor([currentMinStep], dtype=torch.int).cpu(), dst=rank_src)
+                learner_cache_step[rank_src] = currentMinStep
+                #learner_local_step[rank_src]
 
             # release all pending requests, if the staleness does not exceed the staleness threshold in SSP 
             keys = list(pendingWorkers)
+            handle_dur = time.time() - handle_start
             for pworker in keys:
                 # check its staleness
+                send_start = time.time()
                 if pendingWorkers[pworker] <= args.stale_threshold + currentMinStep:
                     # start to send param, to avoid synchronization problem, first create a copy here?
                     for idx, param in enumerate(model.parameters()):
                         dist.send(tensor=param.data.cpu(), dst=pworker)
 
+                    # send out current minimum step
+                    dist.send(tensor=torch.tensor([currentMinStep], dtype=torch.int).cpu(), dst=pworker)
+                    learner_cache_step[pworker] = currentMinStep    #learner_local_step[pworker]
+
+                    #if global_update % display_step == 0:
+                    print("Handle Wight {} | Send {}".format(handle_dur, time.time() - send_start))
                     # remove from the pending workers
                     del pendingWorkers[pworker]
-                else:
-                    # lock the worker
-                    f_staleness.write("Lock worker " + str(pworker) + " with localStep " + str(pendingWorkers[pworker]) +
-                                        " , while globalStep is " + str(currentMinStep) + "\n")
-
 
             # isStale = False
             # for stale_each_worker in learner_staleness:

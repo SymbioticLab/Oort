@@ -45,6 +45,7 @@ parser.add_argument('--hetero_allocation', type=str, default='1.0-1.0-1.0-1.0-1.
 parser.add_argument('--backend', type=str, default="gloo")
 parser.add_argument('--display_step', type=int, default=100)
 parser.add_argument('--upload_epho', type=int, default=1)
+parser.add_argument('--stale_threshold', type=int, default=0)
 
 args = parser.parse_args()
 #os.environ['CUDA_VISIBLE_DEVICES'] = '1'
@@ -84,6 +85,7 @@ def run(rank, model, train_data, test_data, queue, param_q, stop_flag):
 
     local_step = 0
     startTime = time.time()
+    globalMinStep = 0
 
     for epoch in range(int(args.epochs)):
         model.train()
@@ -117,29 +119,43 @@ def run(rank, model, train_data, test_data, queue, param_q, stop_flag):
                 rece_dur = 0
                 if local_step % args.upload_epho == 0:
                     send_start = time.time()
+
                     if delta_ws:
-                        queue.put({
+                        queue.put_nowait({
                             rank: [[v.cpu().numpy() for v in delta_ws], loss.data.cpu().numpy(), np.array(args.batch_size), False]
                         })
 
                     send_dur = time.time() - send_start
 
                     rece_start = time.time()
-                    for idx, param in enumerate(model.parameters()):
-                        tmp_tensor = torch.zeros_like(param.data).cpu()
-                        dist.recv(tensor=tmp_tensor, src=0)
-                        param.data = tmp_tensor.cuda()
+
+                    if globalMinStep < local_step - args.stale_threshold:
+                        # local cache is too stale
+                        for idx, param in enumerate(model.parameters()):
+                            tmp_tensor = torch.zeros_like(param.data).cpu()
+                            dist.recv(tensor=tmp_tensor, src=0)
+                            param.data = tmp_tensor.cuda()
+
+                        # receive current minimum step
+                        step_tensor = torch.zeros([1], dtype=torch.int).cpu()
+                        dist.recv(tensor=step_tensor, src=0)
+                        globalMinStep = step_tensor.item()
+                    else:
+                        # read the local cache
+                        for idx, param in enumerate(model.parameters()):
+                            param.data -= delta_ws[idx].cuda()
+
                     rece_dur = time.time() - rece_start
 
                 else:
                     for idx, param in enumerate(model.parameters()):
-                        param.data -= delta_ws[idx]
+                        param.data -= delta_ws[idx].cuda()
 
                 fstat.write('LocalStep {}, CumulTime {}, Epoch {}, Batch {}/{}, Loss:{} | TotalTime {} | Comptime: {} | SendTime: {} | ReceTime: {} \n'
-                            .format(local_step, time.time() - startTime, epoch, batch_idx, len(train_data), round(loss.data.item(), 4), round(time.time() - it_start, 2), round(it_duration, 2), round(send_dur,2), round(rece_dur, 2)))
+                            .format(local_step, time.time() - startTime, epoch, batch_idx, len(train_data), round(loss.data.item(), 4), round(time.time() - it_start, 4), round(it_duration, 4), round(send_dur,4), round(rece_dur, 4)))
                 if local_step % args.display_step == 0:
                     print('LocalStep {}, CumulTime {}, Epoch {}, Batch {}/{}, Loss:{} | TotalTime {} | Comptime: {} | SendTime: {} | ReceTime: {}'
-                            .format(local_step, time.time() - startTime, epoch, batch_idx, len(train_data), round(loss.data.item(), 4), round(time.time() - it_start, 2), round(it_duration, 2), round(send_dur,2), round(rece_dur, 2)))
+                            .format(local_step, time.time() - startTime, epoch, batch_idx, len(train_data), round(loss.data.item(), 4), round(time.time() - it_start, 4), round(it_duration, 4), round(send_dur,4), round(rece_dur, 4)))
 
             except Exception as e:
                 print(str(e))
@@ -147,9 +163,9 @@ def run(rank, model, train_data, test_data, queue, param_q, stop_flag):
                 break
 
         # 训练结束后进行top 1的test - Check the top 1 test accuracy after training
-        print("For epoch {}, training loss {}".format(epoch, epoch_train_loss/float(epoch_train_batch)))
+        print("For epoch {}, training loss {}, CumulTime {}, local Step {} ".format(epoch, epoch_train_loss/float(epoch_train_batch), time.time() - startTime, local_step))
         test_loss, acc = test_model(rank, model, test_data, criterion=criterion)
-        fstat.write("For epoch {}, training loss {}, test_loss {}, test_accuracy {} \n".format(epoch, epoch_train_loss/float(epoch_train_batch), test_loss, acc))
+        fstat.write("For epoch {}, CumulTime {}, training loss {}, test_loss {}, test_accuracy {} \n".format(epoch, time.time() - startTime, epoch_train_loss/float(epoch_train_batch), test_loss, acc))
         #if stop_flag.value:
         #    break
     queue.put({rank: [[], [], [], True]})
