@@ -11,6 +11,7 @@ from ctypes import c_bool
 from multiprocessing import Process, Value
 from multiprocessing.managers import BaseManager
 import threading
+import random
 
 import numpy as np
 import torch
@@ -21,33 +22,36 @@ from utils.utils_data import get_data_transform
 from utils.utils_model import MySGD, test_model
 from torch.autograd import Variable
 from torchvision import datasets
+import torchvision.models as tormodels
 
 parser = argparse.ArgumentParser()
 # 集群基本信息的配置 - The basic configuration of the cluster
 parser.add_argument('--ps_ip', type=str, default='127.0.0.1')
 parser.add_argument('--ps_port', type=str, default='29500')
 parser.add_argument('--this_rank', type=int, default=1)
-parser.add_argument('--learners', type=str, default='1-2')
+parser.add_argument('--learners', type=str, default='1-2-3-4')
 
 # 模型与数据集的配置 - The configuration of model and dataset
-parser.add_argument('--data_dir', type=str, default='../../data')
+parser.add_argument('--data_dir', type=str, default='/tmp/')
 parser.add_argument('--save_path', type=str, default='./')
-parser.add_argument('--model', type=str, default='MnistCNN')
-parser.add_argument('--depth', type=int, default=56)
+parser.add_argument('--model', type=str, default='resnet')
+parser.add_argument('--depth', type=int, default=18)
 parser.add_argument('--data_set', type=str, default='cifar10')
 
 # 训练时各种超参数的配置 - The configuration of different hyper-parameters for training
-parser.add_argument('--epochs', type=int, default=50)
-parser.add_argument('--batch_size', type=int, default=100)
-parser.add_argument('--test_bsz', type=int, default=100)
+parser.add_argument('--epochs', type=int, default=400)
+parser.add_argument('--batch_size', type=int, default=256)
+parser.add_argument('--test_bsz', type=int, default=256)
 parser.add_argument('--heterogeneity', type=float, default=1.0)
 parser.add_argument('--hetero_allocation', type=str, default='1.0-1.0-1.0-1.0-1.0-1.0')
 parser.add_argument('--backend', type=str, default="gloo")
-parser.add_argument('--display_step', type=int, default=100)
+parser.add_argument('--display_step', type=int, default=20)
 parser.add_argument('--upload_epho', type=int, default=1)
 parser.add_argument('--stale_threshold', type=int, default=0)
+parser.add_argument('--sleep_up', type=int, default=0)
 
 args = parser.parse_args()
+random.seed(args.this_rank)
 #os.environ['CUDA_VISIBLE_DEVICES'] = '1'
 
 def unbalanced_partition_dataset(dataset, hetero):
@@ -96,18 +100,29 @@ def run(rank, model, train_data, test_data, queue, param_q, stop_flag):
             it_start = time.time()
             data, target = Variable(data).cuda(), Variable(target).cuda()
             optimizer.zero_grad()
+
+            forwardS = time.time()
             output = model(data)
+            forD = time.time() - forwardS
+
             loss = criterion(output, target)
-
             loss.backward()
-            delta_ws = optimizer.get_delta_w()
 
+            startGet = time.time()
+            delta_ws = optimizer.get_delta_w()
+            deltaDur = time.time() - startGet
+
+            #print("====get_delta_w takes {}, forward {}".format(deltaDur, forD))
             it_end = time.time()
             it_duration = it_end - it_start
+
             # mimic the heterogeneity through delay
             # The "heterogeneity" is a ratio of the maximum computing capacity
-            sleep_time = (1.0 / args.heterogeneity - 1.0) * it_duration
-            time.sleep(sleep_time)
+            #sleep_time = (1.0 / args.heterogeneity - 1.0) * it_duration
+            sleep_time = 0
+            if args.sleep_up != 0:
+                sleep_time = random.uniform(0, args.sleep_up) * it_duration
+                time.sleep(sleep_time)
 
             local_step += 1
             epoch_train_loss += loss.data.item()
@@ -151,11 +166,11 @@ def run(rank, model, train_data, test_data, queue, param_q, stop_flag):
                     for idx, param in enumerate(model.parameters()):
                         param.data -= delta_ws[idx].cuda()
 
-                fstat.write('LocalStep {}, CumulTime {}, Epoch {}, Batch {}/{}, Loss:{} | TotalTime {} | Comptime: {} | SendTime: {} | ReceTime: {} \n'
-                            .format(local_step, time.time() - startTime, epoch, batch_idx, len(train_data), round(loss.data.item(), 4), round(time.time() - it_start, 4), round(it_duration, 4), round(send_dur,4), round(rece_dur, 4)))
-                if local_step % args.display_step == 0:
-                    print('LocalStep {}, CumulTime {}, Epoch {}, Batch {}/{}, Loss:{} | TotalTime {} | Comptime: {} | SendTime: {} | ReceTime: {}'
-                            .format(local_step, time.time() - startTime, epoch, batch_idx, len(train_data), round(loss.data.item(), 4), round(time.time() - it_start, 4), round(it_duration, 4), round(send_dur,4), round(rece_dur, 4)))
+                fstat.write('LocalStep {}, CumulTime {}, Epoch {}, Batch {}/{}, Loss:{} | TotalTime {} | Comptime: {} | SendTime: {} | ReceTime: {} | Sleep: {} \n'
+                            .format(local_step, time.time() - startTime, epoch, batch_idx, len(train_data), round(loss.data.item(), 4), round(time.time() - it_start, 4), round(it_duration, 4), round(send_dur,4), round(rece_dur, 4), sleep_time))
+                if local_step % args.display_step == 0 and args.this_rank == 1:
+                    print('LocalStep {}, CumulTime {}, Epoch {}, Batch {}/{}, Loss:{} | TotalTime {} | Comptime: {} | SendTime: {} | ReceTime: {} | Sleep: {}'
+                            .format(local_step, time.time() - startTime, epoch, batch_idx, len(train_data), round(loss.data.item(), 4), round(time.time() - it_start, 4), round(it_duration, 4), round(send_dur,4), round(rece_dur, 4), sleep_time))
 
             except Exception as e:
                 print(str(e))
@@ -211,9 +226,9 @@ if __name__ == "__main__":
 
     elif args.data_set == 'cifar10':
         train_transform, test_transform = get_data_transform('cifar')
-        train_dataset = datasets.CIFAR10(args.data_dir, train=True, download=False,
+        train_dataset = datasets.CIFAR10(args.data_dir, train=True, download=True,
                                          transform=train_transform)
-        test_dataset = datasets.CIFAR10(args.data_dir, train=False, download=False,
+        test_dataset = datasets.CIFAR10(args.data_dir, train=False, download=True,
                                         transform=test_transform)
 
         train_bsz = args.batch_size
@@ -230,6 +245,15 @@ if __name__ == "__main__":
         else:
             print('Model must be {} or {}!'.format('MnistCNN', 'AlexNet'))
             sys.exit(-1)
+    elif args.data_set == "imagenet":
+        train_transform, test_transform = get_data_transform('imagenet')
+        train_dataset = datasets.ImageNet(args.data_dir, split='train', download=True, transform=train_transform)
+        test_dataset = datasets.ImageNet(args.data_dir, split='train', download=True, transform=train_transform)
+
+        train_bsz = args.batch_size
+        test_bsz = args.test_bsz
+
+        model = tormodels.__dict__[args.model]()
     else:
         print('DataSet must be {} or {}!'.format('Mnist', 'Cifar'))
         sys.exit(-1)

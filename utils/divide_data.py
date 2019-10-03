@@ -54,4 +54,4 @@ def select_dataset(workers: list, rank: int, partition: DataPartitioner, batch_s
     workers_num = len(workers)
     partition_dict = {workers[i]: i for i in range(workers_num)}
     partition = partition.use(partition_dict[rank])
-    return DataLoader(partition, batch_size=batch_size, shuffle=True)
+    return DataLoader(partition, batch_size=batch_size, shuffle=True, pin_memory=True, num_workers=0)

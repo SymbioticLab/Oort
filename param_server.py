@@ -16,31 +16,35 @@ from torch.multiprocessing import Process
 from torch.multiprocessing import Queue
 from torch.utils.data import DataLoader
 from torchvision import datasets
+import torchvision.models as tormodels
 
 parser = argparse.ArgumentParser()
 # 集群基本信息的配置 - The basic configuration of the cluster
 parser.add_argument('--ps_ip', type=str, default='127.0.0.1')
 parser.add_argument('--ps_port', type=str, default='29500')
 parser.add_argument('--this_rank', type=int, default=0)
-parser.add_argument('--learners', type=str, default='1-2')
+parser.add_argument('--learners', type=str, default='1-2-3-4')
 
 # 模型与数据集的配置 - The configuration of model and dataset
-parser.add_argument('--data_dir', type=str, default='../../data')
-parser.add_argument('--model', type=str, default='MnistCNN')
-parser.add_argument('--depth', type=int, default=56)
+parser.add_argument('--data_dir', type=str, default='/tmp/')
+parser.add_argument('--model', type=str, default='resnet')
+parser.add_argument('--depth', type=int, default=18)
 parser.add_argument('--data_set', type=str, default='cifar10')
 
 # 训练时各种超参数的配置 - The configuration of different hyper-parameters for training
 parser.add_argument('--timeout', type=float, default=10000.0)
-parser.add_argument('--len_train_data', type=int, default=60000)
-parser.add_argument('--epochs', type=int, default=1)
+parser.add_argument('--len_train_data', type=int, default=50000)
+parser.add_argument('--epochs', type=int, default=400)
+parser.add_argument('--test_bsz', type=int, default=256)
 parser.add_argument('--stale_threshold', type=int, default=0)
 parser.add_argument('--backend', type=str, default="gloo")
-parser.add_argument('--display_step', type=int, default=100)
+parser.add_argument('--display_step', type=int, default=500)
+parser.add_argument('--batch_size', type=int, default=256)
 
 args = parser.parse_args()
 display_step = args.display_step
 
+#torch.set_num_threads(1)
 def run(model, test_data, queue, param_q, stop_signal):
     if args.model == 'MnistCNN':
         criterion = torch.nn.CrossEntropyLoss().cuda()
@@ -114,9 +118,15 @@ def run(model, test_data, queue, param_q, stop_signal):
             data_size_epoch += batch_size
             learner_local_step[rank_src] += 1
 
+            handlerStart = time.time()
             # apply the update into the global model
             for idx, param in enumerate(model.parameters()):
-                param.data -= torch.from_numpy(delta_ws[idx]).cuda()
+
+                param.data -= (torch.from_numpy(delta_ws[idx]).cuda())
+
+            handlerDur = time.time() - handlerStart
+
+            #print ("====Handler duration is {}".format(handlerDur))
             global_update += 1
 
             stale = int(staleness - learner_staleness[rank_src])
@@ -165,8 +175,8 @@ def run(model, test_data, queue, param_q, stop_signal):
                     dist.send(tensor=torch.tensor([currentMinStep], dtype=torch.int).cpu(), dst=pworker)
                     learner_cache_step[pworker] = currentMinStep    #learner_local_step[pworker]
 
-                    #if global_update % display_step == 0:
-                    print("Handle Wight {} | Send {}".format(handle_dur, time.time() - send_start))
+                    if global_update % display_step == 0:
+                        print("Handle Wight {} | Send {}".format(handle_dur, time.time() - send_start))
                     # remove from the pending workers
                     del pendingWorkers[pworker]
 
@@ -264,7 +274,7 @@ if __name__ == "__main__":
                                       transform=test_t)
     elif args.data_set == 'cifar10':
         train_t, test_t = get_data_transform('cifar')
-        test_dataset = datasets.CIFAR10(args.data_dir, train=False, download=False,
+        test_dataset = datasets.CIFAR10(args.data_dir, train=False, download=True,
                                         transform=test_t)
         if args.model == "alexnet":
             model = AlexNetForCIFAR()
@@ -277,6 +287,11 @@ if __name__ == "__main__":
         else:
             print('Model must be {} or {}!'.format('MnistCNN', 'AlexNet'))
             sys.exit(-1)
+    elif args.data_set == 'imagenet':
+        train_t, test_t = get_data_transform('imagenet')
+        test_dataset = datasets.ImageNet(args.data_dir, split='train', download=True, transform=train_t)
+
+        model = tormodels.__dict__[args.model]()
     else:
         print('DataSet must be {} or {}!'.format('Mnist', 'Cifar'))
         sys.exit(-1)
