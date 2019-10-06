@@ -40,6 +40,8 @@ parser.add_argument('--stale_threshold', type=int, default=0)
 parser.add_argument('--backend', type=str, default="gloo")
 parser.add_argument('--display_step', type=int, default=500)
 parser.add_argument('--batch_size', type=int, default=256)
+parser.add_argument('--force_read', type=bool, default=False)
+parser.add_argument('--sleep_up', type=int, default=0)
 
 args = parser.parse_args()
 display_step = args.display_step
@@ -151,7 +153,7 @@ def run(model, test_data, queue, param_q, stop_signal):
                                         " , while globalStep is " + str(currentMinStep) + "\n")
             
             # if the local cache is too stale, then update it
-            elif learner_cache_step[rank_src] < learner_local_step[rank_src] - args.stale_threshold:
+            elif learner_cache_step[rank_src] < learner_local_step[rank_src] - args.stale_threshold or args.force_read:
                 for idx, param in enumerate(model.parameters()):
                         dist.send(tensor=param.data.cpu(), dst=rank_src)
 

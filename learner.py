@@ -49,6 +49,7 @@ parser.add_argument('--display_step', type=int, default=20)
 parser.add_argument('--upload_epho', type=int, default=1)
 parser.add_argument('--stale_threshold', type=int, default=0)
 parser.add_argument('--sleep_up', type=int, default=0)
+parser.add_argument('--force_read', type=bool, default=False)
 
 args = parser.parse_args()
 random.seed(args.this_rank)
@@ -144,7 +145,7 @@ def run(rank, model, train_data, test_data, queue, param_q, stop_flag):
 
                     rece_start = time.time()
 
-                    if globalMinStep < local_step - args.stale_threshold:
+                    if globalMinStep < local_step - args.stale_threshold or args.force_read==True:
                         # local cache is too stale
                         for idx, param in enumerate(model.parameters()):
                             tmp_tensor = torch.zeros_like(param.data).cpu()

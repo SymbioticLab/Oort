@@ -158,7 +158,7 @@ def shutdown(url):
         # kill all thread
         try:
             #c.run("")
-            c.run("kill $(ps aux | grep 'torch-cifar' | awk '{print $2}')")
+            c.run("kill $(ps aux | grep 'SSPTorch' | awk '{print $2}')")
             c.run("kill $(ps aux | grep 'startserver.py' | awk '{print $2}')")
         except:
             pass
