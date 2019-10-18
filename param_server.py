@@ -42,6 +42,10 @@ parser.add_argument('--display_step', type=int, default=500)
 parser.add_argument('--batch_size', type=int, default=256)
 parser.add_argument('--force_read', type=bool, default=False)
 parser.add_argument('--sleep_up', type=int, default=0)
+parser.add_argument('--local', type=bool, default=False)
+parser.add_argument('--local_split', type=int, default=1)
+parser.add_argument('--sequential', type=int, default=0)
+parser.add_argument('--filter_class', type=int, default=0)
 
 args = parser.parse_args()
 display_step = args.display_step
@@ -58,8 +62,12 @@ def run(model, test_data, queue, param_q, stop_signal):
     tmp = map(lambda item: (item[0], item[1].numpy), model.state_dict().items())
     _tmp = OrderedDict(map(lambda item: (item[0], item[1].cpu().numpy()), model.state_dict().items()))
     workers = [int(v) for v in str(args.learners).split('-')]
-    for _ in workers:
+    if not args.local:
+        for _ in workers:
+            param_q.put(_tmp)
+    else:
         param_q.put(_tmp)
+
     print('Model Sent Finished!')
 
     print('Begin!')
@@ -130,19 +138,18 @@ def run(model, test_data, queue, param_q, stop_signal):
 
             #print ("====Handler duration is {}".format(handlerDur))
             global_update += 1
+            currentMinStep = 9999999999
 
-            stale = int(staleness - learner_staleness[rank_src])
+            # get the current minimum local steps
+            for rankStep in learner_local_step.keys():
+                currentMinStep = min(currentMinStep, learner_local_step[rankStep])
+
+            stale = int(learner_local_step[rank_src] - currentMinStep)
             staleness_sum_epoch += stale
             staleness_sum_suqare_epoch += stale**2
             staleness += 1
             learner_staleness[rank_src] = staleness
             stale_stack.append(rank_src)
-
-            currentMinStep = 9999999999
-            
-            # get the current minimum local steps
-            for rankStep in learner_local_step.keys():
-                currentMinStep = min(currentMinStep, learner_local_step[rankStep])
 
             # if the worker is within the staleness, then continue w/ local cache and do nothing
             # Otherwise, block it 
@@ -304,7 +311,12 @@ if __name__ == "__main__":
     test_data = DataLoader(test_dataset, batch_size=100, shuffle=True)
 
     print("====PS: finish loading test_data")
-    world_size = len(str(args.learners).split('-')) + 1
+
+    if not args.local:
+        world_size = len(str(args.learners).split('-')) + 1
+    else:
+        world_size = 2
+        
     this_rank = args.this_rank
 
     queue = Queue()

@@ -50,10 +50,13 @@ parser.add_argument('--upload_epho', type=int, default=1)
 parser.add_argument('--stale_threshold', type=int, default=0)
 parser.add_argument('--sleep_up', type=int, default=0)
 parser.add_argument('--force_read', type=bool, default=False)
+parser.add_argument('--local', type=bool, default=False)
+parser.add_argument('--local_split', type=int, default=1)
+parser.add_argument('--test_interval', type=int, default=999999)
+parser.add_argument('--sequential', type=int, default=0)
+parser.add_argument('--filter_class', type=int, default=0)
 
 args = parser.parse_args()
-random.seed(args.this_rank)
-#os.environ['CUDA_VISIBLE_DEVICES'] = '1'
 
 def unbalanced_partition_dataset(dataset, hetero):
     """ Partitioning Data """
@@ -83,14 +86,14 @@ def run(rank, model, train_data, test_data, queue, param_q, stop_flag):
         criterion = torch.nn.CrossEntropyLoss().cuda()
 
     print('Begin!')
-    with open("/tmp/log", "w") as fout:
-        pass
-
     fstat = open("/tmp/log", "a")
 
     local_step = 0
     startTime = time.time()
     globalMinStep = 0
+    last_test = 0
+
+    random.seed(args.this_rank)
 
     for epoch in range(int(args.epochs)):
         model.train()
@@ -121,12 +124,11 @@ def run(rank, model, train_data, test_data, queue, param_q, stop_flag):
             # The "heterogeneity" is a ratio of the maximum computing capacity
             #sleep_time = (1.0 / args.heterogeneity - 1.0) * it_duration
             sleep_time = 0
-            if args.sleep_up != 0:
-                sleep_time = random.uniform(0, args.sleep_up) * it_duration
-                time.sleep(sleep_time)
 
             local_step += 1
             epoch_train_loss += loss.data.item()
+
+            #print ("===== {}".format(loss))
             epoch_train_batch += 1
 
             # noinspection PyBroadException
@@ -163,25 +165,37 @@ def run(rank, model, train_data, test_data, queue, param_q, stop_flag):
 
                     rece_dur = time.time() - rece_start
 
+                    if args.sleep_up != 0:
+                        sleep_time = random.uniform(0, args.sleep_up)/1000.0
+                        time.sleep(sleep_time)
+
                 else:
                     for idx, param in enumerate(model.parameters()):
                         param.data -= delta_ws[idx].cuda()
 
-                fstat.write('LocalStep {}, CumulTime {}, Epoch {}, Batch {}/{}, Loss:{} | TotalTime {} | Comptime: {} | SendTime: {} | ReceTime: {} | Sleep: {} \n'
-                            .format(local_step, time.time() - startTime, epoch, batch_idx, len(train_data), round(loss.data.item(), 4), round(time.time() - it_start, 4), round(it_duration, 4), round(send_dur,4), round(rece_dur, 4), sleep_time))
+                fstat.write('LocalStep {}, CumulTime {}, Epoch {}, Batch {}/{}, Loss:{} | TotalTime {} | Comptime: {} | SendTime: {} | ReceTime: {} | Sleep: {} | staleness: {} \n'
+                            .format(local_step, time.time() - startTime, epoch, batch_idx, len(train_data), round(loss.data.item(), 4), round(time.time() - it_start, 4), round(it_duration, 4), round(send_dur,4), round(rece_dur, 4), sleep_time, local_step - globalMinStep))
                 if local_step % args.display_step == 0 and args.this_rank == 1:
                     print('LocalStep {}, CumulTime {}, Epoch {}, Batch {}/{}, Loss:{} | TotalTime {} | Comptime: {} | SendTime: {} | ReceTime: {} | Sleep: {}'
                             .format(local_step, time.time() - startTime, epoch, batch_idx, len(train_data), round(loss.data.item(), 4), round(time.time() - it_start, 4), round(it_duration, 4), round(send_dur,4), round(rece_dur, 4), sleep_time))
 
             except Exception as e:
                 print(str(e))
+                fstat.write(str(e))
                 print('Should Stop: {}!'.format(stop_flag.value))
                 break
+
+            if time.time() - last_test > args.test_interval:
+                last_test = time.time()
+                test_loss, acc = test_model(rank, model, test_data, criterion=criterion)
+                fstat.write("For epoch {}, CumulTime {}, training loss {}, test_loss {}, test_accuracy {} \n".format(epoch, time.time() - startTime, epoch_train_loss/float(epoch_train_batch), test_loss, acc))
+                model.train()
 
         # 训练结束后进行top 1的test - Check the top 1 test accuracy after training
         print("For epoch {}, training loss {}, CumulTime {}, local Step {} ".format(epoch, epoch_train_loss/float(epoch_train_batch), time.time() - startTime, local_step))
         test_loss, acc = test_model(rank, model, test_data, criterion=criterion)
         fstat.write("For epoch {}, CumulTime {}, training loss {}, test_loss {}, test_accuracy {} \n".format(epoch, time.time() - startTime, epoch_train_loss/float(epoch_train_batch), test_loss, acc))
+        last_test = time.time()
         #if stop_flag.value:
         #    break
     queue.put({rank: [[], [], [], True]})
@@ -208,10 +222,9 @@ def capture_stop(stop_signal, flag: Value):
 
 if __name__ == "__main__":
 
-    """
-    判断使用的模型，MnistCNN或者是AlexNet - Check the modle type, here we support the flat MnistCNN and Alexnet supported by PyTorch
-    模型不同，数据集、数据集处理方式、优化函数、损失函数、参数等都不一样 - Different operations need to be done according to model and dataset
-    """
+    with open("/tmp/log", "w") as fout:
+        pass
+
     if args.data_set == 'Mnist':
         model = MnistCNN()
 
@@ -246,6 +259,7 @@ if __name__ == "__main__":
         else:
             print('Model must be {} or {}!'.format('MnistCNN', 'AlexNet'))
             sys.exit(-1)
+
     elif args.data_set == "imagenet":
         train_transform, test_transform = get_data_transform('imagenet')
         train_dataset = datasets.ImageNet(args.data_dir, split='train', download=True, transform=train_transform)
@@ -262,17 +276,28 @@ if __name__ == "__main__":
     if torch.cuda.is_available():
         model = model.cuda()
 
-    workers = [int(v) for v in str(args.learners).split('-')]
-    train_data = partition_dataset(train_dataset, workers)
-    #train_data = unbalanced_partition_dataset(train_dataset, args.hetero_allocation)
-    test_data = partition_dataset(test_dataset, workers)
-
-    this_rank = args.this_rank
-    train_data = select_dataset(workers, this_rank, train_data, batch_size=train_bsz)
-    test_data = select_dataset(workers, this_rank, test_data, batch_size=test_bsz)
+    splitTrainRatio = []
+    if not args.local:
+        workers = [int(v) for v in str(args.learners).split('-')]
+    else:
+        workers = [1]
+        splitTrainRatio = [args.local_split/100.0, 1.0 - args.local_split/100.0]
 
     world_size = len(workers) + 1
+    this_rank = args.this_rank
+    train_data = partition_dataset(train_dataset, workers, splitTrainRatio, args.sequential, filter_class=args.filter_class)
+    train_data = select_dataset(workers, this_rank, train_data, batch_size=train_bsz)
+    #train_data = unbalanced_partition_dataset(train_dataset, args.hetero_allocation)
 
+    testWorkers = workers
+    splitTestRatio = []
+    if args.local:
+        testWorkers = [1]
+        world_size = 2
+        splitTestRatio = [1.0]
+
+    test_data = partition_dataset(test_dataset, testWorkers, splitTestRatio)
+    test_data = select_dataset(testWorkers, this_rank, test_data, batch_size=test_bsz)
 
     class MyManager(BaseManager):
         pass
