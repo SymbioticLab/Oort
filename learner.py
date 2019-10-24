@@ -55,6 +55,7 @@ parser.add_argument('--local_split', type=int, default=1)
 parser.add_argument('--test_interval', type=int, default=999999)
 parser.add_argument('--sequential', type=int, default=0)
 parser.add_argument('--filter_class', type=int, default=0)
+parser.add_argument('--learning_rate', type=float, default=0.001)
 
 args = parser.parse_args()
 
@@ -79,10 +80,10 @@ def run(rank, model, train_data, test_data, queue, param_q, stop_flag):
     print('Model recved successfully!')
 
     if args.model == 'MnistCNN':
-        optimizer = MySGD(model.parameters(), lr=0.001, momentum=0.5)
+        optimizer = MySGD(model.parameters(), lr=args.learning_rate, momentum=0.5)
         criterion = torch.nn.CrossEntropyLoss().cuda()
     else:
-        optimizer = MySGD(model.parameters(), lr=0.001, momentum=0.9, weight_decay=5e-4)
+        optimizer = MySGD(model.parameters(), lr=args.learning_rate, momentum=0.9, weight_decay=5e-4)
         criterion = torch.nn.CrossEntropyLoss().cuda()
 
     print('Begin!')
@@ -92,6 +93,19 @@ def run(rank, model, train_data, test_data, queue, param_q, stop_flag):
     startTime = time.time()
     globalMinStep = 0
     last_test = 0
+    paramDic = {}
+
+    logDir = "/tmp/" + args.model
+    if os.path.isdir(logDir):
+        os.remove(logDir)
+
+    os.mkdir(logDir)
+
+    for idx, (name, param) in enumerate(model.named_parameters()):
+        paramDic[idx] = repr(name) + '\t' + repr(param.size())
+        
+        with open(logDir + "/" + str(idx), 'w') as f:
+            f.write(repr(idx) + ': ' + repr(name) + '\t'+ repr(param.size()) +'\n')
 
     random.seed(args.this_rank)
 
@@ -154,6 +168,10 @@ def run(rank, model, train_data, test_data, queue, param_q, stop_flag):
                             dist.recv(tensor=tmp_tensor, src=0)
                             param.data = tmp_tensor.cuda()
 
+                            with open(logDir + "/" + str(idx), 'a') as f:
+                                f.write("====" + str(local_step) + '\n')
+                                f.write(repr(param.data) + '\n')
+
                         # receive current minimum step
                         step_tensor = torch.zeros([1], dtype=torch.int).cpu()
                         dist.recv(tensor=step_tensor, src=0)
@@ -172,6 +190,8 @@ def run(rank, model, train_data, test_data, queue, param_q, stop_flag):
                 else:
                     for idx, param in enumerate(model.parameters()):
                         param.data -= delta_ws[idx].cuda()
+                        fstat.write(repr(idx) + '\t' + paramDic[idx] + '\n')
+                        fstat.write(repr(param.data) + '\n')
 
                 fstat.write('LocalStep {}, CumulTime {}, Epoch {}, Batch {}/{}, Loss:{} | TotalTime {} | Comptime: {} | SendTime: {} | ReceTime: {} | Sleep: {} | staleness: {} \n'
                             .format(local_step, time.time() - startTime, epoch, batch_idx, len(train_data), round(loss.data.item(), 4), round(time.time() - it_start, 4), round(it_duration, 4), round(send_dur,4), round(rece_dur, 4), sleep_time, local_step - globalMinStep))
@@ -181,7 +201,7 @@ def run(rank, model, train_data, test_data, queue, param_q, stop_flag):
 
             except Exception as e:
                 print(str(e))
-                fstat.write(str(e))
+                fstat.write("====Error: " + str(e) + '\n')
                 print('Should Stop: {}!'.format(stop_flag.value))
                 break
 
