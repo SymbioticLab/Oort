@@ -54,6 +54,7 @@ parser.add_argument('--local', type=bool, default=False)
 parser.add_argument('--local_split', type=int, default=1)
 parser.add_argument('--test_interval', type=int, default=999999)
 parser.add_argument('--sequential', type=int, default=0)
+parser.add_argument('--single_sim', type=int, default=0)
 parser.add_argument('--filter_class', type=int, default=0)
 parser.add_argument('--learning_rate', type=float, default=0.001)
 
@@ -109,33 +110,56 @@ def run(rank, model, train_data, test_data, queue, param_q, stop_flag):
 
     random.seed(args.this_rank)
 
+    train_data_itr = [iter(data) for data in train_data]
+
     for epoch in range(int(args.epochs)):
         model.train()
         epoch_train_loss = 0
         epoch_train_batch = 0
 
-        for batch_idx, (data, target) in enumerate(train_data):
+        for batch_idx in range(len(train_data[-1])):
             it_start = time.time()
-            data, target = Variable(data).cuda(), Variable(target).cuda()
-            optimizer.zero_grad()
+            delta_wss = []
 
-            forwardS = time.time()
-            output = model(data)
-            forD = time.time() - forwardS
+            totalSampleDir = {}
 
-            loss = criterion(output, target)
-            loss.backward()
+            for machineId in range(len(train_data)):
+                # simulate multiple workers
+                try:
+                    (data, target) = next(train_data_itr[machineId])
+                except StopIteration:
+                    # start from the beginning again
+                    train_data_itr[machineId] = iter(train_data[machineId])
+                    (data, target) = next(train_data_itr[machineId])
 
-            tDir = {}
-            for ii in target:
-                item = ii.data.item()
-                if item not in tDir:
-                    tDir[item] = 0
-                tDir[item] += 1
+                data, target = Variable(data).cuda(), Variable(target).cuda()
+                optimizer.zero_grad()
 
-            startGet = time.time()
-            delta_ws = optimizer.get_delta_w()
-            deltaDur = time.time() - startGet
+                forwardS = time.time()
+                output = model(data)
+                forD = time.time() - forwardS
+
+                loss = criterion(output, target)
+                loss.backward()
+
+                startGet = time.time()
+                delta_ws = optimizer.get_delta_w()
+                delta_wss.append(delta_ws)
+
+                deltaDur = time.time() - startGet
+
+                tDir = {}
+                for ii in target:
+                    item = ii.data.item()
+                    if item not in tDir:
+                        tDir[item] = 0
+                    tDir[item] += 1
+
+                for ii in target:
+                    item = ii.data.item()
+                    if item not in totalSampleDir:
+                        totalSampleDir[item] = 0
+                    totalSampleDir[item] += 1
 
             #print("====get_delta_w takes {}, forward {}".format(deltaDur, forD))
             it_end = time.time()
@@ -196,15 +220,16 @@ def run(rank, model, train_data, test_data, queue, param_q, stop_flag):
 
                 else:
                     for idx, param in enumerate(model.parameters()):
-                        param.data -= delta_ws[idx].cuda()
-                        fstat.write(repr(idx) + '\t' + paramDic[idx] + '\n')
-                        fstat.write(repr(param.data) + '\n')
+                        for delta_w in delta_wss:
+                            param.data -= delta_w[idx].cuda()
+                        #fstat.write(repr(idx) + '\t' + paramDic[idx] + '\n')
+                        #fstat.write(repr(param.data) + '\n')
 
-                fstat.write('LocalStep {}, CumulTime {}, Epoch {}, Batch {}/{}, Loss:{} | TotalTime {} | Comptime: {} | SendTime: {} | ReceTime: {} | Sleep: {} | staleness: {} | targetDir: {} \n'
-                            .format(local_step, time.time() - startTime, epoch, batch_idx, len(train_data), round(loss.data.item(), 4), round(time.time() - it_start, 4), round(it_duration, 4), round(send_dur,4), round(rece_dur, 4), sleep_time, local_step - globalMinStep, repr(tDir)))
+                fstat.write('LocalStep {}, CumulTime {}, Epoch {}, Batch {}/{}, Loss:{} | TotalTime {} | Comptime: {} | SendTime: {} | ReceTime: {} | Sleep: {} | staleness: {} | targetDir: {} | totalSampleDir: {} \n'
+                            .format(local_step, time.time() - startTime, epoch, batch_idx, len(train_data[0]), round(loss.data.item(), 4), round(time.time() - it_start, 4), round(it_duration, 4), round(send_dur,4), round(rece_dur, 4), sleep_time, local_step - globalMinStep, repr(tDir), repr(totalSampleDir)))
                 if local_step % args.display_step == 0 and args.this_rank == 1:
                     print('LocalStep {}, CumulTime {}, Epoch {}, Batch {}/{}, Loss:{} | TotalTime {} | Comptime: {} | SendTime: {} | ReceTime: {} | Sleep: {}'
-                            .format(local_step, time.time() - startTime, epoch, batch_idx, len(train_data), round(loss.data.item(), 4), round(time.time() - it_start, 4), round(it_duration, 4), round(send_dur,4), round(rece_dur, 4), sleep_time))
+                            .format(local_step, time.time() - startTime, epoch, batch_idx, len(train_data[0]), round(loss.data.item(), 4), round(time.time() - it_start, 4), round(it_duration, 4), round(send_dur,4), round(rece_dur, 4), sleep_time))
 
             except Exception as e:
                 print(str(e))
@@ -313,7 +338,13 @@ if __name__ == "__main__":
     world_size = len(workers) + 1
     this_rank = args.this_rank
     train_data = partition_dataset(train_dataset, workers, splitTrainRatio, args.sequential, filter_class=args.filter_class)
-    train_data = select_dataset(workers, this_rank, train_data, batch_size=train_bsz)
+    train_datas = []
+
+    if args.single_sim != 0:
+        for rank in workers:
+            train_datas.append(select_dataset(workers, rank, train_data, batch_size=train_bsz))
+    else:
+        train_datas.append(select_dataset(workers, this_rank, train_data, batch_size=train_bsz))
     #train_data = unbalanced_partition_dataset(train_dataset, args.hetero_allocation)
 
     testWorkers = workers
@@ -342,7 +373,7 @@ if __name__ == "__main__":
     stop_flag = Value(c_bool, False)
     init_myprocesses(this_rank, world_size,
                                           model,
-                                          train_data, test_data,
+                                          train_datas, test_data,
                                           q, param_q, stop_flag,
                                           run, args.backend)
 

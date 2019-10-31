@@ -40,11 +40,13 @@ parser.add_argument('--stale_threshold', type=int, default=0)
 parser.add_argument('--backend', type=str, default="gloo")
 parser.add_argument('--display_step', type=int, default=500)
 parser.add_argument('--batch_size', type=int, default=256)
+parser.add_argument('--upload_epho', type=int, default=1)
 parser.add_argument('--force_read', type=bool, default=False)
 parser.add_argument('--sleep_up', type=int, default=0)
 parser.add_argument('--local', type=bool, default=False)
 parser.add_argument('--local_split', type=int, default=1)
 parser.add_argument('--sequential', type=int, default=0)
+parser.add_argument('--single_sim', type=int, default=0)
 parser.add_argument('--filter_class', type=int, default=0)
 parser.add_argument('--learning_rate', type=float, default=0.001)
 
@@ -103,6 +105,7 @@ def run(model, test_data, queue, param_q, stop_signal):
     while True:
         if not queue.empty():
             try:
+                pendingSend = []
                 handle_start = time.time()
                 tmp_dict = queue.get()
                 rank_src = list(tmp_dict.keys())[0]
@@ -164,12 +167,14 @@ def run(model, test_data, queue, param_q, stop_signal):
                 # if the local cache is too stale, then update it
                 elif learner_cache_step[rank_src] < learner_local_step[rank_src] - args.stale_threshold or args.force_read:
                     for idx, param in enumerate(model.parameters()):
-                            dist.send(tensor=param.data.cpu(), dst=rank_src)
+                        #pendingSend.append(dist.isend(tensor=param.data.cpu(), dst=rank_src))
+                        dist.send(tensor=param.data.cpu(), dst=rank_src)
 
                     # send out current minimum steps
                     dist.send(tensor=torch.tensor([currentMinStep], dtype=torch.int).cpu(), dst=rank_src)
+                    #pendingSend.append(dist.isend(tensor=torch.tensor([currentMinStep], dtype=torch.int).cpu(), dst=rank_src))
                     learner_cache_step[rank_src] = currentMinStep
-                    #learner_local_step[rank_src]
+                    
 
                 # release all pending requests, if the staleness does not exceed the staleness threshold in SSP 
                 keys = list(pendingWorkers)
@@ -180,11 +185,16 @@ def run(model, test_data, queue, param_q, stop_signal):
                     if pendingWorkers[pworker] <= args.stale_threshold + currentMinStep:
                         # start to send param, to avoid synchronization problem, first create a copy here?
                         for idx, param in enumerate(model.parameters()):
+                            #pendingSend.append(dist.isend(tensor=param.data.cpu(), dst=pworker))
                             dist.send(tensor=param.data.cpu(), dst=pworker)
 
                         # send out current minimum step
                         dist.send(tensor=torch.tensor([currentMinStep], dtype=torch.int).cpu(), dst=pworker)
+                        #pendingSend.append(dist.isend(tensor=torch.tensor([currentMinStep], dtype=torch.int).cpu(), dst=pworker))
                         learner_cache_step[pworker] = currentMinStep    #learner_local_step[pworker]
+
+                        # for item in pendingSend:
+                        #     item.wait()
 
                         if global_update % display_step == 0:
                             print("Handle Wight {} | Send {}".format(handle_dur, time.time() - send_start))

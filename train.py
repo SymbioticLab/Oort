@@ -83,7 +83,7 @@ def torch_cifar(url):
             pass
         else:
             # start the worker
-            c.run('sleep 5 && python3 /users/fanlai/SSPTorch/learner.py --ps_ip=10.0.0.1 --ps_port=29500 --this_rank='+str(int(url.replace('h','')) - 1)+' --learners=1-2-3-4 '  + ' '.join(_arg))
+            c.run('sleep 5 && python3 /users/fanlai/SSPTorch/learner_simulator.py --ps_ip=10.0.0.1 --ps_port=29500 --this_rank='+str(int(url.replace('h','')) - 1)+' --learners=1-2-3-4 '  + ' '.join(_arg))
         c.close()
 
     except Exception as e:
