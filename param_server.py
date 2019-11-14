@@ -49,6 +49,10 @@ parser.add_argument('--sequential', type=int, default=0)
 parser.add_argument('--single_sim', type=int, default=0)
 parser.add_argument('--filter_class', type=int, default=0)
 parser.add_argument('--learning_rate', type=float, default=0.001)
+parser.add_argument('--model_avg', type=bool, default=False)
+parser.add_argument('--vrl_sgd', type=bool, default=False)
+parser.add_argument('--input_dim', type=int, default=0)
+parser.add_argument('--output_dim', type=int, default=0)
 
 args = parser.parse_args()
 display_step = args.display_step
@@ -56,9 +60,9 @@ display_step = args.display_step
 #torch.set_num_threads(1)
 def run(model, test_data, queue, param_q, stop_signal):
     if args.model == 'MnistCNN':
-        criterion = torch.nn.CrossEntropyLoss().cuda()
+        criterion = torch.nn.CrossEntropyLoss()#.cuda()
     else:
-        criterion = torch.nn.CrossEntropyLoss().cuda()
+        criterion = torch.nn.CrossEntropyLoss()#.cuda()
 
     print("====PS: get in run()")
     # 参数中的tensor转成numpy - convert gradient tensor to numpy structure
@@ -101,6 +105,11 @@ def run(model, test_data, queue, param_q, stop_signal):
     f_trainloss = open(trainloss_file, 'w')
     f_staleness = open(staleness_file, 'w')
     global_update = 0
+    newEpoch = True
+    qworker = 1
+
+    if args.model_avg:
+        qworker = len(workers)
 
     while True:
         if not queue.empty():
@@ -136,8 +145,15 @@ def run(model, test_data, queue, param_q, stop_signal):
                 handlerStart = time.time()
                 # apply the update into the global model
                 for idx, param in enumerate(model.parameters()):
+                    if not args.model_avg:
+                        param.data -= (torch.from_numpy(delta_ws[idx]))#.cuda())
+                    else:
+                        if newEpoch == 0:
+                            param.data = (torch.from_numpy(delta_ws[idx]))#.cuda())
+                        else:
+                            param.data += (torch.from_numpy(delta_ws[idx]))#.cuda())
 
-                    param.data -= (torch.from_numpy(delta_ws[idx]).cuda())
+                newEpoch += 1
 
                 handlerDur = time.time() - handlerStart
 
@@ -168,13 +184,13 @@ def run(model, test_data, queue, param_q, stop_signal):
                 elif learner_cache_step[rank_src] < learner_local_step[rank_src] - args.stale_threshold or args.force_read:
                     for idx, param in enumerate(model.parameters()):
                         #pendingSend.append(dist.isend(tensor=param.data.cpu(), dst=rank_src))
-                        dist.send(tensor=param.data.cpu(), dst=rank_src)
+                        dist.send(tensor=(param.data/float(qworker)).cpu(), dst=rank_src)
 
                     # send out current minimum steps
                     dist.send(tensor=torch.tensor([currentMinStep], dtype=torch.int).cpu(), dst=rank_src)
                     #pendingSend.append(dist.isend(tensor=torch.tensor([currentMinStep], dtype=torch.int).cpu(), dst=rank_src))
                     learner_cache_step[rank_src] = currentMinStep
-                    
+                    newEpoch = 0
 
                 # release all pending requests, if the staleness does not exceed the staleness threshold in SSP 
                 keys = list(pendingWorkers)
@@ -186,7 +202,7 @@ def run(model, test_data, queue, param_q, stop_signal):
                         # start to send param, to avoid synchronization problem, first create a copy here?
                         for idx, param in enumerate(model.parameters()):
                             #pendingSend.append(dist.isend(tensor=param.data.cpu(), dst=pworker))
-                            dist.send(tensor=param.data.cpu(), dst=pworker)
+                            dist.send(tensor=(param.data/float(qworker)).cpu(), dst=pworker)
 
                         # send out current minimum step
                         dist.send(tensor=torch.tensor([currentMinStep], dtype=torch.int).cpu(), dst=pworker)
@@ -200,6 +216,8 @@ def run(model, test_data, queue, param_q, stop_signal):
                             print("Handle Wight {} | Send {}".format(handle_dur, time.time() - send_start))
                         # remove from the pending workers
                         del pendingWorkers[pworker]
+
+                        #newEpoch = 0
 
                 # once reach an epoch, count the average train loss
                 if(data_size_epoch >= args.len_train_data):
@@ -236,6 +254,7 @@ def run(model, test_data, queue, param_q, stop_signal):
                     break
 
             except Exception as e:
+                print("====Error: " + str(e) + '\n')
                 f_trainloss.write("====Error: " + str(e) + '\n')
 
         e_time = time.time()
@@ -245,9 +264,6 @@ def run(model, test_data, queue, param_q, stop_signal):
             stop_signal.put(1)
             print('Time up: {}, Stop Now!'.format(e_time - s_time))
             break
-
-
-
 
 def init_myprocesses(rank, size, model, test_data, queue, param_q, stop_signal, fn, backend):
     os.environ['MASTER_ADDR'] = args.ps_ip
@@ -279,6 +295,8 @@ if __name__ == "__main__":
             model = ResNet(args.depth)
         elif args.model == "googlenet":
             model = GoogLeNet()
+        elif args.model == "lenet":
+            model = LeNet()
         else:
             print('Model must be {} or {}!'.format('MnistCNN', 'AlexNet'))
             sys.exit(-1)
@@ -287,6 +305,10 @@ if __name__ == "__main__":
         test_dataset = datasets.ImageNet(args.data_dir, split='train', download=True, transform=train_t)
 
         model = tormodels.__dict__[args.model]()
+    elif args.data_set = 'emnist':
+        test_dataset = datasers.EMNIST(args.data_dir, split='byclass', train=False, download=True, transform=transforms.ToTensor())
+        if args.model == "Logistic":
+            model = LogisticRegression(args.input_dim, args.output_dim)
     else:
         print('DataSet must be {} or {}!'.format('Mnist', 'Cifar'))
         sys.exit(-1)

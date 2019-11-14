@@ -424,3 +424,35 @@ class RNNModel(nn.Module):
                     weight.new_zeros(self.nlayers, bsz, self.nhid))
         else:
             return weight.new_zeros(self.nlayers, bsz, self.nhid)
+
+# ============================= Linear Regression ==============================
+class linearRegression(nn.Module):
+    def __init__(self, inputSize, outputSize):
+        super(linearRegression, self).__init__()
+        self.linear = nn.Linear(inputSize, outputSize)
+
+    def forward(self, x):
+        out = self.linear(x)
+        return out
+
+# ============================= LogisticRegression Regression ==============================
+class LogisticRegression(nn.Module):
+    def __init__(self, input_dim, output_dim):
+        super(LogisticRegression, self).__init__()
+        self.linear = nn.Linear(input_dim, output_dim)
+
+    def forward(self, x):
+        outputs = self.linear(x)
+        return outputs
+
+# ============================= SVM ==============================
+class LinearSVM(nn.Module):
+    """Support Vector Machine"""
+
+    def __init__(self, input_dim, output_dim):
+        super(LinearSVM, self).__init__()
+        self.fc = nn.Linear(input_dim, output_dim)
+
+    def forward(self, x):
+        h = self.fc(x)
+        return h
