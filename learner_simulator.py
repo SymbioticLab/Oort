@@ -21,24 +21,25 @@ from utils.models import *
 from utils.utils_data import get_data_transform
 from utils.utils_model import MySGD, test_model
 from torch.autograd import Variable
-from torchvision import datasets
+from torchvision import datasets, transforms
 import torchvision.models as tormodels
 
 parser = argparse.ArgumentParser()
-# 集群基本信息的配置 - The basic configuration of the cluster
+# The basic configuration of the cluster
 parser.add_argument('--ps_ip', type=str, default='127.0.0.1')
 parser.add_argument('--ps_port', type=str, default='29500')
 parser.add_argument('--this_rank', type=int, default=1)
 parser.add_argument('--learners', type=str, default='1-2-3-4')
+parser.add_argument('--total_worker', type=int, default=0)
 
-# 模型与数据集的配置 - The configuration of model and dataset
+# The configuration of model and dataset
 parser.add_argument('--data_dir', type=str, default='/tmp/')
 parser.add_argument('--save_path', type=str, default='./')
 parser.add_argument('--model', type=str, default='resnet')
 parser.add_argument('--depth', type=int, default=18)
 parser.add_argument('--data_set', type=str, default='cifar10')
 
-# 训练时各种超参数的配置 - The configuration of different hyper-parameters for training
+# The configuration of different hyper-parameters for training
 parser.add_argument('--epochs', type=int, default=400)
 parser.add_argument('--batch_size', type=int, default=256)
 parser.add_argument('--test_bsz', type=int, default=256)
@@ -56,14 +57,19 @@ parser.add_argument('--test_interval', type=int, default=999999)
 parser.add_argument('--sequential', type=int, default=0)
 parser.add_argument('--single_sim', type=int, default=0)
 parser.add_argument('--filter_class', type=int, default=0)
-parser.add_argument('--learning_rate', type=float, default=0.001)
+parser.add_argument('--learning_rate', type=float, default=0.1)
 parser.add_argument('--model_avg', type=bool, default=False)
 parser.add_argument('--vrl_sgd', type=bool, default=False)
 parser.add_argument('--input_dim', type=int, default=0)
 parser.add_argument('--output_dim', type=int, default=0)
+parser.add_argument('--load_model', type=bool, default=False)
+parser.add_argument('--dump_epoch', type=int, default=100)
+parser.add_argument('--decay_factor', type=float, default=0.9)
+parser.add_argument('--decay_epoch', type=float, default=500)
+parser.add_argument('args', nargs=argparse.REMAINDER)
 
 args = parser.parse_args()
-torch.cuda.set_device(0)
+#torch.cuda.set_device(0)
 
 def unbalanced_partition_dataset(dataset, hetero):
     """ Partitioning Data """
@@ -75,7 +81,7 @@ def unbalanced_partition_dataset(dataset, hetero):
 
 def run(rank, model, train_data, test_data, queue, param_q, stop_flag):
     print("====Worker: Start running")
-    # 获取ps端传来的模型初始参数 - Fetch the initial parameters from the server side (we called it parameter_server)
+    # Fetch the initial parameters from the server side (we called it parameter_server)
     while True:
         if not param_q.empty():
             param_dict = param_q.get()
@@ -83,22 +89,21 @@ def run(rank, model, train_data, test_data, queue, param_q, stop_flag):
                                   param_dict.items()))
             model.load_state_dict(tmp)
             break
+
     print('Model recved successfully!')
 
-    nonLinear = ['Logistic', 'Linear', 'SVM']
+    LinearModel = ['Logistic', 'Linear', 'SVM']
 
     if args.model == 'MnistCNN':
         optimizer = MySGD(model.parameters(), lr=args.learning_rate, momentum=0.5)
-        criterion = torch.nn.CrossEntropyLoss()
-    elif args.model in nonLinear:
-        optimizer = MySGD(model.parameters(), lr=args.learning_rate)
-        criterion = torch.nn.CrossEntropyLoss()
+        criterion = torch.nn.CrossEntropyLoss().cuda()
     else:
         optimizer = MySGD(model.parameters(), lr=args.learning_rate)#, momentum=0.9, weight_decay=0)
-        criterion = torch.nn.CrossEntropyLoss()
+        criterion = torch.nn.CrossEntropyLoss().cuda()
 
     print('Begin!')
     fstat = open("/tmp/log", "a")
+    fstat.writelines('\n' + repr(args) + '\n')
 
     local_step = 0
     startTime = time.time()
@@ -123,13 +128,21 @@ def run(rank, model, train_data, test_data, queue, param_q, stop_flag):
     train_data_itr = [iter(data) for data in train_data]
     vrl_delta = {} 
     last_param = {}
+    learning_rate = args.learning_rate
+    last_global_model = model
 
     for epoch in range(int(args.epochs)):
         model.train()
         epoch_train_loss = 0
         epoch_train_batch = 0
+        local_trained = 0
+
+        if epoch % args.decay_epoch == 0:
+            learning_rate = max(0.001, learning_rate * args.decay_factor)
 
         for batch_idx in range(len(train_data[-1])):
+            local_trained += args.batch_size
+
             it_start = time.time()
             delta_wss = []
 
@@ -144,7 +157,10 @@ def run(rank, model, train_data, test_data, queue, param_q, stop_flag):
                     train_data_itr[machineId] = iter(train_data[machineId])
                     (data, target) = next(train_data_itr[machineId])
 
-                data, target = Variable(data), Variable(target)
+                if args.data_set == 'emnist' and args.model in LinearModel:
+                    data = data.view(-1, 28 * 28)
+
+                data, target = Variable(data).cuda(), Variable(target).cuda()
                 optimizer.zero_grad()
 
                 forwardS = time.time()
@@ -155,7 +171,7 @@ def run(rank, model, train_data, test_data, queue, param_q, stop_flag):
                 loss.backward()
 
                 startGet = time.time()
-                delta_ws = optimizer.get_delta_w()
+                delta_ws = optimizer.get_delta_w(learning_rate)
                 delta_wss.append(delta_ws)
 
                 deltaDur = time.time() - startGet
@@ -174,6 +190,12 @@ def run(rank, model, train_data, test_data, queue, param_q, stop_flag):
                     totalSampleDir[item] += 1
 
             #print("====get_delta_w takes {}, forward {}".format(deltaDur, forD))
+            if math.isnan(loss.data.item()):
+                fstat.write("====Loss is nan, thus skip \n")
+                model = last_global_model
+                model.train()
+                continue
+
             it_end = time.time()
             it_duration = it_end - it_start
 
@@ -183,13 +205,14 @@ def run(rank, model, train_data, test_data, queue, param_q, stop_flag):
             sleep_time = 0
 
             local_step += 1
+
             epoch_train_loss += loss.data.item()
 
             #print ("===== {}".format(loss))
             epoch_train_batch += 1
 
             # noinspection PyBroadException
-            try:  # 捕获异常，异常来源于ps进程的停止 - Capture the exception caused by the shutdown of parameter_server
+            try:  # Capture the exception caused by the shutdown of parameter_server
                 send_dur = 0
                 rece_dur = 0
 
@@ -197,9 +220,9 @@ def run(rank, model, train_data, test_data, queue, param_q, stop_flag):
                     for idx, param in enumerate(model.parameters()):
                         for delta_w in delta_wss:
                             if idx in vrl_delta.keys():
-                                param.data -= (delta_w[idx] + args.learning_rate * vrl_delta[idx])
+                                param.data -= (delta_w[idx].cuda() + args.learning_rate * vrl_delta[idx])
                             else:
-                                param.data -= delta_w[idx] #* (max(np.random.normal(1.0, 0.2), 0))
+                                param.data -= delta_w[idx].cuda()
 
                 if local_step % args.upload_epho == 0:
                     send_start = time.time()
@@ -207,12 +230,14 @@ def run(rank, model, train_data, test_data, queue, param_q, stop_flag):
                     if delta_ws:
                         if not args.model_avg:
                             queue.put_nowait({
-                                rank: [[v.cpu().numpy() for v in delta_ws], loss.data.cpu().numpy(), np.array(args.batch_size), False]
+                                rank: [[v.cpu().numpy() for v in delta_ws], loss.data.cpu().numpy(), np.array(local_trained), False]
                             })
+                            local_trained = 0
                         else:
                             queue.put_nowait({
-                                rank: [[param.data.cpu().numpy() for param in model.parameters()], loss.data.cpu().numpy(), np.array(args.batch_size), False]
+                                rank: [[param.data.cpu().numpy() for param in model.parameters()], loss.data.cpu().numpy(), np.array(local_trained), False]
                             })
+                            local_trained = 0
 
                     send_dur = time.time() - send_start
 
@@ -223,7 +248,7 @@ def run(rank, model, train_data, test_data, queue, param_q, stop_flag):
                         for idx, param in enumerate(model.parameters()):
                             tmp_tensor = torch.zeros_like(param.data).cpu()
                             dist.recv(tensor=tmp_tensor, src=0)
-                            tmp_tensor = tmp_tensor
+                            tmp_tensor = tmp_tensor.cuda()
 
                             if args.vrl_sgd and idx in last_param:
                                 #if idx not in vrl_delta.keys():
@@ -242,10 +267,11 @@ def run(rank, model, train_data, test_data, queue, param_q, stop_flag):
                         step_tensor = torch.zeros([1], dtype=torch.int).cpu()
                         dist.recv(tensor=step_tensor, src=0)
                         globalMinStep = step_tensor.item()
+                        last_global_model = model
                     else:
                         # read the local cache
                         for idx, param in enumerate(model.parameters()):
-                            param.data -= delta_ws[idx]
+                            param.data -= delta_ws[idx].cuda()
 
                     rece_dur = time.time() - rece_start
 
@@ -257,9 +283,9 @@ def run(rank, model, train_data, test_data, queue, param_q, stop_flag):
                     for idx, param in enumerate(model.parameters()):
                         for delta_w in delta_wss:
                             if idx in vrl_delta.keys():
-                                param.data -= (delta_w[idx] - args.learning_rate * vrl_delta[idx])
+                                param.data -= (delta_w[idx].cuda() - args.learning_rate * vrl_delta[idx])
                             else:
-                                param.data -= delta_w[idx]
+                                param.data -= delta_w[idx].cuda()
                                 
                         #fstat.write(repr(idx) + '\t' + paramDic[idx] + '\n')
                         #fstat.write(repr(param.data) + '\n')
@@ -282,11 +308,12 @@ def run(rank, model, train_data, test_data, queue, param_q, stop_flag):
                 fstat.write("For epoch {}, CumulTime {}, training loss {}, test_loss {}, test_accuracy {} \n".format(epoch, time.time() - startTime, epoch_train_loss/float(epoch_train_batch), test_loss, acc))
                 model.train()
 
-        # 训练结束后进行top 1的test - Check the top 1 test accuracy after training
+        # Check the top 1 test accuracy after training
         print("For epoch {}, training loss {}, CumulTime {}, local Step {} ".format(epoch, epoch_train_loss/float(epoch_train_batch), time.time() - startTime, local_step))
         test_loss, acc = test_model(rank, model, test_data, criterion=criterion)
         fstat.write("For epoch {}, CumulTime {}, training loss {}, test_loss {}, test_accuracy {} \n".format(epoch, time.time() - startTime, epoch_train_loss/float(epoch_train_batch), test_loss, acc))
         last_test = time.time()
+
         #if stop_flag.value:
         #    break
     queue.put({rank: [[], [], [], True]})
@@ -310,10 +337,12 @@ def capture_stop(stop_signal, flag: Value):
             print('Time Up! Stop: {}!'.format(flag.value))
             break
 
-
 if __name__ == "__main__":
 
     with open("/tmp/log", "w") as fout:
+        pass
+
+    with open('/tmp/sampleDistribution', 'w') as fout:
         pass
 
     if args.data_set == 'Mnist':
@@ -340,7 +369,7 @@ if __name__ == "__main__":
         test_bsz = args.test_bsz
 
         if args.model == "alexnet":
-            model = AlexNetForCIFAR()
+            model = AlexNet()
         elif args.model == "vgg":
             model = VGG(args.depth)
         elif args.model == "resnet":
@@ -362,22 +391,32 @@ if __name__ == "__main__":
         test_bsz = args.test_bsz
 
         model = tormodels.__dict__[args.model]()
-
-    elif args.data_set = 'emnist':
-        test_dataset = datasers.EMNIST(args.data_dir, split='byclass', train=False, download=True, transform=transforms.ToTensor())
-        train_dataset = datasers.EMNIST(args.data_dir, split='byclass', train=True, download=True, transform=transforms.ToTensor())
+    elif args.data_set == 'emnist':
+        test_dataset = datasets.EMNIST(args.data_dir, split='balanced', train=False, download=True, transform=transforms.ToTensor())
+        train_dataset = datasets.EMNIST(args.data_dir, split='balanced', train=True, download=True, transform=transforms.ToTensor())
 
         train_bsz = args.batch_size
         test_bsz = args.test_bsz
-        
+
         if args.model == "Logistic":
             model = LogisticRegression(args.input_dim, args.output_dim)
+        elif args.model == "alexnet":
+            model = AlexNetForMnist(47)
+        elif args.model == "vgg":
+            model = VGG(args.depth, args.output_dim, 1)
+        elif args.model == "resnet":
+            model = ResNet(args.depth, args.output_dim, 1)
+        elif args.model == "lenet":
+            model = LeNetForMNIST(args.output_dim)
+        else:
+            print('Model must be {} or {}!'.format('MnistCNN', 'AlexNet'))
+            sys.exit(-1)
     else:
         print('DataSet must be {} or {}!'.format('Mnist', 'Cifar'))
         sys.exit(-1)
 
     if torch.cuda.is_available():
-        model = model
+        model = model.cuda()
 
     splitTrainRatio = []
     if not args.local:
@@ -405,8 +444,8 @@ if __name__ == "__main__":
         world_size = 2
         splitTestRatio = [1.0]
 
-    test_data = partition_dataset(test_dataset, testWorkers, splitTestRatio)
-    test_data = select_dataset(testWorkers, this_rank, test_data, batch_size=test_bsz)
+    test_data = partition_dataset(test_dataset, [1], splitTestRatio)
+    test_data = select_dataset(testWorkers, this_rank, test_data, batch_size=test_bsz, istest=True)
 
     class MyManager(BaseManager):
         pass
@@ -417,9 +456,9 @@ if __name__ == "__main__":
     manager = MyManager(address=(args.ps_ip, 5000), authkey=b'queue')
     manager.connect()
 
-    q = manager.get_queue()  # 更新参数使用的队列 - queue for parameter_server signal process
-    param_q = manager.get_param()  # 接收初始模型参数使用的队列 - init
-    stop_signal = manager.get_stop_signal()  # 接收停止信号使用的队列 - stop
+    q = manager.get_queue()  # queue for parameter_server signal process
+    param_q = manager.get_param()  # init
+    stop_signal = manager.get_stop_signal()  # stop
 
     stop_flag = Value(c_bool, False)
     init_myprocesses(this_rank, world_size,
@@ -428,17 +467,3 @@ if __name__ == "__main__":
                                           q, param_q, stop_flag,
                                           run, args.backend)
 
-    # 开启一个进程捕获ps的stop信息 - parameter_server signal process handler
-    # stop_p = Process(target=capture_stop,
-    #                  args=(stop_signal, stop_flag))
-
-    # p = Process(target=init_myprocesses, args=(this_rank, world_size,
-    #                                               model,
-    #                                               train_data, test_data,
-    #                                               q, param_q, stop_flag,
-    #                                               run, 'gloo'))
-    # p.start()
-    # stop_p.start()
-    # print("====Client: Start to join processes")
-    # p.join()
-    # stop_p.join()

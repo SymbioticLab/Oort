@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 
 import argparse
-import os
+import os, shutil
 import random
 import sys
 import time
@@ -15,7 +15,7 @@ from utils.utils_model import test_model
 from torch.multiprocessing import Process
 from torch.multiprocessing import Queue
 from torch.utils.data import DataLoader
-from torchvision import datasets
+from torchvision import datasets, transforms
 import torchvision.models as tormodels
 
 parser = argparse.ArgumentParser()
@@ -24,6 +24,8 @@ parser.add_argument('--ps_ip', type=str, default='127.0.0.1')
 parser.add_argument('--ps_port', type=str, default='29500')
 parser.add_argument('--this_rank', type=int, default=0)
 parser.add_argument('--learners', type=str, default='1-2-3-4')
+parser.add_argument('--total_worker', type=int, default=0)
+parser.add_argument('--sample_ratio', type=float, default=1.0)
 
 # 模型与数据集的配置 - The configuration of model and dataset
 parser.add_argument('--data_dir', type=str, default='/tmp/')
@@ -52,10 +54,14 @@ parser.add_argument('--learning_rate', type=float, default=0.001)
 parser.add_argument('--model_avg', type=bool, default=False)
 parser.add_argument('--vrl_sgd', type=bool, default=False)
 parser.add_argument('--input_dim', type=int, default=0)
-parser.add_argument('--output_dim', type=int, default=0)
+parser.add_argument('--output_dim', type=int, default=47)
+parser.add_argument('--test_interval', type=int, default=999999)
+parser.add_argument('--load_model', type=bool, default=False)
+parser.add_argument('--dump_epoch', type=int, default=100)
+parser.add_argument('--decay_factor', type=float, default=0.9)
+parser.add_argument('--decay_epoch', type=float, default=500)
 
 args = parser.parse_args()
-display_step = args.display_step
 
 #torch.set_num_threads(1)
 def run(model, test_data, queue, param_q, stop_signal):
@@ -65,6 +71,26 @@ def run(model, test_data, queue, param_q, stop_signal):
         criterion = torch.nn.CrossEntropyLoss()#.cuda()
 
     print("====PS: get in run()")
+    trainloss_file = '/tmp/trainloss' + args.model + '.txt'
+    staleness_file = '/tmp/staleness' + args.model + ".txt"
+
+    f_trainloss = open(trainloss_file, 'w')
+    f_staleness = open(staleness_file, 'w')
+    logDir = "/tmp/" + args.model
+
+    if args.load_model:
+        try:
+            model.load_state_dict(torch.load(logDir+'/'+str(args.model)+'.pth.tar'))
+            f_trainloss.write("====Load model successfully\n")
+        except Exception as e:
+            f_trainloss.write("====Error: Failed to load model due to {}\n".format(str(e)))
+            pass
+    
+    if os.path.isdir(logDir):
+        shutil.rmtree(logDir)
+
+    os.mkdir(logDir)
+
     # 参数中的tensor转成numpy - convert gradient tensor to numpy structure
     tmp = map(lambda item: (item[0], item[1].numpy), model.state_dict().items())
     _tmp = OrderedDict(map(lambda item: (item[0], item[1].cpu().numpy()), model.state_dict().items()))
@@ -98,12 +124,6 @@ def run(model, test_data, queue, param_q, stop_signal):
     # In SSP, the fast workers have to wait the slowest worker a given duration
     # The fast worker exceeding the duration will be pushed into the queue to wait
     stale_stack = []
-
-    trainloss_file = '/tmp/trainloss' + args.model + '.txt'
-    staleness_file = '/tmp/staleness' + args.model + ".txt"
-
-    f_trainloss = open(trainloss_file, 'w')
-    f_staleness = open(staleness_file, 'w')
     global_update = 0
     newEpoch = True
     qworker = 1
@@ -212,7 +232,7 @@ def run(model, test_data, queue, param_q, stop_signal):
                         # for item in pendingSend:
                         #     item.wait()
 
-                        if global_update % display_step == 0:
+                        if global_update % args.display_step == 0:
                             print("Handle Wight {} | Send {}".format(handle_dur, time.time() - send_start))
                         # remove from the pending workers
                         del pendingWorkers[pworker]
@@ -240,10 +260,14 @@ def run(model, test_data, queue, param_q, stop_signal):
                     f_trainloss.flush()
                     f_staleness.flush()
                     iteration_in_epoch = 0
-                    epoch_count += 1
+                    epoch_count += int(data_size_epoch/args.len_train_data)
                     epoch_train_loss = 0
                     data_size_epoch = 0
                     epoch_time = e_epoch_time
+
+                if epoch_count % args.dump_epoch == 0:
+                    f_trainloss.write("====Try to dump the model \n")
+                    torch.save(model.state_dict(), logDir+'/'+str(args.model)+'.pth.tar')
 
                 # The training stop
                 if(epoch_count >= args.epochs):
@@ -288,7 +312,7 @@ if __name__ == "__main__":
         test_dataset = datasets.CIFAR10(args.data_dir, train=False, download=True,
                                         transform=test_t)
         if args.model == "alexnet":
-            model = AlexNetForCIFAR()
+            model = AlexNet()
         elif args.model == "vgg":
             model = VGG(args.depth)
         elif args.model == "resnet":
@@ -305,10 +329,22 @@ if __name__ == "__main__":
         test_dataset = datasets.ImageNet(args.data_dir, split='train', download=True, transform=train_t)
 
         model = tormodels.__dict__[args.model]()
-    elif args.data_set = 'emnist':
-        test_dataset = datasers.EMNIST(args.data_dir, split='byclass', train=False, download=True, transform=transforms.ToTensor())
+    elif args.data_set == 'emnist':
+        test_dataset = datasets.EMNIST(args.data_dir, split='balanced', train=False, download=True, transform=transforms.ToTensor())
+
         if args.model == "Logistic":
             model = LogisticRegression(args.input_dim, args.output_dim)
+        elif args.model == "alexnet":
+            model = AlexNetForMnist(args.output_dim)
+        elif args.model == "vgg":
+            model = VGG(args.depth, args.output_dim, 1)
+        elif args.model == "resnet":
+            model = ResNet(args.depth, args.output_dim, 1)
+        elif args.model == "lenet":
+            model = LeNetForMNIST(args.output_dim)
+        else:
+            print('Model must be {} or {}!'.format('MnistCNN', 'AlexNet'))
+            sys.exit(-1)
     else:
         print('DataSet must be {} or {}!'.format('Mnist', 'Cifar'))
         sys.exit(-1)

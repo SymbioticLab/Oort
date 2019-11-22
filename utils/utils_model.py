@@ -90,7 +90,8 @@ def test_model(rank, model, test_data, criterion=nn.NLLLoss()):
     correct = 0
     model.eval()
     for data, target in test_data:
-        data, target = Variable(data).cuda(), Variable(target).cuda()
+        #data, target = Variable(data.view(-1, 28*28)), Variable(target)
+        data, target = Variable(data), Variable(target)
         output = model(data)
         test_loss += criterion(output, target).data.item()  # Variable.data
         # get the index of the max log-probability
