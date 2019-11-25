@@ -4,6 +4,13 @@ from random import Random
 from torch.utils.data import DataLoader
 import numpy as np
 from math import *
+import logging
+logFile = '/tmp/log'
+logging.basicConfig(filename=logFile,
+                            filemode='a',
+                            format='%(asctime)s,%(msecs)d %(name)s %(levelname)s %(message)s',
+                            datefmt='%H:%M:%S',
+                            level=logging.DEBUG)
 
 class Partition(object):
     """ Dataset partitioning helper """
@@ -34,7 +41,7 @@ class DataPartitioner(object):
         rng.seed(seed)
         np.random.seed(seed)
         totalSamples = 0
-        usedSamples = 50000
+        usedSamples = 100000
 
         # categarize the samples
         for index, (inputs, target) in enumerate(data):
@@ -49,7 +56,6 @@ class DataPartitioner(object):
         self.classPerWorker = np.zeros([len(sizes), len(list(targets.keys()))])
         data_len = len(data)
 
-        fstat = open("/tmp/log", "a")
         if sequential == 0:
             indexes = [x for x in range(0, data_len)]
             rng.shuffle(indexes)
@@ -60,7 +66,7 @@ class DataPartitioner(object):
                 indexes = indexes[part_len:]
 
         else:
-            fstat.writelines('========= Start of Class/Worker =========\n')
+            logging.info('========= Start of Class/Worker =========\n')
 
             # deal with the balanced dataset
             if args['balanced_client'] > 0:
@@ -76,7 +82,7 @@ class DataPartitioner(object):
                     self.partitions.append(balacned_class_set)
                     rng.shuffle(self.partitions[-1])
 
-                    fstat.writelines(repr([balanced_class_len for i in range(len(targets.keys()))]) + '\n')
+                    logging.info(repr([balanced_class_len for i in range(len(targets.keys()))]) + '\n')
 
                 sizes = sizes[args['balanced_client']:]
 
@@ -87,7 +93,7 @@ class DataPartitioner(object):
                 # zipf distribution
                 elif sequential == 2:
                     rationOfClassWorker = np.random.zipf(args['param'], [len(sizes), len(targets.keys())])
-                    fstat.writelines("==== Load Zipf Distribution ====\n {} \n".format(repr(rationOfClassWorker)))
+                    logging.info("==== Load Zipf Distribution ====\n {} \n".format(repr(rationOfClassWorker)))
                     rationOfClassWorker = rationOfClassWorker.astype(np.float32)
                 else:
                     rationOfClassWorker = np.ones((len(sizes), len(targets.keys()))).astype(np.float32)
@@ -137,14 +143,12 @@ class DataPartitioner(object):
 
 
         # log
-        fstat.writelines(repr(self.classPerWorker) + '\n')
-        fstat.writelines('========= End of Class/Worker =========\n')
-        fstat.close()
+        logging.info(repr(self.classPerWorker) + '\n')
+        logging.info('========= End of Class/Worker =========\n')
 
         print("====Total samples {}, Label types {}, with {} \n".format(totalSamples, len(targets.keys()), repr(keyLength)))
 
-    def use(self, partition, istest):
-
+    def log_selection(self):
         fmetrics = open('/tmp/sampleDistribution', 'a')
         totalLabels = [0 for i in range(len(self.classPerWorker[0]))]
 
@@ -163,6 +167,9 @@ class DataPartitioner(object):
         fmetrics.writelines("=====================================\n")
 
         fmetrics.close()
+
+    def use(self, partition, istest):
+        self.log_selection()
 
         _partition = -1 if istest else partition
 

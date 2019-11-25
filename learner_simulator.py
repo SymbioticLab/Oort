@@ -6,6 +6,7 @@ import math
 import os, shutil
 import sys
 import time
+import logging
 from collections import OrderedDict
 from ctypes import c_bool
 from multiprocessing import Process, Value
@@ -70,6 +71,12 @@ parser.add_argument('args', nargs=argparse.REMAINDER)
 
 args = parser.parse_args()
 #torch.cuda.set_device(0)
+logFile = '/tmp/log'
+logging.basicConfig(filename=logFile,
+                            filemode='a',
+                            format='%(asctime)s,%(msecs)d %(name)s %(levelname)s %(message)s',
+                            datefmt='%H:%M:%S',
+                            level=logging.DEBUG)
 
 def unbalanced_partition_dataset(dataset, hetero):
     """ Partitioning Data """
@@ -96,14 +103,13 @@ def run(rank, model, train_data, test_data, queue, param_q, stop_flag):
 
     if args.model == 'MnistCNN':
         optimizer = MySGD(model.parameters(), lr=args.learning_rate, momentum=0.5)
-        criterion = torch.nn.CrossEntropyLoss().cuda()
+        criterion = torch.nn.CrossEntropyLoss()
     else:
         optimizer = MySGD(model.parameters(), lr=args.learning_rate)#, momentum=0.9, weight_decay=0)
-        criterion = torch.nn.CrossEntropyLoss().cuda()
+        criterion = torch.nn.CrossEntropyLoss()
 
     print('Begin!')
-    fstat = open("/tmp/log", "a")
-    fstat.writelines('\n' + repr(args) + '\n')
+    logging.info('\n' + repr(args) + '\n')
 
     local_step = 0
     startTime = time.time()
@@ -160,7 +166,7 @@ def run(rank, model, train_data, test_data, queue, param_q, stop_flag):
                 if args.data_set == 'emnist' and args.model in LinearModel:
                     data = data.view(-1, 28 * 28)
 
-                data, target = Variable(data).cuda(), Variable(target).cuda()
+                data, target = Variable(data), Variable(target)
                 optimizer.zero_grad()
 
                 forwardS = time.time()
@@ -191,7 +197,7 @@ def run(rank, model, train_data, test_data, queue, param_q, stop_flag):
 
             #print("====get_delta_w takes {}, forward {}".format(deltaDur, forD))
             if math.isnan(loss.data.item()):
-                fstat.write("====Loss is nan, thus skip \n")
+                logging.info("====Loss is nan, thus skip \n")
                 model = last_global_model
                 model.train()
                 continue
@@ -220,9 +226,9 @@ def run(rank, model, train_data, test_data, queue, param_q, stop_flag):
                     for idx, param in enumerate(model.parameters()):
                         for delta_w in delta_wss:
                             if idx in vrl_delta.keys():
-                                param.data -= (delta_w[idx].cuda() + args.learning_rate * vrl_delta[idx])
+                                param.data -= (delta_w[idx] + args.learning_rate * vrl_delta[idx])
                             else:
-                                param.data -= delta_w[idx].cuda()
+                                param.data -= delta_w[idx]
 
                 if local_step % args.upload_epho == 0:
                     send_start = time.time()
@@ -248,7 +254,7 @@ def run(rank, model, train_data, test_data, queue, param_q, stop_flag):
                         for idx, param in enumerate(model.parameters()):
                             tmp_tensor = torch.zeros_like(param.data).cpu()
                             dist.recv(tensor=tmp_tensor, src=0)
-                            tmp_tensor = tmp_tensor.cuda()
+                            tmp_tensor = tmp_tensor
 
                             if args.vrl_sgd and idx in last_param:
                                 #if idx not in vrl_delta.keys():
@@ -271,7 +277,7 @@ def run(rank, model, train_data, test_data, queue, param_q, stop_flag):
                     else:
                         # read the local cache
                         for idx, param in enumerate(model.parameters()):
-                            param.data -= delta_ws[idx].cuda()
+                            param.data -= delta_ws[idx]
 
                     rece_dur = time.time() - rece_start
 
@@ -283,14 +289,14 @@ def run(rank, model, train_data, test_data, queue, param_q, stop_flag):
                     for idx, param in enumerate(model.parameters()):
                         for delta_w in delta_wss:
                             if idx in vrl_delta.keys():
-                                param.data -= (delta_w[idx].cuda() - args.learning_rate * vrl_delta[idx])
+                                param.data -= (delta_w[idx] - args.learning_rate * vrl_delta[idx])
                             else:
-                                param.data -= delta_w[idx].cuda()
+                                param.data -= delta_w[idx]
                                 
                         #fstat.write(repr(idx) + '\t' + paramDic[idx] + '\n')
                         #fstat.write(repr(param.data) + '\n')
 
-                fstat.write('LocalStep {}, CumulTime {}, Epoch {}, Batch {}/{}, Loss:{} | TotalTime {} | Comptime: {} | SendTime: {} | ReceTime: {} | Sleep: {} | staleness: {} | targetDir: {} | totalSampleDir: {} \n'
+                logging.info('LocalStep {}, CumulTime {}, Epoch {}, Batch {}/{}, Loss:{} | TotalTime {} | Comptime: {} | SendTime: {} | ReceTime: {} | Sleep: {} | staleness: {} | targetDir: {} | totalSampleDir: {} \n'
                             .format(local_step, time.time() - startTime, epoch, batch_idx, len(train_data[0]), round(loss.data.item(), 4), round(time.time() - it_start, 4), round(it_duration, 4), round(send_dur,4), round(rece_dur, 4), sleep_time, local_step - globalMinStep, repr(tDir), repr(totalSampleDir)))
                 if local_step % args.display_step == 0 and args.this_rank == 1:
                     print('LocalStep {}, CumulTime {}, Epoch {}, Batch {}/{}, Loss:{} | TotalTime {} | Comptime: {} | SendTime: {} | ReceTime: {} | Sleep: {}'
@@ -298,27 +304,27 @@ def run(rank, model, train_data, test_data, queue, param_q, stop_flag):
 
             except Exception as e:
                 print(str(e))
-                fstat.write("====Error: " + str(e) + '\n')
+                logging.info("====Error: " + str(e) + '\n')
                 print('Should Stop: {}!'.format(stop_flag.value))
                 break
 
             if time.time() - last_test > args.test_interval:
                 last_test = time.time()
                 test_loss, acc = test_model(rank, model, test_data, criterion=criterion)
-                fstat.write("For epoch {}, CumulTime {}, training loss {}, test_loss {}, test_accuracy {} \n".format(epoch, time.time() - startTime, epoch_train_loss/float(epoch_train_batch), test_loss, acc))
+                logging.info("For epoch {}, CumulTime {}, training loss {}, test_loss {}, test_accuracy {} \n".format(epoch, time.time() - startTime, epoch_train_loss/float(epoch_train_batch), test_loss, acc))
                 model.train()
 
         # Check the top 1 test accuracy after training
         print("For epoch {}, training loss {}, CumulTime {}, local Step {} ".format(epoch, epoch_train_loss/float(epoch_train_batch), time.time() - startTime, local_step))
         test_loss, acc = test_model(rank, model, test_data, criterion=criterion)
-        fstat.write("For epoch {}, CumulTime {}, training loss {}, test_loss {}, test_accuracy {} \n".format(epoch, time.time() - startTime, epoch_train_loss/float(epoch_train_batch), test_loss, acc))
+        logging.info("For epoch {}, CumulTime {}, training loss {}, test_loss {}, test_accuracy {} \n".format(epoch, time.time() - startTime, epoch_train_loss/float(epoch_train_batch), test_loss, acc))
         last_test = time.time()
 
         #if stop_flag.value:
         #    break
     queue.put({rank: [[], [], [], True]})
     print("Worker {} has completed epoch {}!".format(args.this_rank, epoch))
-    fstat.close()
+    #fstat.close()
 
 def init_myprocesses(rank, size, model,
                    train_dataset, test_dataset,
@@ -339,7 +345,7 @@ def capture_stop(stop_signal, flag: Value):
 
 if __name__ == "__main__":
 
-    with open("/tmp/log", "w") as fout:
+    with open(logFile, "w") as fout:
         pass
 
     with open('/tmp/sampleDistribution', 'w') as fout:
@@ -416,7 +422,7 @@ if __name__ == "__main__":
         sys.exit(-1)
 
     if torch.cuda.is_available():
-        model = model.cuda()
+        model = model
 
     splitTrainRatio = []
     if not args.local:
