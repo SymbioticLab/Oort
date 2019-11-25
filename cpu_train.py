@@ -82,7 +82,7 @@ def torch_cifar(url):
             c.run('python3 /users/fanlai/SSPTorch/param_server.py --ps_ip=10.0.0.1 --ps_port=29500 --this_rank=0 --learners=1-2-3-4-5-6-7-8-9 ' + ' '.join(_arg))
             pass
         elif "h2" in url:
-            c.run('sleep 5 && python3 /users/fanlai/SSPTorch/learner_simulator.py --ps_ip=10.0.0.1 --ps_port=29500 --this_rank='+str(int(url.replace('h','')) - 1)+' --learners=1-2-3-4-5-6-7-8-9 --sequential=3 '  + ' '.join(_arg))
+            c.run('sleep 5 && python3 /users/fanlai/SSPTorch/learner_simulator.py --ps_ip=10.0.0.1 --ps_port=29500 --this_rank='+str(int(url.replace('h','')) - 1)+' --learners=1-2-3-4-5-6-7-8-9 --sequential=1 '  + ' '.join(_arg))
         else:
             # start the worker
             c.run('sleep 5 && python3 /users/fanlai/SSPTorch/learner_simulator.py --ps_ip=10.0.0.1 --ps_port=29500 --this_rank='+str(int(url.replace('h','')) - 1)+' --learners=1-2-3-4-5-6-7-8-9 --sequential=1 '  + ' '.join(_arg))

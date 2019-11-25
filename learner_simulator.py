@@ -56,7 +56,7 @@ parser.add_argument('--test_interval', type=int, default=999999)
 parser.add_argument('--sequential', type=int, default=0)
 parser.add_argument('--single_sim', type=int, default=0)
 parser.add_argument('--filter_class', type=int, default=0)
-parser.add_argument('--learning_rate', type=float, default=0.1)
+parser.add_argument('--learning_rate', type=float, default=0.01)
 parser.add_argument('--model_avg', type=bool, default=False)
 parser.add_argument('--input_dim', type=int, default=0)
 parser.add_argument('--output_dim', type=int, default=0)
@@ -78,6 +78,7 @@ logging.basicConfig(filename=logFile,
 entire_train_data = None
 os.environ['MASTER_ADDR'] = args.ps_ip
 os.environ['MASTER_PORT'] = args.ps_port
+clientIdToRun = 0
 
 def unbalanced_partition_dataset(dataset, hetero):
     """ Partitioning Data """
@@ -130,13 +131,13 @@ def run(rank, model, train_data, test_data, queue, param_q, stop_flag):
         with open(logDir + "/" + str(idx), 'w') as f:
             f.write(repr(idx) + ': ' + repr(name) + '\t'+ repr(param.size()) +'\n')
 
-    random.seed(args.this_rank)
+    random.seed(rank)
 
     train_data_itr = [iter(data) for data in train_data]
     last_param = {}
     learning_rate = args.learning_rate
     last_push_time = time.time()
-    currentClientId = rank
+    currentClientId = clientIdToRun
     reloadClientData = False
 
     for epoch in range(int(args.epochs)):
@@ -227,7 +228,7 @@ def run(rank, model, train_data, test_data, queue, param_q, stop_flag):
 
                 if local_step % args.upload_epho == 0:
                     send_start = time.time()
-                    training_speed = (time.time() - last_push_time)/local_trained
+                    training_speed = local_trained/(time.time() - last_push_time)
 
                     # push update to the PS
                     if delta_ws:

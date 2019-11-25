@@ -7,17 +7,27 @@ class ClientSampler(object):
         self.Clients = {}
 
     def registerClient(self, hostId, clientId, dis, speed = 1.0):
-        uniqueId = str(hostId) + '_' + str(clientId)
+        uniqueId = self.getUniqueId(hostId, clientId)
         self.Clients[uniqueId] = Client(hostId, clientId, speed, dis)
 
-    def registerSpeed(self, clientId, speed):
-        self.Clients[clientId].speed = speed
+    def registerSpeed(self, hostId, clientId, speed):
+        uniqueId = self.getUniqueId(hostId, clientId)
+        self.Clients[uniqueId].speed = speed
 
-    def registerDistance(self, clientId, distance):
-        self.Clients[clientId].distance = distance
+    def registerDistance(self, hostId, clientId, distance):
+        uniqueId = self.getUniqueId(hostId, clientId)
+        self.Clients[uniqueId].distance = distance
 
-    def getScore(self, clientId):
-        return self.Clients[clientId].getScore()
+    def getScore(self, hostId, clientId):
+        uniqueId = self.getUniqueId(hostId, clientId)
+        return self.Clients[uniqueId].getScore()
+
+    def getClientsInfo(self):
+        return self.Clients
 
     def nextClientIdToRun(self, hostId):
         return hostId
+
+    def getUniqueId(self, hostId, clientId):
+        return (str(hostId) + '_' + str(clientId))
+

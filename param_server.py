@@ -50,7 +50,7 @@ parser.add_argument('--sleep_up', type=int, default=0)
 parser.add_argument('--sequential', type=int, default=0)
 parser.add_argument('--single_sim', type=int, default=0)
 parser.add_argument('--filter_class', type=int, default=0)
-parser.add_argument('--learning_rate', type=float, default=0.001)
+parser.add_argument('--learning_rate', type=float, default=0.05)
 parser.add_argument('--model_avg', type=bool, default=False)
 parser.add_argument('--input_dim', type=int, default=0)
 parser.add_argument('--output_dim', type=int, default=47)
@@ -75,9 +75,6 @@ staleness_file = '/tmp/staleness' + args.model + ".txt"
 os.environ['MASTER_ADDR'] = args.ps_ip
 os.environ['MASTER_PORT'] = args.ps_port
 
-def get_unique_id(hostId, clientId):
-    return str(hostId) + '_' + str(clientId)
-
 def initiate_sampler_query(numOfClients):
     # Initiate the clientSampler 
     clientSampler = ClientSampler()
@@ -92,16 +89,16 @@ def initiate_sampler_query(numOfClients):
             distanceVec = tmp_dict[rank_src][0]
 
             for clientId, dis in enumerate(distanceVec):
-                clientSampler.registerClient(rank_src, clientId, dis)
+                # since the worker rankId starts from 1, we also configure the initial dataId as 1
+                clientSampler.registerClient(rank_src, clientId + 1, dis)
 
-            collectedClients += len(distanceVec)
+            collectedClients += 1
 
     return clientSampler
 
 def run(model, test_data, queue, param_q, stop_signal, clientSampler):
-    print("====PS: get in run()")
-    with open(trainloss_file, 'w') as f:
-        pass
+    logging.info("====PS: get in run()")
+
     f_staleness = open(staleness_file, 'w')
 
     logDir = "/tmp/" + args.model
@@ -151,6 +148,7 @@ def run(model, test_data, queue, param_q, stop_signal, clientSampler):
     newEpoch = True
     normWeight = len(workers) if args.model_avg else 1
 
+    logging.info(repr(clientSampler.getClientsInfo()))
     while True:
         if not queue.empty():
             try:
@@ -159,7 +157,7 @@ def run(model, test_data, queue, param_q, stop_signal, clientSampler):
                 rank_src = list(tmp_dict.keys())[0]
 
                 [iteration_loss, trained_size, isWorkerEnd, clientId, speed] = [tmp_dict[rank_src][i] for i in range(1, len(tmp_dict[rank_src]))]
-                clientSampler.registerSpeed(get_unique_id(rank_src, clientId), speed)
+                clientSampler.registerSpeed(rank_src, clientId, speed)
 
                 if isWorkerEnd:
                     print("Worker {} has completed all its data computation!".format(rank_src))
@@ -226,7 +224,7 @@ def run(model, test_data, queue, param_q, stop_signal, clientSampler):
 
                     # send out current minimum steps
                     pendingSend.append(dist.isend(tensor=torch.tensor([currentMinStep, -1], dtype=torch.int).cpu(), dst=rank_src))
-                    #pendingSend.append(dist.isend(tensor=torch.tensor([currentMinStep], dtype=torch.int).cpu(), dst=rank_src))
+                    # pendingSend.append(dist.isend(tensor=torch.tensor([currentMinStep], dtype=torch.int).cpu(), dst=rank_src))
                     learner_cache_step[rank_src] = currentMinStep
                     newEpoch = 0
 
@@ -240,7 +238,6 @@ def run(model, test_data, queue, param_q, stop_signal, clientSampler):
                     if pendingWorkers[pworker] <= args.stale_threshold + currentMinStep:
                         # start to send param, to avoid synchronization problem, first create a copy here?
                         workersToSend.append(pworker)
-
 
                 if len(workersToSend) > 0:
                     for idx, param in enumerate(model.parameters()):
@@ -314,7 +311,7 @@ def init_myprocesses(rank, size, model, test_data, queue, param_q, stop_signal, 
     workerRanks = [int(v) for v in str(args.learners).split('-')]
     clientSampler = initiate_sampler_query(len(workerRanks))
     
-    for wrank in workerRanks: 
+    for wrank in workerRanks:
         nextClientIdToRun = clientSampler.nextClientIdToRun(hostId=wrank)
         dist.send(tensor=torch.tensor([nextClientIdToRun], dtype=torch.int).cpu(), dst=wrank)
 
@@ -387,6 +384,8 @@ class MyManager(BaseManager):
 
 if __name__ == "__main__":
 
+    with open(logFile, 'w') as f:
+        pass
     # Control the global random
     manual_seed = args.this_rank
     random.seed(manual_seed)

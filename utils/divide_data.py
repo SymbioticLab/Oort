@@ -34,13 +34,11 @@ class DataPartitioner(object):
     # len(sizes) is the number of workers
     # sequential 1-> random 2->zipf 3-> identical
     def __init__(self, data, sizes=None, sequential=0, ratioOfClassWorker=None, filter_class=0, seed=10, args = {'balanced_client':0, 'param': 1.5}):
-
-        if sizes is None:
-            sizes = [0.7, 0.2, 0.1] # worker1 -> 70% data worker2 -> 20% data etc.
-
+        
         self.data = data
         self.partitions = []
         targets = {}
+        indexToLabel = {}
 
         rng = Random()
         rng.seed(seed)
@@ -49,10 +47,11 @@ class DataPartitioner(object):
         usedSamples = 100000
 
         # categarize the samples
-        for index, (inputs, target) in enumerate(data):
-            if target not in targets:
-                targets[target] = []
-            targets[target].append(index)
+        for index, (inputs, label) in enumerate(data):
+            if label not in targets:
+                targets[label] = []
+            targets[label].append(index)
+            indexToLabel[index] = label
             totalSamples += 1
 
         keyDir = {key:i for i, key in enumerate(targets.keys())}
@@ -71,6 +70,9 @@ class DataPartitioner(object):
                 self.partitions.append(indexes[0:part_len])
                 indexes = indexes[part_len:]
 
+            for id, partition in enumerate(self.partitions):
+                for index in partition:
+                    self.classPerWorker[id][indexToLabel[index]] += 1
         else:
             logging.info('========= Start of Class/Worker =========\n')
 
@@ -161,9 +163,9 @@ class DataPartitioner(object):
             self.workerDistance.append(jensen_shannon_divergence([dataDistr, tempDistr]))
             #logging.info("Worker number " + str(worker) + " has data " + str(tempDataSize) + " tempDistri is " + str(tempDistr) + " and JS divergence is " + str(self.workerDistance[-1]))
 
-        logging.info("Printing Result " + str(self.workerDistance))
+        logging.info("Distance Vector is: " + str(self.workerDistance))
         # log
-        logging.info(repr(self.classPerWorker) + '\n')
+        logging.info("Raw class per worker is : " + repr(self.classPerWorker) + '\n')
         #logging.info("Printing keyLength" + str(keyLength))
         logging.info('========= End of Class/Worker =========\n')
 
