@@ -5,6 +5,7 @@ import os, shutil
 import random
 import sys
 import time
+from clientSampler import clientSampler
 from collections import OrderedDict
 from multiprocessing.managers import BaseManager
 import torch
@@ -100,8 +101,6 @@ def run(model, test_data, queue, param_q, stop_signal):
     else:
         param_q.put(_tmp)
 
-    print('Model Sent Finished!')
-
     print('Begin!')
 
     epoch_train_loss = 0
@@ -125,21 +124,24 @@ def run(model, test_data, queue, param_q, stop_signal):
     stale_stack = []
     global_update = 0
     newEpoch = True
-    qworker = 1
+    normWeight = len(workers) if args.model_avg else 1
 
-    if args.model_avg:
-        qworker = len(workers)
+    # Initiate the clientSampler 
+    myClientSampler = clientSampler(len(workers))
 
     while True:
         if not queue.empty():
             try:
-                pendingSend = []
                 handle_start = time.time()
                 tmp_dict = queue.get()
                 rank_src = list(tmp_dict.keys())[0]
-                isWorkerEnd = tmp_dict[rank_src][3]
+                print("Waiting for update")
 
-                #print("Receive update from worker {}".format(rank_src))
+                [iteration_loss, trained_size, isWorkerEnd, clientId, speed] = [tmp_dict[rank_src][i] for i in range(1, len(tmp_dict[rank_src]))]
+                #myClientSampler.registerSpeed(clientId, speed)
+                print("====Received updates")
+
+                delta_ws = tmp_dict[rank_src][0]
 
                 if isWorkerEnd:
                     print("Worker {} has completed all its data computation!".format(rank_src))
@@ -152,13 +154,9 @@ def run(model, test_data, queue, param_q, stop_signal):
                         break
                     continue
 
-                delta_ws = tmp_dict[rank_src][0]  # dictionary: key parameter index, value: v：delta_w(gradient)
-                iteration_loss = tmp_dict[rank_src][1]
-                batch_size = tmp_dict[rank_src][2]
-
                 iteration_in_epoch += 1
                 epoch_train_loss += iteration_loss
-                data_size_epoch += batch_size
+                data_size_epoch += trained_size
                 learner_local_step[rank_src] += 1
 
                 handlerStart = time.time()
@@ -191,6 +189,9 @@ def run(model, test_data, queue, param_q, stop_signal):
                 learner_staleness[rank_src] = staleness
                 stale_stack.append(rank_src)
 
+                # working channels in communication
+                pendingSend = []
+
                 # if the worker is within the staleness, then continue w/ local cache and do nothing
                 # Otherwise, block it 
                 if learner_local_step[rank_src] > args.stale_threshold + currentMinStep:
@@ -203,10 +204,11 @@ def run(model, test_data, queue, param_q, stop_signal):
                 elif learner_cache_step[rank_src] < learner_local_step[rank_src] - args.stale_threshold or args.force_read:
                     for idx, param in enumerate(model.parameters()):
                         #pendingSend.append(dist.isend(tensor=param.data.cpu(), dst=rank_src))
-                        pendingSend.append(dist.isend(tensor=(param.data/float(qworker)).cpu(), dst=rank_src))
+                        pendingSend.append(dist.isend(tensor=(param.data/float(normWeight)).cpu(), dst=rank_src))
 
                     # send out current minimum steps
                     pendingSend.append(dist.isend(tensor=torch.tensor([currentMinStep], dtype=torch.int).cpu(), dst=rank_src))
+                    pendingSend.append(dist.isend(tensor=torch.tensor([-1], dtype=torch.int).cpu(), dst=rank_src))
                     #pendingSend.append(dist.isend(tensor=torch.tensor([currentMinStep], dtype=torch.int).cpu(), dst=rank_src))
                     learner_cache_step[rank_src] = currentMinStep
                     newEpoch = 0
@@ -227,14 +229,15 @@ def run(model, test_data, queue, param_q, stop_signal):
                     for idx, param in enumerate(model.parameters()):
                         for worker in workersToSend:
                             #pendingSend.append(dist.isend(tensor=param.data.cpu(), dst=worker))
-                            pendingSend.append(dist.isend(tensor=(param.data/float(qworker)).cpu(), dst=worker))
+                            pendingSend.append(dist.isend(tensor=(param.data/float(normWeight)).cpu(), dst=worker))
                     
                     for worker in workersToSend:
                         pendingSend.append(dist.isend(tensor=torch.tensor([currentMinStep], dtype=torch.int).cpu(), dst=worker))
+                        pendingSend.append(dist.isend(tensor=torch.tensor([-1], dtype=torch.int).cpu(), dst=worker))
+    
+                        learner_cache_step[worker] = currentMinStep
                         # remove from the pending workers
                         del pendingWorkers[worker]
-
-                    learner_cache_step[pworker] = currentMinStep    #learner_local_step[pworker]
 
                     if global_update % args.display_step == 0:
                         print("Handle Wight {} | Send {}".format(handle_dur, time.time() - send_start))

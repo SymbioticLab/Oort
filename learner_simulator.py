@@ -60,7 +60,6 @@ parser.add_argument('--single_sim', type=int, default=0)
 parser.add_argument('--filter_class', type=int, default=0)
 parser.add_argument('--learning_rate', type=float, default=0.1)
 parser.add_argument('--model_avg', type=bool, default=False)
-parser.add_argument('--vrl_sgd', type=bool, default=False)
 parser.add_argument('--input_dim', type=int, default=0)
 parser.add_argument('--output_dim', type=int, default=0)
 parser.add_argument('--load_model', type=bool, default=False)
@@ -77,6 +76,8 @@ logging.basicConfig(filename=logFile,
                             format='%(asctime)s,%(msecs)d %(name)s %(levelname)s %(message)s',
                             datefmt='%H:%M:%S',
                             level=logging.DEBUG)
+
+entire_train_data = None
 
 def unbalanced_partition_dataset(dataset, hetero):
     """ Partitioning Data """
@@ -132,10 +133,11 @@ def run(rank, model, train_data, test_data, queue, param_q, stop_flag):
     random.seed(args.this_rank)
 
     train_data_itr = [iter(data) for data in train_data]
-    vrl_delta = {} 
     last_param = {}
     learning_rate = args.learning_rate
-    last_global_model = model
+    last_push_time = time.time()
+    currentClientId = rank
+    reloadClientData = False
 
     for epoch in range(int(args.epochs)):
         model.train()
@@ -146,7 +148,14 @@ def run(rank, model, train_data, test_data, queue, param_q, stop_flag):
         if epoch % args.decay_epoch == 0:
             learning_rate = max(0.001, learning_rate * args.decay_factor)
 
+        if reloadClientData:
+            train_data = []
+            train_data.append(select_dataset(workers, nextClientId, entire_train_data, batch_size=train_bsz))
+            train_data_itr = [iter(data) for data in train_data]
+            reloadClientData = False
+
         for batch_idx in range(len(train_data[-1])):
+            # for every mini-batch/iteration
             local_trained += args.batch_size
 
             it_start = time.time()
@@ -163,6 +172,7 @@ def run(rank, model, train_data, test_data, queue, param_q, stop_flag):
                     train_data_itr[machineId] = iter(train_data[machineId])
                     (data, target) = next(train_data_itr[machineId])
 
+                # LR is not compatible with the image input as of now, thus needs to reformat it 
                 if args.data_set == 'emnist' and args.model in LinearModel:
                     data = data.view(-1, 28 * 28)
 
@@ -195,55 +205,44 @@ def run(rank, model, train_data, test_data, queue, param_q, stop_flag):
                         totalSampleDir[item] = 0
                     totalSampleDir[item] += 1
 
-            #print("====get_delta_w takes {}, forward {}".format(deltaDur, forD))
-            if math.isnan(loss.data.item()):
-                logging.info("====Loss is nan, thus skip \n")
-                model = last_global_model
-                model.train()
-                continue
-
             it_end = time.time()
             it_duration = it_end - it_start
 
-            # mimic the heterogeneity through delay
-            # The "heterogeneity" is a ratio of the maximum computing capacity
-            #sleep_time = (1.0 / args.heterogeneity - 1.0) * it_duration
             sleep_time = 0
+            if args.sleep_up != 0:
+                sleep_time = random.uniform(0, args.sleep_up)/1000.0
+                time.sleep(sleep_time)
 
             local_step += 1
-
             epoch_train_loss += loss.data.item()
-
-            #print ("===== {}".format(loss))
             epoch_train_batch += 1
 
-            # noinspection PyBroadException
             try:  # Capture the exception caused by the shutdown of parameter_server
                 send_dur = 0
                 rece_dur = 0
 
-                if args.model_avg:
-                    for idx, param in enumerate(model.parameters()):
-                        for delta_w in delta_wss:
-                            if idx in vrl_delta.keys():
-                                param.data -= (delta_w[idx] + args.learning_rate * vrl_delta[idx])
-                            else:
-                                param.data -= delta_w[idx]
+                for idx, param in enumerate(model.parameters()):
+                    for delta_w in delta_wss:
+                        param.data -= delta_w[idx]
 
                 if local_step % args.upload_epho == 0:
                     send_start = time.time()
+                    training_speed = (time.time() - last_push_time)/local_trained
 
+                    # push update to the PS
                     if delta_ws:
                         if not args.model_avg:
                             queue.put_nowait({
-                                rank: [[v.cpu().numpy() for v in delta_ws], loss.data.cpu().numpy(), np.array(local_trained), False]
+                                rank: [[v.cpu().numpy() for v in delta_ws], loss.data.cpu().numpy(), np.array(local_trained), False, currentClientId, training_speed]
                             })
-                            local_trained = 0
                         else:
                             queue.put_nowait({
-                                rank: [[param.data.cpu().numpy() for param in model.parameters()], loss.data.cpu().numpy(), np.array(local_trained), False]
+                                rank: [[param.data.cpu().numpy() for param in model.parameters()], loss.data.cpu().numpy(), np.array(local_trained), False, currentClientId, training_speed]
                             })
-                            local_trained = 0
+
+                        local_trained = 0
+                        last_push_time = time.time()
+                        logging.info("====Push updates")
 
                     send_dur = time.time() - send_start
 
@@ -256,51 +255,29 @@ def run(rank, model, train_data, test_data, queue, param_q, stop_flag):
                             dist.recv(tensor=tmp_tensor, src=0)
                             tmp_tensor = tmp_tensor
 
-                            if args.vrl_sgd and idx in last_param:
-                                #if idx not in vrl_delta.keys():
-                                vrl_delta[idx] = (tmp_tensor - last_param[idx])/(float(args.upload_epho) * args.learning_rate)
-                                #else:
-                                #    vrl_delta[idx] += (tmp_tensor - param.data)/(1.0 * args.learning_rate)
-
                             param.data = tmp_tensor
                             last_param[idx] = param.data
-
-                            # with open(logDir + "/" + str(idx), 'a') as f:
-                            #     f.write("====" + str(local_step) + '\n')
-                            #     f.write(repr(param.data) + '\n')
 
                         # receive current minimum step
                         step_tensor = torch.zeros([1], dtype=torch.int).cpu()
                         dist.recv(tensor=step_tensor, src=0)
                         globalMinStep = step_tensor.item()
-                        last_global_model = model
-                    else:
-                        # read the local cache
-                        for idx, param in enumerate(model.parameters()):
-                            param.data -= delta_ws[idx]
+
+                        # receive the clientId for next training
+                        client_tensor = torch.zeros([1], dtype=torch.int).cpu()
+                        dist.recv(tensor=client_tensor, src=0)
+                        nextClientId = client_tensor.item()
+
+                        # reload the training data for the specific clientId
+                        if nextClientId != -1:
+                            logging.info('====Training switch from clientId {} to clientId {}'.format(currentClientId, nextClientId))
+                            currentClientId = nextClientId
+                            reloadClientData = True
 
                     rece_dur = time.time() - rece_start
 
-                    if args.sleep_up != 0:
-                        sleep_time = random.uniform(0, args.sleep_up)/1000.0
-                        time.sleep(sleep_time)
-
-                elif not args.model_avg:
-                    for idx, param in enumerate(model.parameters()):
-                        for delta_w in delta_wss:
-                            if idx in vrl_delta.keys():
-                                param.data -= (delta_w[idx] - args.learning_rate * vrl_delta[idx])
-                            else:
-                                param.data -= delta_w[idx]
-                                
-                        #fstat.write(repr(idx) + '\t' + paramDic[idx] + '\n')
-                        #fstat.write(repr(param.data) + '\n')
-
                 logging.info('LocalStep {}, CumulTime {}, Epoch {}, Batch {}/{}, Loss:{} | TotalTime {} | Comptime: {} | SendTime: {} | ReceTime: {} | Sleep: {} | staleness: {} | targetDir: {} | totalSampleDir: {} \n'
                             .format(local_step, time.time() - startTime, epoch, batch_idx, len(train_data[0]), round(loss.data.item(), 4), round(time.time() - it_start, 4), round(it_duration, 4), round(send_dur,4), round(rece_dur, 4), sleep_time, local_step - globalMinStep, repr(tDir), repr(totalSampleDir)))
-                if local_step % args.display_step == 0 and args.this_rank == 1:
-                    print('LocalStep {}, CumulTime {}, Epoch {}, Batch {}/{}, Loss:{} | TotalTime {} | Comptime: {} | SendTime: {} | ReceTime: {} | Sleep: {}'
-                            .format(local_step, time.time() - startTime, epoch, batch_idx, len(train_data[0]), round(loss.data.item(), 4), round(time.time() - it_start, 4), round(it_duration, 4), round(send_dur,4), round(rece_dur, 4), sleep_time))
 
             except Exception as e:
                 print(str(e))
@@ -322,9 +299,8 @@ def run(rank, model, train_data, test_data, queue, param_q, stop_flag):
 
         #if stop_flag.value:
         #    break
-    queue.put({rank: [[], [], [], True]})
+    queue.put({rank: [[], [], [], True, -1, -1]})
     print("Worker {} has completed epoch {}!".format(args.this_rank, epoch))
-    #fstat.close()
 
 def init_myprocesses(rank, size, model,
                    train_dataset, test_dataset,
@@ -343,13 +319,22 @@ def capture_stop(stop_signal, flag: Value):
             print('Time Up! Stop: {}!'.format(flag.value))
             break
 
-if __name__ == "__main__":
-
+def init_logging():
     with open(logFile, "w") as fout:
         pass
 
     with open('/tmp/sampleDistribution', 'w') as fout:
         pass
+
+class MyManager(BaseManager):
+        pass
+
+if __name__ == "__main__":
+
+    init_logging()
+
+    train_bsz = args.batch_size
+    test_bsz = args.test_bsz
 
     if args.data_set == 'Mnist':
         model = MnistCNN()
@@ -361,19 +346,12 @@ if __name__ == "__main__":
         test_dataset = datasets.MNIST(args.data_dir, train=False, download=False,
                                       transform=test_transform)
 
-        train_bsz = args.batch_size
-        test_bsz = args.test_bsz
-
     elif args.data_set == 'cifar10':
         train_transform, test_transform = get_data_transform('cifar')
         train_dataset = datasets.CIFAR10(args.data_dir, train=True, download=True,
                                          transform=train_transform)
         test_dataset = datasets.CIFAR10(args.data_dir, train=False, download=True,
                                         transform=test_transform)
-
-        train_bsz = args.batch_size
-        test_bsz = args.test_bsz
-
         if args.model == "alexnet":
             model = AlexNet()
         elif args.model == "vgg":
@@ -393,16 +371,10 @@ if __name__ == "__main__":
         train_dataset = datasets.ImageNet(args.data_dir, split='train', download=True, transform=train_transform)
         test_dataset = datasets.ImageNet(args.data_dir, split='train', download=True, transform=train_transform)
 
-        train_bsz = args.batch_size
-        test_bsz = args.test_bsz
-
         model = tormodels.__dict__[args.model]()
     elif args.data_set == 'emnist':
         test_dataset = datasets.EMNIST(args.data_dir, split='balanced', train=False, download=True, transform=transforms.ToTensor())
         train_dataset = datasets.EMNIST(args.data_dir, split='balanced', train=True, download=True, transform=transforms.ToTensor())
-
-        train_bsz = args.batch_size
-        test_bsz = args.test_bsz
 
         if args.model == "Logistic":
             model = LogisticRegression(args.input_dim, args.output_dim)
@@ -433,14 +405,14 @@ if __name__ == "__main__":
 
     world_size = len(workers) + 1
     this_rank = args.this_rank
-    train_data = partition_dataset(train_dataset, workers, splitTrainRatio, args.sequential, filter_class=args.filter_class)
+    entire_train_data = partition_dataset(train_dataset, workers, splitTrainRatio, args.sequential, filter_class=args.filter_class)
     train_datas = []
 
     if args.single_sim != 0:
         for rank in workers:
-            train_datas.append(select_dataset(workers, rank, train_data, batch_size=train_bsz))
+            train_datas.append(select_dataset(workers, rank, entire_train_data, batch_size=train_bsz))
     else:
-        train_datas.append(select_dataset(workers, this_rank, train_data, batch_size=train_bsz))
+        train_datas.append(select_dataset(workers, this_rank, entire_train_data, batch_size=train_bsz))
     #train_data = unbalanced_partition_dataset(train_dataset, args.hetero_allocation)
 
     testWorkers = workers
@@ -452,9 +424,6 @@ if __name__ == "__main__":
 
     test_data = partition_dataset(test_dataset, [1], splitTestRatio)
     test_data = select_dataset(testWorkers, this_rank, test_data, batch_size=test_bsz, istest=True)
-
-    class MyManager(BaseManager):
-        pass
 
     MyManager.register('get_queue')
     MyManager.register('get_param')
@@ -472,4 +441,3 @@ if __name__ == "__main__":
                                           train_datas, test_data,
                                           q, param_q, stop_flag,
                                           run, args.backend)
-
