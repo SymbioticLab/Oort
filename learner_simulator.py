@@ -434,6 +434,7 @@ if __name__ == "__main__":
     world_size = len(workers) + 1
     this_rank = args.this_rank
     train_data = partition_dataset(train_dataset, workers, splitTrainRatio, args.sequential, filter_class=args.filter_class)
+    
     train_datas = []
 
     if args.single_sim != 0:
