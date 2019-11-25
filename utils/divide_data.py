@@ -32,12 +32,12 @@ class Partition(object):
 class DataPartitioner(object):
 
     # len(sizes) is the number of workers
-    # sequential 1-> random 2->zipf 3-> identical 
+    # sequential 1-> random 2->zipf 3-> identical
     def __init__(self, data, sizes=None, sequential=0, ratioOfClassWorker=None, filter_class=0, seed=10, args = {'balanced_client':0, 'param': 1.5}):
 
         if sizes is None:
-            sizes = [0.7, 0.2, 0.1] # worker1 -> 70% data worker2 -> 20% data etc. 
-        
+            sizes = [0.7, 0.2, 0.1] # worker1 -> 70% data worker2 -> 20% data etc.
+
         self.data = data
         self.partitions = []
         targets = {}
@@ -146,12 +146,27 @@ class DataPartitioner(object):
 
                     rng.shuffle(self.partitions[-1])
 
+        # Calculates statistical distances
+        # Overall data distribution
+        self.workerDistance = []
+        totalDataSize = sum(keyLength)
+        dataDistr = dit.ScalarDistribution(np.arange(len(keyLength)), [key / float(totalDataSize) for key in keyLength])
 
-        # calc distance(dataset, dataset/per client)
+        # Caculates Jensen-Shannon Divergence for each worker
+        for worker in range(len(sizes)):
+            tempDataSize = sum(self.classPerWorker[worker])
+            if tempDataSize == 0:
+                continue
+            tempDistr = dit.ScalarDistribution(np.arange(len(self.classPerWorker[worker])), [c / float(tempDataSize) for c in self.classPerWorker[worker]])
+            self.workerDistance.append(jensen_shannon_divergence([dataDistr, tempDistr]))
+            #logging.info("Worker number " + str(worker) + " has data " + str(tempDataSize) + " tempDistri is " + str(tempDistr) + " and JS divergence is " + str(self.workerDistance[-1]))
 
+        logging.info("Printing Result " + str(self.workerDistance))
         # log
         logging.info(repr(self.classPerWorker) + '\n')
+        #logging.info("Printing keyLength" + str(keyLength))
         logging.info('========= End of Class/Worker =========\n')
+
 
         print("====Total samples {}, Label types {}, with {} \n".format(totalSamples, len(targets.keys()), repr(keyLength)))
 
@@ -183,6 +198,9 @@ class DataPartitioner(object):
         print("====Data length is {}".format(len(self.partitions[_partition])))
         return Partition(self.data, self.partitions[_partition])
 
+    def getDistance(self):
+        return self.workerDistance
+
 def partition_dataset(dataset, workers, partitionRatio=[], sequential=0, ratioOfClassWorker=None, filter_class=0):
     """ Partitioning Data """
     workers_num = len(workers)
@@ -194,8 +212,6 @@ def partition_dataset(dataset, workers, partitionRatio=[], sequential=0, ratioOf
     partition = DataPartitioner(data=dataset, sizes=partition_sizes, sequential=sequential, ratioOfClassWorker=ratioOfClassWorker,filter_class=filter_class)
     return partition
 
-def calculateDistance(dataset, partitions):
-    return None
 
 def select_dataset(workers: list, rank: int, partition: DataPartitioner, batch_size: int, istest=False):
     workers_num = len(workers)

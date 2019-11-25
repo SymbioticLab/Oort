@@ -52,8 +52,6 @@ parser.add_argument('--upload_epho', type=int, default=1)
 parser.add_argument('--stale_threshold', type=int, default=0)
 parser.add_argument('--sleep_up', type=int, default=0)
 parser.add_argument('--force_read', type=bool, default=False)
-parser.add_argument('--local', type=bool, default=False)
-parser.add_argument('--local_split', type=int, default=1)
 parser.add_argument('--test_interval', type=int, default=999999)
 parser.add_argument('--sequential', type=int, default=0)
 parser.add_argument('--single_sim', type=int, default=0)
@@ -78,6 +76,8 @@ logging.basicConfig(filename=logFile,
                             level=logging.DEBUG)
 
 entire_train_data = None
+os.environ['MASTER_ADDR'] = args.ps_ip
+os.environ['MASTER_PORT'] = args.ps_port
 
 def unbalanced_partition_dataset(dataset, hetero):
     """ Partitioning Data """
@@ -258,15 +258,10 @@ def run(rank, model, train_data, test_data, queue, param_q, stop_flag):
                             param.data = tmp_tensor
                             last_param[idx] = param.data
 
-                        # receive current minimum step
-                        step_tensor = torch.zeros([1], dtype=torch.int).cpu()
+                        # receive current minimum step, and the clientId for next training
+                        step_tensor = torch.zeros([2], dtype=torch.int).cpu()
                         dist.recv(tensor=step_tensor, src=0)
-                        globalMinStep = step_tensor.item()
-
-                        # receive the clientId for next training
-                        client_tensor = torch.zeros([1], dtype=torch.int).cpu()
-                        dist.recv(tensor=client_tensor, src=0)
-                        nextClientId = client_tensor.item()
+                        globalMinStep, nextClientId = step_tensor[0].item(), step_tensor[1].item()
 
                         # reload the training data for the specific clientId
                         if nextClientId != -1:
@@ -302,14 +297,22 @@ def run(rank, model, train_data, test_data, queue, param_q, stop_flag):
     queue.put({rank: [[], [], [], True, -1, -1]})
     print("Worker {} has completed epoch {}!".format(args.this_rank, epoch))
 
+def report_data_info(rank, queue, entire_train_data):
+    # report data information to the clientSampler master
+    queue.put({
+        rank: [entire_train_data.getDistance()]
+    })
+
+    # get the partitionId to run
+    clientIdToRun = torch.zeros([1], dtype=torch.int).cpu()
+    dist.recv(tensor=clientIdToRun, src=0)
+    return clientIdToRun.item()
+
 def init_myprocesses(rank, size, model,
                    train_dataset, test_dataset,
                    q, param_q, stop_flag,
                    fn, backend):
     print("====Worker: init_myprocesses")
-    os.environ['MASTER_ADDR'] = args.ps_ip
-    os.environ['MASTER_PORT'] = args.ps_port
-    dist.init_process_group(backend, rank=rank, world_size=size)
     fn(rank, model, train_dataset, test_dataset, q, param_q, stop_flag)
 
 def capture_stop(stop_signal, flag: Value):
@@ -329,23 +332,15 @@ def init_logging():
 class MyManager(BaseManager):
         pass
 
-if __name__ == "__main__":
-
-    init_logging()
-
-    train_bsz = args.batch_size
-    test_bsz = args.test_bsz
-
+def init_dataset():
     if args.data_set == 'Mnist':
         model = MnistCNN()
-
         train_transform, test_transform = get_data_transform('mnist')
 
         train_dataset = datasets.MNIST(args.data_dir, train=True, download=False,
                                        transform=train_transform)
         test_dataset = datasets.MNIST(args.data_dir, train=False, download=False,
                                       transform=test_transform)
-
     elif args.data_set == 'cifar10':
         train_transform, test_transform = get_data_transform('cifar')
         train_dataset = datasets.CIFAR10(args.data_dir, train=True, download=True,
@@ -396,34 +391,23 @@ if __name__ == "__main__":
     if torch.cuda.is_available():
         model = model
 
-    splitTrainRatio = []
-    if not args.local:
-        workers = [int(v) for v in str(args.learners).split('-')]
-    else:
-        workers = [1]
-        splitTrainRatio = [args.local_split/100.0, 1.0 - args.local_split/100.0]
+    return model, train_dataset, test_dataset
 
+if __name__ == "__main__":
+
+    init_logging()
+
+    train_bsz = args.batch_size
+    test_bsz = args.test_bsz
+
+    model, train_dataset, test_dataset = init_dataset()
+
+    splitTrainRatio = []
+    workers = [int(v) for v in str(args.learners).split('-')]
+
+    # Initialize PS - client communication channel
     world_size = len(workers) + 1
     this_rank = args.this_rank
-    entire_train_data = partition_dataset(train_dataset, workers, splitTrainRatio, args.sequential, filter_class=args.filter_class)
-    train_datas = []
-
-    if args.single_sim != 0:
-        for rank in workers:
-            train_datas.append(select_dataset(workers, rank, entire_train_data, batch_size=train_bsz))
-    else:
-        train_datas.append(select_dataset(workers, this_rank, entire_train_data, batch_size=train_bsz))
-    #train_data = unbalanced_partition_dataset(train_dataset, args.hetero_allocation)
-
-    testWorkers = workers
-    splitTestRatio = []
-    if args.local:
-        testWorkers = [1]
-        world_size = 2
-        splitTestRatio = [1.0]
-
-    test_data = partition_dataset(test_dataset, [1], splitTestRatio)
-    test_data = select_dataset(testWorkers, this_rank, test_data, batch_size=test_bsz, istest=True)
 
     MyManager.register('get_queue')
     MyManager.register('get_param')
@@ -434,6 +418,26 @@ if __name__ == "__main__":
     q = manager.get_queue()  # queue for parameter_server signal process
     param_q = manager.get_param()  # init
     stop_signal = manager.get_stop_signal()  # stop
+    dist.init_process_group(args.backend, rank=this_rank, world_size=world_size)
+
+    # Split the dataset
+    entire_train_data = partition_dataset(train_dataset, workers, splitTrainRatio, args.sequential, filter_class=args.filter_class)
+    clientIdToRun = report_data_info(this_rank, q, entire_train_data)
+
+    train_datas = []
+
+    if args.single_sim != 0:
+        for rank in workers:
+            train_datas.append(select_dataset(workers, rank, entire_train_data, batch_size=train_bsz))
+    else:
+        train_datas.append(select_dataset(workers, clientIdToRun, entire_train_data, batch_size=train_bsz))
+    #train_data = unbalanced_partition_dataset(train_dataset, args.hetero_allocation)
+
+    testWorkers = workers
+    splitTestRatio = []
+
+    test_data = partition_dataset(test_dataset, [1], splitTestRatio)
+    test_data = select_dataset(testWorkers, this_rank, test_data, batch_size=test_bsz, istest=True)
 
     stop_flag = Value(c_bool, False)
     init_myprocesses(this_rank, world_size,

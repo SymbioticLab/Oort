@@ -1,32 +1,23 @@
 import time
+from client import Client
 
-class Client(object):
+class ClientSampler(object):
 
-    def __init__(self, id, speed, dis = 0):
-        self.id = id
-        self.speed = speed
-        self.distance = dis
-        self.lastPiggBack = time.time()
+    def __init__(self):
+        self.Clients = {}
 
-    def getScore(self):
-        return speed * distance
+    def registerClient(self, hostId, clientId, dis, speed = 1.0):
+        uniqueId = str(hostId) + '_' + str(clientId)
+        self.Clients[uniqueId] = Client(hostId, clientId, speed, dis)
 
-class clientSampler(object):
-
-    def __init__(self, numOfClients):
-        self.Clients = []
-
-        for clientId in range(numOfClients):
-            self.Clients.append(Client(clientId, 1.0))
-
-    def registerSpeed(clientId, speed):
+    def registerSpeed(self, clientId, speed):
         self.Clients[clientId].speed = speed
-        #self.Clients[clientId].lastPiggBack = time.time()
 
-    def registerDistance(clientId, distance):
+    def registerDistance(self, clientId, distance):
         self.Clients[clientId].distance = distance
 
     def getScore(self, clientId):
         return self.Clients[clientId].getScore()
 
-
+    def nextClientIdToRun(self, hostId):
+        return hostId
