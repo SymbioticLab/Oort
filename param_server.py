@@ -46,7 +46,7 @@ parser.add_argument('--stale_threshold', type=int, default=0)
 parser.add_argument('--backend', type=str, default="gloo")
 parser.add_argument('--display_step', type=int, default=500)
 parser.add_argument('--batch_size', type=int, default=256)
-parser.add_argument('--upload_epho', type=int, default=1)
+parser.add_argument('--upload_epoch', type=int, default=1)
 parser.add_argument('--resampling_interval', type=int, default=99999999)
 parser.add_argument('--force_read', type=bool, default=False)
 parser.add_argument('--sleep_up', type=int, default=0)
@@ -230,11 +230,12 @@ def run(model, test_data, queue, param_q, stop_signal, clientSampler):
                 # if the local cache is too stale, then update it
                 elif learner_cache_step[rank_src] < learner_local_step[rank_src] - args.stale_threshold or args.force_read:
                     for idx, param in enumerate(model.parameters()):
-                        #pendingSend.append(dist.isend(tensor=param.data.cpu(), dst=rank_src))
-                        pendingSend.append(dist.isend(tensor=(param.data/float(normWeight)).cpu(), dst=rank_src))
+                        #pendingSend.append(dist.isend(tensor=(param.data/float(normWeight)).cpu(), dst=rank_src))
+                        dist.send(tensor=(param.data/float(normWeight)).cpu(), dst=rank_src)
 
                     # send out current minimum steps
-                    pendingSend.append(dist.isend(tensor=torch.tensor([currentMinStep, clientSampler.getCurrentClientId(rank_src)], dtype=torch.int).cpu(), dst=rank_src))
+                    #pendingSend.append(dist.isend(tensor=torch.tensor([currentMinStep, clientSampler.getCurrentClientId(rank_src)], dtype=torch.int).cpu(), dst=rank_src))
+                    dist.send(tensor=torch.tensor([currentMinStep, clientSampler.getCurrentClientId(rank_src)], dtype=torch.int).cpu(), dst=rank_src)
                     # pendingSend.append(dist.isend(tensor=torch.tensor([currentMinStep], dtype=torch.int).cpu(), dst=rank_src))
                     learner_cache_step[rank_src] = currentMinStep
                     newEpoch = 0
@@ -253,11 +254,12 @@ def run(model, test_data, queue, param_q, stop_signal, clientSampler):
                 if len(workersToSend) > 0:
                     for idx, param in enumerate(model.parameters()):
                         for worker in workersToSend:
-                            #pendingSend.append(dist.isend(tensor=param.data.cpu(), dst=worker))
-                            pendingSend.append(dist.isend(tensor=(param.data/float(normWeight)).cpu(), dst=worker))
+                            #pendingSend.append(dist.isend(tensor=(param.data/float(normWeight)).cpu(), dst=worker))
+                            dist.send(tensor=(param.data/float(normWeight)).cpu(), dst=worker)
                     
                     for worker in workersToSend:
-                        pendingSend.append(dist.isend(tensor=torch.tensor([currentMinStep, clientSampler.getCurrentClientId(worker)], dtype=torch.int).cpu(), dst=worker))
+                        #pendingSend.append(dist.isend(tensor=torch.tensor([currentMinStep, clientSampler.getCurrentClientId(worker)], dtype=torch.int).cpu(), dst=worker))
+                        dist.send(tensor=torch.tensor([currentMinStep, clientSampler.getCurrentClientId(worker)], dtype=torch.int).cpu(), dst=worker)
                         learner_cache_step[worker] = currentMinStep
                         # remove from the pending workers
                         del pendingWorkers[worker]
@@ -269,7 +271,7 @@ def run(model, test_data, queue, param_q, stop_signal, clientSampler):
                     item.wait()
 
                 # once reach an epoch, count the average train loss
-                if(data_size_epoch >= args.len_train_data):
+                if global_update%len(workers) == 0:
                     e_epoch_time = time.time()
                     #variance of stale
                     diversity_stale = (staleness_sum_suqare_epoch/iteration_in_epoch)\
@@ -277,7 +279,8 @@ def run(model, test_data, queue, param_q, stop_signal, clientSampler):
                     staleness_sum_suqare_epoch = 0
                     staleness_sum_epoch = 0
                     test_loss, test_acc = 0, 0
-                    #test_model(dist.get_rank(), model, test_data, criterion=criterion)
+                    epoch_count += args.upload_epoch
+
                     # rank, trainloss, variance of stalness, time in one epoch, time till now
                     logging.info(str(args.this_rank) +
                                       "\t" + str(epoch_train_loss/float(iteration_in_epoch)) +
@@ -288,7 +291,6 @@ def run(model, test_data, queue, param_q, stop_signal, clientSampler):
                                       "\t" + str(test_acc) + '\n')
                     f_staleness.flush()
                     iteration_in_epoch = 0
-                    epoch_count += int(data_size_epoch/args.len_train_data)
                     epoch_train_loss = 0
                     data_size_epoch = 0
                     epoch_time = e_epoch_time

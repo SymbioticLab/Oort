@@ -49,7 +49,7 @@ parser.add_argument('--heterogeneity', type=float, default=1.0)
 parser.add_argument('--hetero_allocation', type=str, default='1.0-1.0-1.0-1.0-1.0-1.0')
 parser.add_argument('--backend', type=str, default="gloo")
 parser.add_argument('--display_step', type=int, default=20)
-parser.add_argument('--upload_epho', type=int, default=1)
+parser.add_argument('--upload_epoch', type=int, default=1)
 parser.add_argument('--stale_threshold', type=int, default=0)
 parser.add_argument('--sleep_up', type=int, default=0)
 parser.add_argument('--force_read', type=bool, default=False)
@@ -235,7 +235,7 @@ def run(rank, model, train_data, test_data, queue, param_q, stop_flag, client_cf
                     for delta_w in delta_wss:
                         param.data -= delta_w[idx]
 
-                if local_step % args.upload_epho == 0:
+                if local_step % args.upload_epoch == 0:
                     send_start = time.time()
                     training_speed = local_trained/(time.time() - last_push_time)
 
