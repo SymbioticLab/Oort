@@ -36,6 +36,7 @@ parser.add_argument('--total_worker', type=int, default=0)
 # The configuration of model and dataset
 parser.add_argument('--data_dir', type=str, default='/tmp/')
 parser.add_argument('--save_path', type=str, default='./')
+parser.add_argument('--client_path', type=str, default='/tmp/client.cfg')
 parser.add_argument('--model', type=str, default='resnet')
 parser.add_argument('--depth', type=int, default=18)
 parser.add_argument('--data_set', type=str, default='cifar10')
@@ -53,6 +54,7 @@ parser.add_argument('--stale_threshold', type=int, default=0)
 parser.add_argument('--sleep_up', type=int, default=0)
 parser.add_argument('--force_read', type=bool, default=False)
 parser.add_argument('--test_interval', type=int, default=999999)
+parser.add_argument('--resampling_interval', type=int, default=99999999)
 parser.add_argument('--sequential', type=int, default=0)
 parser.add_argument('--single_sim', type=int, default=0)
 parser.add_argument('--filter_class', type=int, default=0)
@@ -64,6 +66,7 @@ parser.add_argument('--load_model', type=bool, default=False)
 parser.add_argument('--dump_epoch', type=int, default=100)
 parser.add_argument('--decay_factor', type=float, default=0.9)
 parser.add_argument('--decay_epoch', type=float, default=500)
+parser.add_argument('--threads', type=str, default='64')
 parser.add_argument('args', nargs=argparse.REMAINDER)
 
 args = parser.parse_args()
@@ -78,6 +81,10 @@ logging.basicConfig(filename=logFile,
 entire_train_data = None
 os.environ['MASTER_ADDR'] = args.ps_ip
 os.environ['MASTER_PORT'] = args.ps_port
+os.environ['OMP_NUM_THREADS'] = args.threads
+os.environ['MKL_NUM_THREADS'] = args.threads
+torch.set_num_threads(int(args.threads))
+
 clientIdToRun = 0
 
 def unbalanced_partition_dataset(dataset, hetero):
@@ -88,7 +95,7 @@ def unbalanced_partition_dataset(dataset, hetero):
     partition = DataPartitioner(dataset, partition_sizes)
     return partition
 
-def run(rank, model, train_data, test_data, queue, param_q, stop_flag):
+def run(rank, model, train_data, test_data, queue, param_q, stop_flag, client_cfg):
     print("====Worker: Start running")
     # Fetch the initial parameters from the server side (we called it parameter_server)
     while True:
@@ -139,6 +146,9 @@ def run(rank, model, train_data, test_data, queue, param_q, stop_flag):
     last_push_time = time.time()
     currentClientId = clientIdToRun
     reloadClientData = False
+
+    sleepForCompute = 0 if currentClientId not in client_cfg else client_cfg[currentClientId][0]
+    sleepForCommunicate = 0 if currentClientId not in client_cfg else client_cfg[currentClientId][1]
 
     for epoch in range(int(args.epochs)):
         model.train()
@@ -209,10 +219,9 @@ def run(rank, model, train_data, test_data, queue, param_q, stop_flag):
             it_end = time.time()
             it_duration = it_end - it_start
 
-            sleep_time = 0
-            if args.sleep_up != 0:
-                sleep_time = random.uniform(0, args.sleep_up)/1000.0
-                time.sleep(sleep_time)
+            if sleepForCompute != 0:
+                #sleep_time = random.uniform(0, args.sleep_up)/1000.0
+                time.sleep(sleepForCompute * it_duration)
 
             local_step += 1
             epoch_train_loss += loss.data.item()
@@ -232,13 +241,18 @@ def run(rank, model, train_data, test_data, queue, param_q, stop_flag):
 
                     # push update to the PS
                     if delta_ws:
+                        if sleepForCommunicate != 0:
+                            time.sleep(sleepForCommunicate/2.0)
+
                         if not args.model_avg:
                             queue.put_nowait({
-                                rank: [[v.cpu().numpy() for v in delta_ws], loss.data.cpu().numpy(), np.array(local_trained), False, currentClientId, training_speed]
+                                rank: [[v.cpu().numpy() for v in delta_ws], loss.data.cpu().numpy(), 
+                                    np.array(local_trained), False, currentClientId, training_speed]
                             })
                         else:
                             queue.put_nowait({
-                                rank: [[param.data.cpu().numpy() for param in model.parameters()], loss.data.cpu().numpy(), np.array(local_trained), False, currentClientId, training_speed]
+                                rank: [[param.data.cpu().numpy() for param in model.parameters()], 
+                                    loss.data.cpu().numpy(), np.array(local_trained), False, currentClientId, training_speed]
                             })
 
                         local_trained = 0
@@ -264,16 +278,21 @@ def run(rank, model, train_data, test_data, queue, param_q, stop_flag):
                         dist.recv(tensor=step_tensor, src=0)
                         globalMinStep, nextClientId = step_tensor[0].item(), step_tensor[1].item()
 
+                        if sleepForCommunicate != 0:
+                            time.sleep(sleepForCommunicate/2.0)
+
                         # reload the training data for the specific clientId
-                        if nextClientId != -1:
+                        if nextClientId != currentClientId:
                             logging.info('====Training switch from clientId {} to clientId {}'.format(currentClientId, nextClientId))
                             currentClientId = nextClientId
                             reloadClientData = True
+                            sleepForCompute = 0 if currentClientId not in client_cfg else client_cfg[currentClientId][0]
+                            sleepForCommunicate = 0 if currentClientId not in client_cfg else client_cfg[currentClientId][1]
 
                     rece_dur = time.time() - rece_start
 
                 logging.info('LocalStep {}, CumulTime {}, Epoch {}, Batch {}/{}, Loss:{} | TotalTime {} | Comptime: {} | SendTime: {} | ReceTime: {} | Sleep: {} | staleness: {} | targetDir: {} | totalSampleDir: {} \n'
-                            .format(local_step, time.time() - startTime, epoch, batch_idx, len(train_data[0]), round(loss.data.item(), 4), round(time.time() - it_start, 4), round(it_duration, 4), round(send_dur,4), round(rece_dur, 4), sleep_time, local_step - globalMinStep, repr(tDir), repr(totalSampleDir)))
+                            .format(local_step, time.time() - startTime, epoch, batch_idx, len(train_data[0]), round(loss.data.item(), 4), round(time.time() - it_start, 4), round(it_duration, 4), round(send_dur,4), round(rece_dur, 4), sleepForCompute, local_step - globalMinStep, repr(tDir), repr(totalSampleDir)))
 
             except Exception as e:
                 print(str(e))
@@ -312,9 +331,9 @@ def report_data_info(rank, queue, entire_train_data):
 def init_myprocesses(rank, size, model,
                    train_dataset, test_dataset,
                    q, param_q, stop_flag,
-                   fn, backend):
+                   fn, backend, client_cfg):
     print("====Worker: init_myprocesses")
-    fn(rank, model, train_dataset, test_dataset, q, param_q, stop_flag)
+    fn(rank, model, train_dataset, test_dataset, q, param_q, stop_flag, client_cfg)
 
 def capture_stop(stop_signal, flag: Value):
     while True:
@@ -334,6 +353,7 @@ class MyManager(BaseManager):
         pass
 
 def init_dataset():
+
     if args.data_set == 'Mnist':
         model = MnistCNN()
         train_transform, test_transform = get_data_transform('mnist')
@@ -392,16 +412,27 @@ def init_dataset():
     if torch.cuda.is_available():
         model = model
 
-    return model, train_dataset, test_dataset
+    # initiate the device information - normalized computation speed by enforcing sleeping, bandwidth
+    client_cfg = {}
+
+    if os.path.exists(args.client_path):
+        with open(args.client_path, 'r') as fin:
+            for line in fin.readlines():
+                items = line.strip().split()
+                clientId, compute, commu = int(items[0]), float(items[1]), float(items[2])
+                client_cfg[clientId] = [compute, commu]
+
+    return model, train_dataset, test_dataset, client_cfg
 
 if __name__ == "__main__":
 
     init_logging()
+    torch.manual_seed(args.this_rank)
 
     train_bsz = args.batch_size
     test_bsz = args.test_bsz
 
-    model, train_dataset, test_dataset = init_dataset()
+    model, train_dataset, test_dataset, client_cfg = init_dataset()
 
     splitTrainRatio = []
     workers = [int(v) for v in str(args.learners).split('-')]
@@ -422,6 +453,10 @@ if __name__ == "__main__":
     dist.init_process_group(args.backend, rank=this_rank, world_size=world_size)
 
     # Split the dataset
+    # total_worker != 0 indicates we create more virtual clients for simulation
+    if args.total_worker > 0:
+        workers = [i for i in range(1, args.total_worker + 1)]
+
     entire_train_data = partition_dataset(train_dataset, workers, splitTrainRatio, args.sequential, filter_class=args.filter_class)
     clientIdToRun = report_data_info(this_rank, q, entire_train_data)
 
@@ -432,7 +467,6 @@ if __name__ == "__main__":
             train_datas.append(select_dataset(workers, rank, entire_train_data, batch_size=train_bsz))
     else:
         train_datas.append(select_dataset(workers, clientIdToRun, entire_train_data, batch_size=train_bsz))
-    #train_data = unbalanced_partition_dataset(train_dataset, args.hetero_allocation)
 
     testWorkers = workers
     splitTestRatio = []
@@ -441,8 +475,6 @@ if __name__ == "__main__":
     test_data = select_dataset(testWorkers, this_rank, test_data, batch_size=test_bsz, istest=True)
 
     stop_flag = Value(c_bool, False)
-    init_myprocesses(this_rank, world_size,
-                                          model,
-                                          train_datas, test_data,
+    init_myprocesses(this_rank, world_size, model, train_datas, test_data,
                                           q, param_q, stop_flag,
-                                          run, args.backend)
+                                          run, args.backend, client_cfg)

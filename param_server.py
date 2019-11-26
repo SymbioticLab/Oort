@@ -31,9 +31,11 @@ parser.add_argument('--sample_ratio', type=float, default=1.0)
 
 # The configuration of model and dataset
 parser.add_argument('--data_dir', type=str, default='/tmp/')
+parser.add_argument('--client_path', type=str, default='/tmp/client.cfg')
 parser.add_argument('--model', type=str, default='resnet')
 parser.add_argument('--depth', type=int, default=18)
 parser.add_argument('--data_set', type=str, default='cifar10')
+parser.add_argument('--sample_mode', type=str, default='random')
 
 # The configuration of different hyper-parameters for training
 parser.add_argument('--timeout', type=float, default=100000.0)
@@ -45,6 +47,7 @@ parser.add_argument('--backend', type=str, default="gloo")
 parser.add_argument('--display_step', type=int, default=500)
 parser.add_argument('--batch_size', type=int, default=256)
 parser.add_argument('--upload_epho', type=int, default=1)
+parser.add_argument('--resampling_interval', type=int, default=99999999)
 parser.add_argument('--force_read', type=bool, default=False)
 parser.add_argument('--sleep_up', type=int, default=0)
 parser.add_argument('--sequential', type=int, default=0)
@@ -59,6 +62,7 @@ parser.add_argument('--load_model', type=bool, default=False)
 parser.add_argument('--dump_epoch', type=int, default=100)
 parser.add_argument('--decay_factor', type=float, default=0.9)
 parser.add_argument('--decay_epoch', type=float, default=500)
+parser.add_argument('--threads', type=str, default='64')
 
 args = parser.parse_args()
 
@@ -70,10 +74,15 @@ logging.basicConfig(filename=logFile,
                             level=logging.DEBUG)
 
 entire_train_data = None
+
 trainloss_file = '/tmp/trainloss' + args.model + '.txt'
 staleness_file = '/tmp/staleness' + args.model + ".txt"
 os.environ['MASTER_ADDR'] = args.ps_ip
 os.environ['MASTER_PORT'] = args.ps_port
+os.environ['OMP_NUM_THREADS'] = args.threads
+os.environ['MKL_NUM_THREADS'] = args.threads
+
+torch.set_num_threads(int(args.threads))
 
 def initiate_sampler_query(numOfClients):
     # Initiate the clientSampler 
@@ -81,6 +90,7 @@ def initiate_sampler_query(numOfClients):
     collectedClients = 0
     initial_time = time.time()
 
+    # In this simulation, we run data split on each worker, which amplifies the # of datasets
     # Waiting for the data information from clients, or timeout
     while collectedClients < numOfClients or (time.time() - initial_time) > 5000:
         if not queue.empty():
@@ -149,6 +159,7 @@ def run(model, test_data, queue, param_q, stop_signal, clientSampler):
     normWeight = len(workers) if args.model_avg else 1
 
     logging.info(repr(clientSampler.getClientsInfo()))
+
     while True:
         if not queue.empty():
             try:
@@ -223,7 +234,7 @@ def run(model, test_data, queue, param_q, stop_signal, clientSampler):
                         pendingSend.append(dist.isend(tensor=(param.data/float(normWeight)).cpu(), dst=rank_src))
 
                     # send out current minimum steps
-                    pendingSend.append(dist.isend(tensor=torch.tensor([currentMinStep, -1], dtype=torch.int).cpu(), dst=rank_src))
+                    pendingSend.append(dist.isend(tensor=torch.tensor([currentMinStep, clientSampler.getCurrentClientId(rank_src)], dtype=torch.int).cpu(), dst=rank_src))
                     # pendingSend.append(dist.isend(tensor=torch.tensor([currentMinStep], dtype=torch.int).cpu(), dst=rank_src))
                     learner_cache_step[rank_src] = currentMinStep
                     newEpoch = 0
@@ -246,7 +257,7 @@ def run(model, test_data, queue, param_q, stop_signal, clientSampler):
                             pendingSend.append(dist.isend(tensor=(param.data/float(normWeight)).cpu(), dst=worker))
                     
                     for worker in workersToSend:
-                        pendingSend.append(dist.isend(tensor=torch.tensor([currentMinStep, -1], dtype=torch.int).cpu(), dst=worker))
+                        pendingSend.append(dist.isend(tensor=torch.tensor([currentMinStep, clientSampler.getCurrentClientId(worker)], dtype=torch.int).cpu(), dst=worker))
                         learner_cache_step[worker] = currentMinStep
                         # remove from the pending workers
                         del pendingWorkers[worker]
@@ -282,9 +293,17 @@ def run(model, test_data, queue, param_q, stop_signal, clientSampler):
                     data_size_epoch = 0
                     epoch_time = e_epoch_time
 
-                if epoch_count % args.dump_epoch == 0:
-                    logging.info("====Try to dump the model \n")
-                    torch.save(model.state_dict(), logDir+'/'+str(args.model)+'.pth.tar')
+                    # dump the model into file for backup
+                    if epoch_count % args.dump_epoch == 0:
+                        logging.info("====Try to dump the model")
+                        torch.save(model.state_dict(), logDir+'/'+str(args.model)+'.pth.tar')
+
+                    # resampling the clients if necessary
+                    if epoch_count % args.resampling_interval == 0:
+                        logging.info("====Try to resample clients")
+                        sampledClients = clientSampler.resampleClients(len(workers), max(args.total_worker, len(workers)), args.sample_mode)
+                        for i, w in enumerate(workers):
+                            clientSampler.clientOnHost(sampledClients[i], w)
 
                 # The training stop
                 if(epoch_count >= args.epochs):
@@ -313,6 +332,7 @@ def init_myprocesses(rank, size, model, test_data, queue, param_q, stop_signal, 
     
     for wrank in workerRanks:
         nextClientIdToRun = clientSampler.nextClientIdToRun(hostId=wrank)
+        clientSampler.clientOnHost(nextClientIdToRun, wrank)
         dist.send(tensor=torch.tensor([nextClientIdToRun], dtype=torch.int).cpu(), dst=wrank)
 
     # Start the PS service
