@@ -6,9 +6,9 @@ import sys, time
 
 pool = threadpool.ThreadPool(30)
 
-#address = ["h1", "h2", "h3", "h4", "h5"]
+address = ["h1", "h2", "h3", "h4", "h5"]
 #, "h7", "h8"]
-address = ["h1", "h2", "h3","h4","h5", "h6", "h8", "h9", "h10"]
+address = ["h1", "h2", "h3","h4","h5", "h6", "h7", "h8", "h9", "h10"]
 workers = address
 #[x+prefix for x in address]
 _arg = []
@@ -77,13 +77,15 @@ def torch_cifar(url):
         except:
             pass
 
-        if "h1" in url:
+        if "h1" in url and 'h10' not in url:
             # start the sever
-            c.run('python3 /users/fanlai/SSPTorch/param_server.py --ps_ip=10.0.0.1 --ps_port=29500 --this_rank=0 --learners=1-2-3-4 ' + ' '.join(_arg))
+            c.run('python3 /users/fanlai/SSPTorch/param_server.py --ps_ip=10.0.0.1 --ps_port=29500 --this_rank=0 --learners=1-2-3-4-5-6-7-8-9 ' + ' '.join(_arg))
             pass
+        elif "h2" in url:
+            c.run('sleep 5 && python3 /users/fanlai/SSPTorch/learner_simulator.py --ps_ip=10.0.0.1 --ps_port=29500 --this_rank='+str(int(url.replace('h','')) - 1)+' --learners=1-2-3-4-5-6-7-8-9 --sequential=0 '  + ' '.join(_arg))
         else:
             # start the worker
-            c.run('sleep 5 && python3 /users/fanlai/SSPTorch/learner_simulator.py --ps_ip=10.0.0.1 --ps_port=29500 --this_rank='+str(int(url.replace('h','')) - 1)+' --learners=1-2-3-4 '  + ' '.join(_arg))
+            c.run('sleep 5 && python3 /users/fanlai/SSPTorch/learner_simulator.py --ps_ip=10.0.0.1 --ps_port=29500 --this_rank='+str(int(url.replace('h','')) - 1)+' --learners=1-2-3-4-5-6-7-8-9 --sequential=0 '  + ' '.join(_arg))
         c.close()
 
     except Exception as e:
