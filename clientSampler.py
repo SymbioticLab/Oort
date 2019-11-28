@@ -43,7 +43,7 @@ class ClientSampler(object):
 
     def resampleClients(self, numOfClients, totalClients, mode):
         if mode == "random":
-            return random.sample(range(totalClients), numOfClients)
+            return random.sample(range(1, totalClients+1), numOfClients)
 
     def getCurrentClientId(self, hostId):
         return self.clientOnHosts[hostId]

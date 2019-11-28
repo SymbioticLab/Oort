@@ -40,7 +40,7 @@ parser.add_argument('--sample_mode', type=str, default='random')
 # The configuration of different hyper-parameters for training
 parser.add_argument('--timeout', type=float, default=100000.0)
 parser.add_argument('--len_train_data', type=int, default=50000)
-parser.add_argument('--epochs', type=int, default=400)
+parser.add_argument('--epochs', type=int, default=2000)
 parser.add_argument('--test_bsz', type=int, default=256)
 parser.add_argument('--stale_threshold', type=int, default=0)
 parser.add_argument('--backend', type=str, default="gloo")
@@ -62,11 +62,12 @@ parser.add_argument('--load_model', type=bool, default=False)
 parser.add_argument('--dump_epoch', type=int, default=100)
 parser.add_argument('--decay_factor', type=float, default=0.9)
 parser.add_argument('--decay_epoch', type=float, default=500)
-parser.add_argument('--threads', type=str, default='64')
+parser.add_argument('--threads', type=str, default=str(torch.get_num_threads()))
+parser.add_argument('--eval_interval', type=int, default=5)
 
 args = parser.parse_args()
 
-logFile = '/tmp/log'
+logFile = '/tmp/log'+str(args.this_rank)
 logging.basicConfig(filename=logFile,
                             filemode='a',
                             format='%(asctime)s,%(msecs)d %(name)s %(levelname)s %(message)s',
@@ -190,18 +191,16 @@ def run(model, test_data, queue, param_q, stop_signal, clientSampler):
                 # apply the update into the global model
                 for idx, param in enumerate(model.parameters()):
                     if not args.model_avg:
-                        param.data -= (torch.from_numpy(delta_ws[idx]))#.cuda())
+                        param.data -= (torch.from_numpy(delta_ws[idx]).cuda())
                     else:
                         if newEpoch == 0:
-                            param.data = (torch.from_numpy(delta_ws[idx]))#.cuda())
+                            param.data = (torch.from_numpy(delta_ws[idx]).cuda())
                         else:
-                            param.data += (torch.from_numpy(delta_ws[idx]))#.cuda())
+                            param.data += (torch.from_numpy(delta_ws[idx]).cuda())
 
                 newEpoch += 1
 
                 handlerDur = time.time() - handlerStart
-
-                #print ("====Handler duration is {}".format(handlerDur))
                 global_update += 1
                 currentMinStep = 9999999999
 
@@ -216,12 +215,9 @@ def run(model, test_data, queue, param_q, stop_signal, clientSampler):
                 learner_staleness[rank_src] = staleness
                 stale_stack.append(rank_src)
 
-                # working channels in communication
-                pendingSend = []
-
                 # if the worker is within the staleness, then continue w/ local cache and do nothing
                 # Otherwise, block it 
-                if learner_local_step[rank_src] > args.stale_threshold + currentMinStep:
+                if learner_local_step[rank_src] >= args.stale_threshold + currentMinStep:
                     pendingWorkers[rank_src] = learner_local_step[rank_src]
                     # lock the worker
                     logging.info("Lock worker " + str(rank_src) + " with localStep " + str(pendingWorkers[rank_src]) +
@@ -229,17 +225,8 @@ def run(model, test_data, queue, param_q, stop_signal, clientSampler):
                 
                 # if the local cache is too stale, then update it
                 elif learner_cache_step[rank_src] < learner_local_step[rank_src] - args.stale_threshold or args.force_read:
-                    for idx, param in enumerate(model.parameters()):
-                        #pendingSend.append(dist.isend(tensor=(param.data/float(normWeight)).cpu(), dst=rank_src))
-                        dist.send(tensor=(param.data/float(normWeight)).cpu(), dst=rank_src)
-
-                    # send out current minimum steps
-                    #pendingSend.append(dist.isend(tensor=torch.tensor([currentMinStep, clientSampler.getCurrentClientId(rank_src)], dtype=torch.int).cpu(), dst=rank_src))
-                    dist.send(tensor=torch.tensor([currentMinStep, clientSampler.getCurrentClientId(rank_src)], dtype=torch.int).cpu(), dst=rank_src)
-                    # pendingSend.append(dist.isend(tensor=torch.tensor([currentMinStep], dtype=torch.int).cpu(), dst=rank_src))
-                    learner_cache_step[rank_src] = currentMinStep
-                    newEpoch = 0
-
+                    pendingWorkers[rank_src] = learner_local_step[rank_src]
+                    
                 # release all pending requests, if the staleness does not exceed the staleness threshold in SSP 
                 handle_dur = time.time() - handle_start
 
@@ -252,23 +239,30 @@ def run(model, test_data, queue, param_q, stop_signal, clientSampler):
                         workersToSend.append(pworker)
 
                 if len(workersToSend) > 0:
+                    send_start = time.time()
                     for idx, param in enumerate(model.parameters()):
+                        pendingSend = []    # working channels in communication
                         for worker in workersToSend:
-                            #pendingSend.append(dist.isend(tensor=(param.data/float(normWeight)).cpu(), dst=worker))
-                            dist.send(tensor=(param.data/float(normWeight)).cpu(), dst=worker)
-                    
+                            pendingSend.append(dist.isend(tensor=(param.data/float(normWeight)).cpu(), dst=worker))
+                            #dist.send(tensor=(param.data/float(normWeight)).cpu(), dst=worker)
+                        for item in pendingSend:
+                            item.wait()
+
+                    pendingSend = []
                     for worker in workersToSend:
-                        #pendingSend.append(dist.isend(tensor=torch.tensor([currentMinStep, clientSampler.getCurrentClientId(worker)], dtype=torch.int).cpu(), dst=worker))
-                        dist.send(tensor=torch.tensor([currentMinStep, clientSampler.getCurrentClientId(worker)], dtype=torch.int).cpu(), dst=worker)
+                        pendingSend.append(dist.isend(tensor=torch.tensor([currentMinStep, clientSampler.getCurrentClientId(worker)], dtype=torch.int).cpu(), dst=worker))
+                        #dist.send(tensor=torch.tensor([currentMinStep, clientSampler.getCurrentClientId(worker)], dtype=torch.int).cpu(), dst=worker)
                         learner_cache_step[worker] = currentMinStep
                         # remove from the pending workers
                         del pendingWorkers[worker]
 
-                    if global_update % args.display_step == 0:
-                        print("Handle Wight {} | Send {}".format(handle_dur, time.time() - send_start))
+                    for item in pendingSend:
+                        item.wait()
 
-                for item in pendingSend:
-                    item.wait()
+                    if global_update % args.display_step == 0:
+                        logging.info("Handle Wight {} | Send {}".format(handle_dur, time.time() - send_start))
+
+                    newEpoch = 0
 
                 # once reach an epoch, count the average train loss
                 if global_update%len(workers) == 0:
@@ -308,7 +302,7 @@ def run(model, test_data, queue, param_q, stop_signal, clientSampler):
                             clientSampler.clientOnHost(sampledClients[i], w)
 
                 # The training stop
-                if(epoch_count >= args.epochs):
+                if(epoch_count >= args.epochs * args.upload_epoch):
                     f_staleness.close()
                     stop_signal.put(1)
                     print('Epoch is done: {}'.format(epoch_count))
