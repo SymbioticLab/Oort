@@ -35,7 +35,7 @@ class DataPartitioner(object):
 
     # len(sizes) is the number of workers
     # sequential 1-> random 2->zipf 3-> identical
-    def __init__(self, data, sizes=None, sequential=0, ratioOfClassWorker=None, filter_class=0, seed=10, args = {'balanced_client':0, 'param': 1.5}):
+    def __init__(self, data, sizes=None, sequential=0, ratioOfClassWorker=None, filter_class=0, seed=10, args = {'balanced_client':0, 'param': 1.9}):
         
         self.data = data
         self.partitions = []

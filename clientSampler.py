@@ -14,10 +14,10 @@ class ClientSampler(object):
 
     def registerClient(self, hostId, clientId, dis, size, speed = 1.0):
         uniqueId = self.getUniqueId(hostId, clientId)
-        self.Clients[uniqueId] = Client(hostId, clientId, dis, speed, size)
+        self.Clients[uniqueId] = Client(hostId, clientId, dis, size, speed)
 
         if self.mode == "bandit":
-            self.ucbSampler.registerArm(clientId, dis)
+            self.ucbSampler.registerArm(clientId, 1.0 - dis)
 
     def registerSpeed(self, hostId, clientId, speed):
         uniqueId = self.getUniqueId(hostId, clientId)

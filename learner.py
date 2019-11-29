@@ -41,6 +41,7 @@ parser.add_argument('--client_path', type=str, default='/tmp/client.cfg')
 parser.add_argument('--model', type=str, default='resnet')
 parser.add_argument('--depth', type=int, default=18)
 parser.add_argument('--data_set', type=str, default='cifar10')
+parser.add_argument('--sample_mode', type=str, default='random')
 
 # The configuration of different hyper-parameters for training
 parser.add_argument('--epochs', type=int, default=2000)
@@ -74,7 +75,7 @@ args = parser.parse_args()
 #torch.cuda.set_device(0)
 
 
-dirPath = '/tmp/torch'
+dirPath = '/tmp/torch/'
 if not os.path.isdir(dirPath):
     os.mkdir(dirPath)
 
@@ -240,10 +241,11 @@ def run(rank, model, train_data, test_data, queue, param_q, stop_flag, client_cf
 
                 if local_step % args.upload_epoch == 0:
                     send_start = time.time()
-                    training_speed = local_trained/(time.time() - last_push_time)
 
                     # push update to the PS
                     if delta_ws:
+                        training_speed = local_trained/(time.time() - last_push_time)
+
                         if sleepForCommunicate != 0:
                             time.sleep(sleepForCommunicate/2.0)
 

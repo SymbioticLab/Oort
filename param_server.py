@@ -27,7 +27,6 @@ parser.add_argument('--ps_port', type=str, default='29500')
 parser.add_argument('--this_rank', type=int, default=0)
 parser.add_argument('--learners', type=str, default='1-2-3-4')
 parser.add_argument('--total_worker', type=int, default=0)
-parser.add_argument('--sample_ratio', type=float, default=1.0)
 
 # The configuration of model and dataset
 parser.add_argument('--data_dir', type=str, default='/tmp/')
@@ -170,7 +169,7 @@ def run(model, test_data, queue, param_q, stop_signal, clientSampler):
                 rank_src = list(tmp_dict.keys())[0]
 
                 [iteration_loss, trained_size, isWorkerEnd, clientId, speed] = [tmp_dict[rank_src][i] for i in range(1, len(tmp_dict[rank_src]))]
-                clientSampler.registerSpeed(rank_src, clientId, speed)
+                #clientSampler.registerSpeed(rank_src, clientId, speed)
                 clientSampler.registerScore(clientId, 1.0 - clientSampler.getScore(rank_src, clientId))
 
                 if isWorkerEnd:
