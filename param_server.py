@@ -75,6 +75,7 @@ logging.basicConfig(filename=logFile,
                             level=logging.DEBUG)
 
 entire_train_data = None
+sample_size_dic = {}
 
 trainloss_file = '/tmp/trainloss' + args.model + '.txt'
 staleness_file = '/tmp/staleness' + args.model + ".txt"
@@ -87,7 +88,7 @@ torch.set_num_threads(int(args.threads))
 
 def initiate_sampler_query(numOfClients):
     # Initiate the clientSampler 
-    clientSampler = ClientSampler()
+    clientSampler = ClientSampler(args.sample_mode)
     collectedClients = 0
     initial_time = time.time()
 
@@ -98,10 +99,11 @@ def initiate_sampler_query(numOfClients):
             tmp_dict = queue.get()
             rank_src = list(tmp_dict.keys())[0]
             distanceVec = tmp_dict[rank_src][0]
+            sizeVec = tmp_dict[rank_src][1]
 
             for clientId, dis in enumerate(distanceVec):
                 # since the worker rankId starts from 1, we also configure the initial dataId as 1
-                clientSampler.registerClient(rank_src, clientId + 1, dis)
+                clientSampler.registerClient(rank_src, clientId + 1, dis, sizeVec[clientId])
 
             collectedClients += 1
 
@@ -157,7 +159,6 @@ def run(model, test_data, queue, param_q, stop_signal, clientSampler):
     stale_stack = []
     global_update = 0
     newEpoch = True
-    normWeight = len(workers) if args.model_avg else 1
 
     logging.info(repr(clientSampler.getClientsInfo()))
 
@@ -170,6 +171,7 @@ def run(model, test_data, queue, param_q, stop_signal, clientSampler):
 
                 [iteration_loss, trained_size, isWorkerEnd, clientId, speed] = [tmp_dict[rank_src][i] for i in range(1, len(tmp_dict[rank_src]))]
                 clientSampler.registerSpeed(rank_src, clientId, speed)
+                clientSampler.registerScore(clientId, 1.0 - clientSampler.getScore(rank_src, clientId))
 
                 if isWorkerEnd:
                     print("Worker {} has completed all its data computation!".format(rank_src))
@@ -188,15 +190,19 @@ def run(model, test_data, queue, param_q, stop_signal, clientSampler):
 
                 handlerStart = time.time()
                 delta_ws = tmp_dict[rank_src][0]
+
+                # fraction of total samples on this specific node 
+                ratioSample = clientSampler.getSampleRatio(clientId, rank_src)
+
                 # apply the update into the global model
                 for idx, param in enumerate(model.parameters()):
                     if not args.model_avg:
                         param.data -= (torch.from_numpy(delta_ws[idx]).cuda())
                     else:
                         if newEpoch == 0:
-                            param.data = (torch.from_numpy(delta_ws[idx]).cuda())
+                            param.data = (torch.from_numpy(delta_ws[idx]).cuda()) * ratioSample
                         else:
-                            param.data += (torch.from_numpy(delta_ws[idx]).cuda())
+                            param.data += (torch.from_numpy(delta_ws[idx]).cuda()) * ratioSample
 
                 newEpoch += 1
 
@@ -215,54 +221,6 @@ def run(model, test_data, queue, param_q, stop_signal, clientSampler):
                 learner_staleness[rank_src] = staleness
                 stale_stack.append(rank_src)
 
-                # if the worker is within the staleness, then continue w/ local cache and do nothing
-                # Otherwise, block it 
-                if learner_local_step[rank_src] >= args.stale_threshold + currentMinStep:
-                    pendingWorkers[rank_src] = learner_local_step[rank_src]
-                    # lock the worker
-                    logging.info("Lock worker " + str(rank_src) + " with localStep " + str(pendingWorkers[rank_src]) +
-                                            " , while globalStep is " + str(currentMinStep) + "\n")
-                
-                # if the local cache is too stale, then update it
-                elif learner_cache_step[rank_src] < learner_local_step[rank_src] - args.stale_threshold or args.force_read:
-                    pendingWorkers[rank_src] = learner_local_step[rank_src]
-                    
-                # release all pending requests, if the staleness does not exceed the staleness threshold in SSP 
-                handle_dur = time.time() - handle_start
-
-                workersToSend = []
-
-                for pworker in pendingWorkers.keys():
-                    # check its staleness
-                    if pendingWorkers[pworker] <= args.stale_threshold + currentMinStep:
-                        # start to send param, to avoid synchronization problem, first create a copy here?
-                        workersToSend.append(pworker)
-
-                if len(workersToSend) > 0:
-                    send_start = time.time()
-                    for idx, param in enumerate(model.parameters()):
-                        pendingSend = []    # working channels in communication
-                        for worker in workersToSend:
-                            pendingSend.append(dist.isend(tensor=(param.data/float(normWeight)).cpu(), dst=worker))
-                            #dist.send(tensor=(param.data/float(normWeight)).cpu(), dst=worker)
-                        for item in pendingSend:
-                            item.wait()
-
-                    pendingSend = []
-                    for worker in workersToSend:
-                        pendingSend.append(dist.isend(tensor=torch.tensor([currentMinStep, clientSampler.getCurrentClientId(worker)], dtype=torch.int).cpu(), dst=worker))
-                        #dist.send(tensor=torch.tensor([currentMinStep, clientSampler.getCurrentClientId(worker)], dtype=torch.int).cpu(), dst=worker)
-                        learner_cache_step[worker] = currentMinStep
-                        # remove from the pending workers
-                        del pendingWorkers[worker]
-
-                    for item in pendingSend:
-                        item.wait()
-
-                    if global_update % args.display_step == 0:
-                        logging.info("Handle Wight {} | Send {}".format(handle_dur, time.time() - send_start))
-
-                    newEpoch = 0
 
                 # once reach an epoch, count the average train loss
                 if global_update%len(workers) == 0:
@@ -296,10 +254,59 @@ def run(model, test_data, queue, param_q, stop_signal, clientSampler):
 
                     # resampling the clients if necessary
                     if epoch_count % args.resampling_interval == 0:
-                        logging.info("====Try to resample clients")
-                        sampledClients = clientSampler.resampleClients(len(workers), max(args.total_worker, len(workers)), args.sample_mode)
+                        logging.info("====Try to resample clients with metrics {}".format(repr(clientSampler.getAllMetrics())))
+                        sampledClients = clientSampler.resampleClients(len(workers), max(args.total_worker, len(workers)))
                         for i, w in enumerate(workers):
                             clientSampler.clientOnHost(sampledClients[i], w)
+
+                # if the worker is within the staleness, then continue w/ local cache and do nothing
+                # Otherwise, block it 
+                if learner_local_step[rank_src] >= args.stale_threshold + currentMinStep:
+                    pendingWorkers[rank_src] = learner_local_step[rank_src]
+                    # lock the worker
+                    logging.info("Lock worker " + str(rank_src) + " with localStep " + str(pendingWorkers[rank_src]) +
+                                            " , while globalStep is " + str(currentMinStep) + "\n")
+                
+                # if the local cache is too stale, then update it
+                elif learner_cache_step[rank_src] < learner_local_step[rank_src] - args.stale_threshold or args.force_read:
+                    pendingWorkers[rank_src] = learner_local_step[rank_src]
+                    
+                # release all pending requests, if the staleness does not exceed the staleness threshold in SSP 
+                handle_dur = time.time() - handle_start
+
+                workersToSend = []
+
+                for pworker in pendingWorkers.keys():
+                    # check its staleness
+                    if pendingWorkers[pworker] <= args.stale_threshold + currentMinStep:
+                        # start to send param, to avoid synchronization problem, first create a copy here?
+                        workersToSend.append(pworker)
+
+                if len(workersToSend) > 0:
+                    send_start = time.time()
+                    for idx, param in enumerate(model.parameters()):
+                        pendingSend = []    # working channels in communication
+                        for worker in workersToSend:
+                            pendingSend.append(dist.isend(tensor=(param.data).cpu(), dst=worker))
+                            #dist.send(tensor=(param.data/float(normWeight)).cpu(), dst=worker)
+                        for item in pendingSend:
+                            item.wait()
+
+                    pendingSend = []
+                    for worker in workersToSend:
+                        pendingSend.append(dist.isend(tensor=torch.tensor([currentMinStep, clientSampler.getCurrentClientId(worker)], dtype=torch.int).cpu(), dst=worker))
+                        #dist.send(tensor=torch.tensor([currentMinStep, clientSampler.getCurrentClientId(worker)], dtype=torch.int).cpu(), dst=worker)
+                        learner_cache_step[worker] = currentMinStep
+                        # remove from the pending workers
+                        del pendingWorkers[worker]
+
+                    for item in pendingSend:
+                        item.wait()
+
+                    if global_update % args.display_step == 0:
+                        logging.info("Handle Wight {} | Send {}".format(handle_dur, time.time() - send_start))
+
+                    newEpoch = 0
 
                 # The training stop
                 if(epoch_count >= args.epochs * args.upload_epoch):

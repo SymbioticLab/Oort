@@ -5,7 +5,8 @@ import argparse
 import math
 import os, shutil
 import sys
-import time, datetime
+import time
+import datetime
 import logging
 from collections import OrderedDict
 from ctypes import c_bool
@@ -72,15 +73,24 @@ parser.add_argument('--eval_interval', type=int, default=5)
 args = parser.parse_args()
 #torch.cuda.set_device(0)
 
-dirPath = '/tmp/'
+
+dirPath = '/tmp/torch'
 if not os.path.isdir(dirPath):
     os.mkdir(dirPath)
 
 logFile = dirPath + 'log_'+str(args.this_rank) + '_'+ str(datetime.datetime.fromtimestamp(time.time()).strftime('%m%d_%H%M%S'))
 
+def init_logging():
+    files = [logFile, '/tmp/sampleDistribution']
+    for file in files:
+        with open(file, "w") as fout:
+            pass
+
+init_logging()
+
 logging.basicConfig(filename=logFile,
                             filemode='a',
-                            format='%(asctime)s,%(msecs)d %(name)s %(levelname)s %(message)s',
+                            format='%(asctime)s,%(msecs)d %(levelname)s %(message)s',
                             datefmt='%H:%M:%S',
                             level=logging.DEBUG)
 
@@ -93,6 +103,8 @@ os.environ['MKL_NUM_THREADS'] = args.threads
 torch.set_num_threads(int(args.threads))
 
 clientIdToRun = args.this_rank
+
+logging.info("===== Experiment start =====")
 
 def unbalanced_partition_dataset(dataset, hetero):
     """ Partitioning Data """
@@ -121,7 +133,7 @@ def run(rank, model, train_data, test_data, queue, param_q, stop_flag, client_cf
         optimizer = MySGD(model.parameters(), lr=args.learning_rate, momentum=0.5)
         criterion = torch.nn.CrossEntropyLoss().cuda()
     else:
-        optimizer = MySGD(model.parameters(), lr=args.learning_rate)#, momentum=0.9, weight_decay=0)
+        optimizer = MySGD(model.parameters(), lr=args.learning_rate, momentum=0, weight_decay=5e-4)
         criterion = torch.nn.CrossEntropyLoss().cuda()
 
     print('Begin!')
@@ -319,7 +331,7 @@ def run(rank, model, train_data, test_data, queue, param_q, stop_flag, client_cf
 def report_data_info(rank, queue, entire_train_data):
     # report data information to the clientSampler master
     queue.put({
-        rank: [entire_train_data.getDistance()]
+        rank: [entire_train_data.getDistance(), entire_train_data.getSize()]
     })
 
     # get the partitionId to run
@@ -340,13 +352,6 @@ def capture_stop(stop_signal, flag: Value):
             flag.value = True
             print('Time Up! Stop: {}!'.format(flag.value))
             break
-
-def init_logging():
-    with open(logFile, "w") as fout:
-        pass
-
-    with open('/tmp/sampleDistribution', 'w') as fout:
-        pass
 
 class MyManager(BaseManager):
         pass
@@ -425,7 +430,6 @@ def init_dataset():
 
 if __name__ == "__main__":
 
-    init_logging()
     torch.manual_seed(args.this_rank)
 
     train_bsz = args.batch_size

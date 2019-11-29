@@ -7,12 +7,14 @@ import logging
 import dit,numpy as np
 from dit.divergences import jensen_shannon_divergence
 
-logFile = '/tmp/log'
-logging.basicConfig(filename=logFile,
-                            filemode='a',
-                            format='%(asctime)s,%(msecs)d %(name)s %(levelname)s %(message)s',
-                            datefmt='%H:%M:%S',
-                            level=logging.DEBUG)
+
+# logFile = "/tmp/sampleDistribution"
+
+# logging.basicConfig(filename=logFile,
+#                             filemode='a',
+#                             format='%(asctime)s,%(msecs)d %(levelname)s %(message)s',
+#                             datefmt='%H:%M:%S',
+#                             level=logging.DEBUG)
 
 class Partition(object):
     """ Dataset partitioning helper """
@@ -164,11 +166,10 @@ class DataPartitioner(object):
             #logging.info("Worker number " + str(worker) + " has data " + str(tempDataSize) + " tempDistri is " + str(tempDistr) + " and JS divergence is " + str(self.workerDistance[-1]))
 
         logging.info("Distance Vector is: " + str(self.workerDistance))
-        # log
         logging.info("Raw class per worker is : " + repr(self.classPerWorker) + '\n')
-        #logging.info("Printing keyLength" + str(keyLength))
         logging.info('========= End of Class/Worker =========\n')
 
+        self.log_selection()
 
         print("====Total samples {}, Label types {}, with {} \n".format(totalSamples, len(targets.keys()), repr(keyLength)))
 
@@ -193,15 +194,17 @@ class DataPartitioner(object):
         fmetrics.close()
 
     def use(self, partition, istest):
-        self.log_selection()
-
         _partition = -1 if istest else partition
 
-        print("====Data length is {}".format(len(self.partitions[_partition])))
+        print("====Data length for client {} is {}".format(partition, len(self.partitions[_partition])))
         return Partition(self.data, self.partitions[_partition])
 
     def getDistance(self):
         return self.workerDistance
+
+    def getSize(self):
+        # return the size of samples
+        return [len(partition) for partition in self.partitions]
 
 def partition_dataset(dataset, workers, partitionRatio=[], sequential=0, ratioOfClassWorker=None, filter_class=0):
     """ Partitioning Data """
