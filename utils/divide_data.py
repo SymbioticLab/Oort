@@ -7,15 +7,6 @@ import logging
 import dit,numpy as np
 from dit.divergences import jensen_shannon_divergence
 
-
-# logFile = "/tmp/sampleDistribution"
-
-# logging.basicConfig(filename=logFile,
-#                             filemode='a',
-#                             format='%(asctime)s,%(msecs)d %(levelname)s %(message)s',
-#                             datefmt='%H:%M:%S',
-#                             level=logging.DEBUG)
-
 class Partition(object):
     """ Dataset partitioning helper """
 
@@ -35,7 +26,7 @@ class DataPartitioner(object):
 
     # len(sizes) is the number of workers
     # sequential 1-> random 2->zipf 3-> identical
-    def __init__(self, data, sizes=None, sequential=0, ratioOfClassWorker=None, filter_class=0, seed=10, args = {'balanced_client':0, 'param': 1.9}):
+    def __init__(self, data, sizes=None, sequential=0, ratioOfClassWorker=None, filter_class=0, seed=10, args = None):
         
         self.data = data
         self.partitions = []
@@ -174,7 +165,6 @@ class DataPartitioner(object):
         print("====Total samples {}, Label types {}, with {} \n".format(totalSamples, len(targets.keys()), repr(keyLength)))
 
     def log_selection(self):
-        fmetrics = open('/tmp/sampleDistribution', 'a')
         totalLabels = [0 for i in range(len(self.classPerWorker[0]))]
 
         for index, row in enumerate(self.classPerWorker):
@@ -185,13 +175,11 @@ class DataPartitioner(object):
                 totalLabels[i] += label
                 numSamples += label
 
-            fmetrics.writelines(str(index) + ':\t' + rowStr + '\n' + 'with sum:\t' + str(numSamples) + '\t' + repr(len(self.partitions[index]))+'\n')
-            fmetrics.writelines("=====================================\n")
+            logging.info(str(index) + ':\t' + rowStr + '\n' + 'with sum:\t' + str(numSamples) + '\t' + repr(len(self.partitions[index]))+'\n')
+            logging.info("=====================================\n")
 
-        fmetrics.writelines("Total selected samples is: {}, with {}\n".format(str(sum(totalLabels)), repr(totalLabels)))
-        fmetrics.writelines("=====================================\n")
-
-        fmetrics.close()
+        logging.info("Total selected samples is: {}, with {}\n".format(str(sum(totalLabels)), repr(totalLabels)))
+        logging.info("=====================================\n")
 
     def use(self, partition, istest):
         _partition = -1 if istest else partition
@@ -206,7 +194,7 @@ class DataPartitioner(object):
         # return the size of samples
         return [len(partition) for partition in self.partitions]
 
-def partition_dataset(dataset, workers, partitionRatio=[], sequential=0, ratioOfClassWorker=None, filter_class=0):
+def partition_dataset(dataset, workers, partitionRatio=[], sequential=0, ratioOfClassWorker=None, filter_class=0, arg={'balanced_client':0, 'param': 1.95}):
     """ Partitioning Data """
     workers_num = len(workers)
     partition_sizes = [1.0 / workers_num for _ in range(workers_num)]
@@ -214,7 +202,7 @@ def partition_dataset(dataset, workers, partitionRatio=[], sequential=0, ratioOf
     if len(partitionRatio) > 0:
         partition_sizes = partitionRatio
 
-    partition = DataPartitioner(data=dataset, sizes=partition_sizes, sequential=sequential, ratioOfClassWorker=ratioOfClassWorker,filter_class=filter_class)
+    partition = DataPartitioner(data=dataset, sizes=partition_sizes, sequential=sequential, ratioOfClassWorker=ratioOfClassWorker,filter_class=filter_class, args=arg)
     return partition
 
 
@@ -223,3 +211,4 @@ def select_dataset(workers: list, rank: int, partition: DataPartitioner, batch_s
     partition_dict = {workers[i]: i for i in range(workers_num)}
     partition = partition.use(partition_dict[rank], istest)
     return DataLoader(partition, batch_size=batch_size, shuffle=True, pin_memory=True, num_workers=0)
+

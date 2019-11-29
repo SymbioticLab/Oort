@@ -1,10 +1,11 @@
 # -*- coding: utf-8 -*-
 
-import argparse
+from core.argParser import args
 import os, shutil
 import random
 import sys
 import time
+import datetime
 import logging
 from clientSampler import ClientSampler
 from collections import OrderedDict
@@ -20,58 +21,14 @@ from torch.utils.data import DataLoader
 from torchvision import datasets, transforms
 import torchvision.models as tormodels
 
-parser = argparse.ArgumentParser()
-# The basic configuration of the cluster
-parser.add_argument('--ps_ip', type=str, default='127.0.0.1')
-parser.add_argument('--ps_port', type=str, default='29500')
-parser.add_argument('--this_rank', type=int, default=0)
-parser.add_argument('--learners', type=str, default='1-2-3-4')
-parser.add_argument('--total_worker', type=int, default=0)
-
-# The configuration of model and dataset
-parser.add_argument('--data_dir', type=str, default='/tmp/')
-parser.add_argument('--client_path', type=str, default='/tmp/client.cfg')
-parser.add_argument('--model', type=str, default='resnet')
-parser.add_argument('--depth', type=int, default=18)
-parser.add_argument('--data_set', type=str, default='cifar10')
-parser.add_argument('--sample_mode', type=str, default='random')
-
-# The configuration of different hyper-parameters for training
-parser.add_argument('--timeout', type=float, default=100000.0)
-parser.add_argument('--len_train_data', type=int, default=50000)
-parser.add_argument('--epochs', type=int, default=2000)
-parser.add_argument('--test_bsz', type=int, default=256)
-parser.add_argument('--stale_threshold', type=int, default=0)
-parser.add_argument('--backend', type=str, default="gloo")
-parser.add_argument('--display_step', type=int, default=500)
-parser.add_argument('--batch_size', type=int, default=256)
-parser.add_argument('--upload_epoch', type=int, default=1)
-parser.add_argument('--resampling_interval', type=int, default=99999999)
-parser.add_argument('--force_read', type=bool, default=False)
-parser.add_argument('--sleep_up', type=int, default=0)
-parser.add_argument('--sequential', type=int, default=0)
-parser.add_argument('--single_sim', type=int, default=0)
-parser.add_argument('--filter_class', type=int, default=0)
-parser.add_argument('--learning_rate', type=float, default=0.05)
-parser.add_argument('--model_avg', type=bool, default=False)
-parser.add_argument('--input_dim', type=int, default=0)
-parser.add_argument('--output_dim', type=int, default=47)
-parser.add_argument('--test_interval', type=int, default=999999)
-parser.add_argument('--load_model', type=bool, default=False)
-parser.add_argument('--dump_epoch', type=int, default=100)
-parser.add_argument('--decay_factor', type=float, default=0.9)
-parser.add_argument('--decay_epoch', type=float, default=500)
-parser.add_argument('--threads', type=str, default=str(torch.get_num_threads()))
-parser.add_argument('--eval_interval', type=int, default=5)
-
-args = parser.parse_args()
-
-logFile = '/tmp/log'+str(args.this_rank)
-logging.basicConfig(filename=logFile,
-                            filemode='a',
-                            format='%(asctime)s,%(msecs)d %(name)s %(levelname)s %(message)s',
-                            datefmt='%H:%M:%S',
-                            level=logging.DEBUG)
+logFile = '/tmp/log_' + str(datetime.datetime.fromtimestamp(time.time()).strftime('%m%d_%H%M%S'))
+logging.basicConfig(format='%(asctime)s,%(msecs)d %(levelname)s %(message)s',
+                    datefmt='%H:%M:%S',
+                    level=logging.DEBUG,
+                    handlers=[
+                        logging.FileHandler(logFile, mode='a'),
+                        logging.StreamHandler()
+                    ])
 
 entire_train_data = None
 sample_size_dic = {}
@@ -79,11 +36,12 @@ sample_size_dic = {}
 trainloss_file = '/tmp/trainloss' + args.model + '.txt'
 staleness_file = '/tmp/staleness' + args.model + ".txt"
 os.environ['MASTER_ADDR'] = args.ps_ip
-os.environ['MASTER_PORT'] = args.ps_port
-os.environ['OMP_NUM_THREADS'] = args.threads
-os.environ['MKL_NUM_THREADS'] = args.threads
+os.environ['MASTER_PORT'] = str(int(args.ps_port) + int(args.gpu_device))
+# os.environ['OMP_NUM_THREADS'] = args.threads
+# os.environ['MKL_NUM_THREADS'] = args.threads
 
-torch.set_num_threads(int(args.threads))
+#torch.set_num_threads(int(args.threads))
+torch.cuda.set_device(args.gpu_device)
 
 def initiate_sampler_query(numOfClients):
     # Initiate the clientSampler 
@@ -170,7 +128,10 @@ def run(model, test_data, queue, param_q, stop_signal, clientSampler):
 
                 [iteration_loss, trained_size, isWorkerEnd, clientId, speed] = [tmp_dict[rank_src][i] for i in range(1, len(tmp_dict[rank_src]))]
                 #clientSampler.registerSpeed(rank_src, clientId, speed)
-                clientSampler.registerScore(clientId, 1.0 - clientSampler.getScore(rank_src, clientId))
+                if args.score_mode == "loss":
+                    clientSampler.registerScore(clientId, iteration_loss)
+                else:
+                    clientSampler.registerScore(clientId, 1.0 - clientSampler.getScore(rank_src, clientId))
 
                 if isWorkerEnd:
                     print("Worker {} has completed all its data computation!".format(rank_src))
@@ -196,7 +157,7 @@ def run(model, test_data, queue, param_q, stop_signal, clientSampler):
                 # apply the update into the global model
                 for idx, param in enumerate(model.parameters()):
                     if not args.model_avg:
-                        param.data -= (torch.from_numpy(delta_ws[idx]).cuda())
+                        param.data -= (torch.from_numpy(delta_ws[idx])).cuda()
                     else:
                         if newEpoch == 0:
                             param.data = (torch.from_numpy(delta_ws[idx]).cuda()) * ratioSample
@@ -315,8 +276,10 @@ def run(model, test_data, queue, param_q, stop_signal, clientSampler):
                     break
 
             except Exception as e:
+                exc_type, exc_obj, exc_tb = sys.exc_info()
+                fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
                 print("====Error: " + str(e) + '\n')
-                logging.info("====Error: " + str(e) + '\n')
+                logging.info("====Error: {}, {}, {}, {}".format(e, exc_type, fname, exc_tb.tb_lineno))
 
         e_time = time.time()
         if (e_time - s_time) >= float(args.timeout):
@@ -397,7 +360,7 @@ def init_dataset():
         sys.exit(-1)
 
     if torch.cuda.is_available():
-        model = model.cuda()
+        model = model
 
     return model, train_dataset, test_dataset
 
@@ -428,7 +391,7 @@ if __name__ == "__main__":
     MyManager.register('get_queue', callable=lambda: queue)
     MyManager.register('get_param', callable=lambda: param)
     MyManager.register('get_stop_signal', callable=lambda: stop_or_not)
-    manager = MyManager(address=(args.ps_ip, 5000), authkey=b'queue')
+    manager = MyManager(address=(args.ps_ip, 5001+int(args.gpu_device)), authkey=b'queue')
     manager.start()
     
     q = manager.get_queue()  # queue for parameter_server signal process

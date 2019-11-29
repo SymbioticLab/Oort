@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 # Thanks to qihua Zhou
 
-import argparse
+from core.argParser import args
 import math
 import os, shutil
 import sys
@@ -26,60 +26,15 @@ from torch.autograd import Variable
 from torchvision import datasets, transforms
 import torchvision.models as tormodels
 
-parser = argparse.ArgumentParser()
-# The basic configuration of the cluster
-parser.add_argument('--ps_ip', type=str, default='127.0.0.1')
-parser.add_argument('--ps_port', type=str, default='29500')
-parser.add_argument('--this_rank', type=int, default=1)
-parser.add_argument('--learners', type=str, default='1-2-3-4')
-parser.add_argument('--total_worker', type=int, default=0)
-
-# The configuration of model and dataset
-parser.add_argument('--data_dir', type=str, default='/tmp/')
-parser.add_argument('--save_path', type=str, default='./')
-parser.add_argument('--client_path', type=str, default='/tmp/client.cfg')
-parser.add_argument('--model', type=str, default='resnet')
-parser.add_argument('--depth', type=int, default=18)
-parser.add_argument('--data_set', type=str, default='cifar10')
-parser.add_argument('--sample_mode', type=str, default='random')
-
-# The configuration of different hyper-parameters for training
-parser.add_argument('--epochs', type=int, default=2000)
-parser.add_argument('--batch_size', type=int, default=256)
-parser.add_argument('--test_bsz', type=int, default=256)
-parser.add_argument('--heterogeneity', type=float, default=1.0)
-parser.add_argument('--hetero_allocation', type=str, default='1.0-1.0-1.0-1.0-1.0-1.0')
-parser.add_argument('--backend', type=str, default="gloo")
-parser.add_argument('--display_step', type=int, default=20)
-parser.add_argument('--upload_epoch', type=int, default=1)
-parser.add_argument('--stale_threshold', type=int, default=0)
-parser.add_argument('--sleep_up', type=int, default=0)
-parser.add_argument('--force_read', type=bool, default=False)
-parser.add_argument('--test_interval', type=int, default=999999)
-parser.add_argument('--resampling_interval', type=int, default=99999999)
-parser.add_argument('--sequential', type=int, default=0)
-parser.add_argument('--single_sim', type=int, default=0)
-parser.add_argument('--filter_class', type=int, default=0)
-parser.add_argument('--learning_rate', type=float, default=0.01)
-parser.add_argument('--model_avg', type=bool, default=False)
-parser.add_argument('--input_dim', type=int, default=0)
-parser.add_argument('--output_dim', type=int, default=0)
-parser.add_argument('--load_model', type=bool, default=False)
-parser.add_argument('--dump_epoch', type=int, default=100)
-parser.add_argument('--decay_factor', type=float, default=0.9)
-parser.add_argument('--decay_epoch', type=float, default=500)
-parser.add_argument('--threads', type=str, default=str(torch.get_num_threads()))
-parser.add_argument('--eval_interval', type=int, default=5)
-
-args = parser.parse_args()
-#torch.cuda.set_device(0)
-
+torch.cuda.set_device(args.gpu_device)
+#torch.set_num_threads(int(args.threads))
 
 dirPath = '/tmp/torch/'
 if not os.path.isdir(dirPath):
     os.mkdir(dirPath)
 
 logFile = dirPath + 'log_'+str(args.this_rank) + '_'+ str(datetime.datetime.fromtimestamp(time.time()).strftime('%m%d_%H%M%S'))
+#os.system('rm {}'.format(dirPath + 'log_*'))
 
 def init_logging():
     files = [logFile, '/tmp/sampleDistribution']
@@ -89,19 +44,19 @@ def init_logging():
 
 init_logging()
 
-logging.basicConfig(filename=logFile,
-                            filemode='a',
-                            format='%(asctime)s,%(msecs)d %(levelname)s %(message)s',
-                            datefmt='%H:%M:%S',
-                            level=logging.DEBUG)
+logging.basicConfig(format='%(asctime)s,%(msecs)d %(levelname)s %(message)s',
+                    datefmt='%H:%M:%S',
+                    level=logging.DEBUG,
+                    handlers=[
+                        logging.FileHandler(logFile, mode='a'),
+                        logging.StreamHandler()
+                    ])
 
 entire_train_data = None
 os.environ['MASTER_ADDR'] = args.ps_ip
-os.environ['MASTER_PORT'] = args.ps_port
-os.environ['OMP_NUM_THREADS'] = args.threads
-os.environ['MKL_NUM_THREADS'] = args.threads
-
-torch.set_num_threads(int(args.threads))
+os.environ['MASTER_PORT'] = str(int(args.ps_port) + int(args.gpu_device))
+# os.environ['OMP_NUM_THREADS'] = args.threads
+# os.environ['MKL_NUM_THREADS'] = args.threads
 
 clientIdToRun = args.this_rank
 
@@ -165,6 +120,8 @@ def run(rank, model, train_data, test_data, queue, param_q, stop_flag, client_cf
     last_push_time = time.time()
     currentClientId = clientIdToRun
     reloadClientData = False
+    numOfUploads = 0
+    lossPerUpload = 0
 
     sleepForCompute = 0 if currentClientId not in client_cfg else client_cfg[currentClientId][0]
     sleepForCommunicate = 0 if currentClientId not in client_cfg else client_cfg[currentClientId][1]
@@ -174,6 +131,7 @@ def run(rank, model, train_data, test_data, queue, param_q, stop_flag, client_cf
         epoch_train_loss = 0
         epoch_train_batch = 0
         local_trained = 0
+        needEval = False
 
         if epoch % args.decay_epoch == 0:
             learning_rate = max(0.001, learning_rate * args.decay_factor)
@@ -229,6 +187,7 @@ def run(rank, model, train_data, test_data, queue, param_q, stop_flag, client_cf
 
             local_step += 1
             epoch_train_loss += loss.data.item()
+            #lossPerUpload += loss.data.item()
             epoch_train_batch += 1
 
             try:  # Capture the exception caused by the shutdown of parameter_server
@@ -241,6 +200,7 @@ def run(rank, model, train_data, test_data, queue, param_q, stop_flag, client_cf
 
                 if local_step % args.upload_epoch == 0:
                     send_start = time.time()
+                    numOfUploads += 1
 
                     # push update to the PS
                     if delta_ws:
@@ -251,66 +211,77 @@ def run(rank, model, train_data, test_data, queue, param_q, stop_flag, client_cf
 
                         if not args.model_avg:
                             queue.put_nowait({
-                                rank: [[v.cpu().numpy() for v in delta_ws], loss.data.cpu().numpy(), 
+                                rank: [[v.cpu().numpy() for v in delta_ws], lossPerUpload, 
                                     np.array(local_trained), False, currentClientId, training_speed]
                             })
                         else:
                             queue.put_nowait({
                                 rank: [[param.data.cpu().numpy() for param in model.parameters()], 
-                                    loss.data.cpu().numpy(), np.array(local_trained), False, currentClientId, training_speed]
+                                    lossPerUpload, np.array(local_trained), False, currentClientId, training_speed]
                             })
 
                         local_trained = 0
+                        #lossPerUpload = 0
                         last_push_time = time.time()
                         logging.info("====Push updates")
 
                     send_dur = time.time() - send_start
 
                     rece_start = time.time()
+                    rece_dur = 0
 
-                    if globalMinStep < local_step - args.stale_threshold or args.force_read:
+                    #if globalMinStep < local_step - args.stale_threshold or args.force_read:
+                    if numOfUploads % args.eval_interval == 0:
+                        test_loss, acc = test_model(rank, model, test_data, criterion=criterion)
+                        logging.info("Before aggregation with client {}, for epoch {}, upload_epoch {}, local step {}, CumulTime {}, training loss {}, test_loss {}, test_accuracy {} \n".format(currentClientId, epoch, numOfUploads, local_step, time.time() - startTime, epoch_train_loss/float(epoch_train_batch), test_loss, acc))
 
-                        if epoch % args.eval_interval == 0:
-                            test_loss, acc = test_model(rank, model, test_data, criterion=criterion)
-                            logging.info("Before aggregation with client {}, for epoch {}, CumulTime {}, training loss {}, test_loss {}, test_accuracy {} \n".format(currentClientId, epoch, time.time() - startTime, epoch_train_loss/float(epoch_train_batch), test_loss, acc))
 
-                        rece_start = time.time()
-                        # local cache is too stale
-                        for idx, param in enumerate(model.parameters()):
-                            tmp_tensor = torch.zeros_like(param.data).cpu()
-                            dist.recv(tensor=tmp_tensor, src=0)
-                            param.data = tmp_tensor.cuda()
+                    rece_start = time.time()
+                    # local cache is too stale
+                    for idx, param in enumerate(model.parameters()):
+                        tmp_tensor = torch.zeros_like(param.data).cpu()
+                        dist.recv(tensor=tmp_tensor, src=0)
+                        param.data = tmp_tensor.cuda()
 
-                        # receive current minimum step, and the clientId for next training
-                        step_tensor = torch.zeros([2], dtype=torch.int).cpu()
-                        dist.recv(tensor=step_tensor, src=0)
-                        globalMinStep, nextClientId = step_tensor[0].item(), step_tensor[1].item()
+                    # receive current minimum step, and the clientId for next training
+                    step_tensor = torch.zeros([2], dtype=torch.int).cpu()
+                    dist.recv(tensor=step_tensor, src=0)
+                    globalMinStep, nextClientId = step_tensor[0].item(), step_tensor[1].item()
 
-                        if sleepForCommunicate != 0:
-                            time.sleep(sleepForCommunicate/2.0)
+                    if sleepForCommunicate != 0:
+                        time.sleep(sleepForCommunicate/2.0)
 
-                        # reload the training data for the specific clientId
-                        if nextClientId != currentClientId:
-                            logging.info('====Training switch from clientId {} to clientId {}'.format(currentClientId, nextClientId))
-                            currentClientId = nextClientId
-                            reloadClientData = True
-                            sleepForCompute = 0 if currentClientId not in client_cfg else client_cfg[currentClientId][0]
-                            sleepForCommunicate = 0 if currentClientId not in client_cfg else client_cfg[currentClientId][1]
+                    # get the loss of the prior dataset w/ the global model
+                    if numOfUploads % args.validate_interval == 0:
+                        validate_loss, acc = test_model(rank, model, train_data[-1], criterion=criterion)
+                        logging.info("After aggregation, for epoch {}, upload_epoch {}, local step {}, globalStep {}, CumulTime {}, training loss {}, validate_loss {}, validate_accuracy {} \n".format(epoch, numOfUploads, local_step, globalMinStep, time.time() - startTime, epoch_train_loss/float(epoch_train_batch), validate_loss, acc))
+                        model.train()
+                        lossPerUpload = float(validate_loss)
+
+                    # reload the training data for the specific clientId
+                    if nextClientId != currentClientId:
+                        logging.info('====Training switch from clientId {} to clientId {}'.format(currentClientId, nextClientId))
+                        currentClientId = nextClientId
+                        reloadClientData = True
+                        sleepForCompute = 0 if currentClientId not in client_cfg else client_cfg[currentClientId][0]
+                        sleepForCommunicate = 0 if currentClientId not in client_cfg else client_cfg[currentClientId][1]
 
                     rece_dur = time.time() - rece_start
 
-                    if epoch % args.eval_interval == 0:
+                    if numOfUploads % args.eval_interval == 0:
                         test_loss, acc = test_model(rank, model, test_data, criterion=criterion)
-                        logging.info("After aggregation, for epoch {}, CumulTime {}, training loss {}, test_loss {}, test_accuracy {} \n".format(epoch, time.time() - startTime, epoch_train_loss/float(epoch_train_batch), test_loss, acc))
+                        logging.info("After aggregation, for epoch {}, upload_epoch {}, local step {}, globalStep {}, CumulTime {}, training loss {}, test_loss {}, test_accuracy {} \n".format(epoch, numOfUploads, local_step, globalMinStep, time.time() - startTime, epoch_train_loss/float(epoch_train_batch), test_loss, acc))
                         model.train()
+                        needEval = False
 
                 logging.info('LocalStep {}, CumulTime {}, Epoch {}, Batch {}/{}, Loss:{} | TotalTime {} | Comptime: {} | SendTime: {} | ReceTime: {} | Sleep: {} | staleness: {} \n'
                             .format(local_step, time.time() - startTime, epoch, batch_idx, len(train_data[0]), round(loss.data.item(), 4), round(time.time() - it_start, 4), round(it_duration, 4), round(send_dur,4), round(rece_dur, 4), sleepForCompute, local_step - globalMinStep))
 
             except Exception as e:
-                print(str(e))
-                logging.info("====Error: " + str(e) + '\n')
+                exc_type, exc_obj, exc_tb = sys.exc_info()
+                fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
                 print('Should Stop: {}!'.format(stop_flag.value))
+                logging.info("====Error: {}, {}, {}, {}".format(e, exc_type, fname, exc_tb.tb_lineno))
                 break
 
             if time.time() - last_test > args.test_interval:
@@ -449,7 +420,7 @@ if __name__ == "__main__":
     MyManager.register('get_queue')
     MyManager.register('get_param')
     MyManager.register('get_stop_signal')
-    manager = MyManager(address=(args.ps_ip, 5000), authkey=b'queue')
+    manager = MyManager(address=(args.ps_ip, 5001+int(args.gpu_device)), authkey=b'queue')
     manager.connect()
 
     q = manager.get_queue()  # queue for parameter_server signal process
@@ -462,7 +433,9 @@ if __name__ == "__main__":
     if args.total_worker > 0:
         workers = [i for i in range(1, args.total_worker + 1)]
 
-    entire_train_data = partition_dataset(train_dataset, workers, splitTrainRatio, args.sequential, filter_class=args.filter_class)
+    entire_train_data = partition_dataset(train_dataset, workers, splitTrainRatio, args.sequential, 
+                                    filter_class=args.filter_class, arg = {'balanced_client':0, 'param': args.zipf_alpha})
+
     clientIdToRun = report_data_info(this_rank, q, entire_train_data)
 
     train_datas = []
