@@ -122,15 +122,17 @@ def run(rank, model, train_data, test_data, queue, param_q, stop_flag, client_cf
     reloadClientData = False
     numOfUploads = 0
     lossPerUpload = 0
+    local_trained = 0
+    lossValidateClient = currentClientId
 
     sleepForCompute = 0 if currentClientId not in client_cfg else client_cfg[currentClientId][0]
     sleepForCommunicate = 0 if currentClientId not in client_cfg else client_cfg[currentClientId][1]
+    lastGlobalModel = model
 
     for epoch in range(int(args.epochs)):
         model.train()
         epoch_train_loss = 0
         epoch_train_batch = 0
-        local_trained = 0
         needEval = False
 
         if epoch % args.decay_epoch == 0:
@@ -202,6 +204,12 @@ def run(rank, model, train_data, test_data, queue, param_q, stop_flag, client_cf
                     send_start = time.time()
                     numOfUploads += 1
 
+                    # get the loss of the current dataset w/ the last global model
+                    if numOfUploads % args.validate_interval == 0:
+                        validate_loss, acc = test_model(rank, lastGlobalModel, train_data[-1], criterion=criterion)
+                        logging.info("After prior aggregation, for epoch {}, client {}, upload_epoch {}, local step {}, globalStep {}, CumulTime {}, training loss {}, validate_loss {}, validate_accuracy {} \n".format(epoch, currentClientId, numOfUploads, local_step, globalMinStep, time.time() - startTime, epoch_train_loss/float(epoch_train_batch), validate_loss, acc))
+                        lossPerUpload = float(validate_loss)
+
                     # push update to the PS
                     if delta_ws:
                         training_speed = local_trained/(time.time() - last_push_time)
@@ -221,7 +229,6 @@ def run(rank, model, train_data, test_data, queue, param_q, stop_flag, client_cf
                             })
 
                         local_trained = 0
-                        #lossPerUpload = 0
                         last_push_time = time.time()
                         logging.info("====Push updates")
 
@@ -235,9 +242,8 @@ def run(rank, model, train_data, test_data, queue, param_q, stop_flag, client_cf
                         test_loss, acc = test_model(rank, model, test_data, criterion=criterion)
                         logging.info("Before aggregation with client {}, for epoch {}, upload_epoch {}, local step {}, CumulTime {}, training loss {}, test_loss {}, test_accuracy {} \n".format(currentClientId, epoch, numOfUploads, local_step, time.time() - startTime, epoch_train_loss/float(epoch_train_batch), test_loss, acc))
 
-
                     rece_start = time.time()
-                    # local cache is too stale
+                    
                     for idx, param in enumerate(model.parameters()):
                         tmp_tensor = torch.zeros_like(param.data).cpu()
                         dist.recv(tensor=tmp_tensor, src=0)
@@ -248,15 +254,10 @@ def run(rank, model, train_data, test_data, queue, param_q, stop_flag, client_cf
                     dist.recv(tensor=step_tensor, src=0)
                     globalMinStep, nextClientId = step_tensor[0].item(), step_tensor[1].item()
 
+                    lastGlobalModel = model
+
                     if sleepForCommunicate != 0:
                         time.sleep(sleepForCommunicate/2.0)
-
-                    # get the loss of the prior dataset w/ the global model
-                    if numOfUploads % args.validate_interval == 0:
-                        validate_loss, acc = test_model(rank, model, train_data[-1], criterion=criterion)
-                        logging.info("After aggregation, for epoch {}, upload_epoch {}, local step {}, globalStep {}, CumulTime {}, training loss {}, validate_loss {}, validate_accuracy {} \n".format(epoch, numOfUploads, local_step, globalMinStep, time.time() - startTime, epoch_train_loss/float(epoch_train_batch), validate_loss, acc))
-                        model.train()
-                        lossPerUpload = float(validate_loss)
 
                     # reload the training data for the specific clientId
                     if nextClientId != currentClientId:
@@ -289,6 +290,9 @@ def run(rank, model, train_data, test_data, queue, param_q, stop_flag, client_cf
                 test_loss, acc = test_model(rank, model, test_data, criterion=criterion)
                 logging.info("For epoch {}, CumulTime {}, training loss {}, test_loss {}, test_accuracy {} \n".format(epoch, time.time() - startTime, epoch_train_loss/float(epoch_train_batch), test_loss, acc))
                 model.train()
+
+            if reloadClientData:
+                break
 
         # Check the top 1 test accuracy after training
         print("For epoch {}, training loss {}, CumulTime {}, local Step {} ".format(epoch, epoch_train_loss/float(epoch_train_batch), time.time() - startTime, local_step))

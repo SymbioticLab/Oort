@@ -10,14 +10,14 @@ class ClientSampler(object):
         self.mode = mode
         random.seed(123)
 
-        self.ucbSampler = UCB() if self.mode == "bandit" else None
+        self.ucbSampler = UCB()# if self.mode == "bandit" else None
 
     def registerClient(self, hostId, clientId, dis, size, speed = 1.0):
         uniqueId = self.getUniqueId(hostId, clientId)
         self.Clients[uniqueId] = Client(hostId, clientId, dis, size, speed)
 
-        if self.mode == "bandit":
-            self.ucbSampler.registerArm(clientId, 1.0 - dis)
+        #if self.mode == "bandit":
+        self.ucbSampler.registerArm(clientId, 1.0 - dis)
 
     def registerSpeed(self, hostId, clientId, speed):
         uniqueId = self.getUniqueId(hostId, clientId)
@@ -25,8 +25,8 @@ class ClientSampler(object):
 
     def registerScore(self, clientId, reward):
         # currently, we only use distance as reward
-        if self.mode == "bandit":
-            self.ucbSampler.registerReward(clientId, reward)
+        #if self.mode == "bandit":
+        self.ucbSampler.registerReward(clientId, reward)
 
     def getScore(self, hostId, clientId):
         uniqueId = self.getUniqueId(hostId, clientId)
@@ -67,7 +67,7 @@ class ClientSampler(object):
         return self.clientOnHosts[hostId]
 
     def getAllMetrics(self):
-        if self.mode == "bandit":
-            return self.ucbSampler.getAllMetrics()
-        return {}
+        #if self.mode == "bandit":
+        return self.ucbSampler.getAllMetrics()
+        #return {}
 

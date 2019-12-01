@@ -24,16 +24,16 @@ class UCB(object):
         scores = []
 
         for key in self.totalArms.keys():
-            sc = self.totalArms[key][0] + \
-                        math.sqrt(0.1*math.log(self.totalTries)/float(self.totalArms[key][1]))
+            sc = self.totalArms[key][0]# + \
+                        #math.sqrt(0.1*math.log(self.totalTries)/float(self.totalArms[key][1]))
 
             self.totalArms[key][2] = sc
             scores.append(sc)
 
         # static UCB
-        #index = np2.array(scores).argsort()[-numOfSamples:][::-1]
-        scores = np2.array(scores)/float(sum(scores))
-        index = np2.random.choice([i for i in range(1, len(scores) + 1)], size=numOfSamples, p = scores.ravel(), replace=False)
+        index = np2.array(scores).argsort()[-numOfSamples:][::-1] + 1
+        #scores = np2.array(scores)/float(sum(scores))
+        #index = np2.random.choice([i for i in range(1, len(scores) + 1)], size=numOfSamples, p = scores.ravel(), replace=False)
 
         return index
 

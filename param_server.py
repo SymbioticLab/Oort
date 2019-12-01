@@ -360,7 +360,7 @@ def init_dataset():
         sys.exit(-1)
 
     if torch.cuda.is_available():
-        model = model
+        model = model.cuda()
 
     return model, train_dataset, test_dataset
 
