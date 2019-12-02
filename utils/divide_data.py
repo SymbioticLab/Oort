@@ -52,8 +52,13 @@ class DataPartitioner(object):
         self.classPerWorker = None
 
     def getTargets(self):
-        return self.targets
+        tempTarget = self.targets.copy()
 
+        for key in tempTarget:
+            self.rng.shuffle(tempTarget[key])
+
+        return tempTarget
+        
     def getNumOfLabels(self):
         return self.numOfLabels
 
@@ -175,17 +180,13 @@ class DataPartitioner(object):
                 continue
             tempDistr = dit.ScalarDistribution(np.arange(len(tempClassPerWorker[worker])), [c / float(tempDataSize) for c in tempClassPerWorker[worker]])
             self.workerDistance.append(jensen_shannon_divergence([dataDistr, tempDistr]))
-            #logging.info("Worker number " + str(worker) + " has data " + str(tempDataSize) + " tempDistri is " + str(tempDistr) + " and JS divergence is " + str(self.workerDistance[-1]))
-
+            
         logging.info("Raw class per worker is : " + repr(tempClassPerWorker) + '\n')
         logging.info('========= End of Class/Worker =========\n')
 
-        #self.log_selection()
-
-        #print("====Total samples {}, Label types {}, with {} \n".format(self.totalSamples, len(targets.keys()), repr(keyLength)))
-
     def log_selection(self):
         totalLabels = [0 for i in range(len(self.classPerWorker[0]))]
+        logging.info("====Total # of workers is :{}, w/ {} labels, {}, {}".format(len(self.classPerWorker), len(self.classPerWorker[0]), len(self.partitions), len(self.workerDistance)))
 
         for index, row in enumerate(self.classPerWorker):
             rowStr = ''
