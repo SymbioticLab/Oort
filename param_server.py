@@ -131,7 +131,9 @@ def run(model, test_data, queue, param_q, stop_signal, clientSampler):
                 if args.score_mode == "loss":
                     clientSampler.registerScore(clientId, iteration_loss)
                 else:
-                    clientSampler.registerScore(clientId, 1.0 - clientSampler.getScore(rank_src, clientId))
+                    sc = 1.0 - clientSampler.getScore(rank_src, clientId)
+                    clientSampler.registerScore(clientId, sc)
+                    #logging.info("====Score for client {} is {}, now the reward is {}".format(clientId, sc, clientSampler.getClientReward(clientId)))
 
                 if isWorkerEnd:
                     print("Worker {} has completed all its data computation!".format(rank_src))
@@ -157,7 +159,7 @@ def run(model, test_data, queue, param_q, stop_signal, clientSampler):
                 # apply the update into the global model
                 for idx, param in enumerate(model.parameters()):
                     if not args.model_avg:
-                        param.data -= (torch.from_numpy(delta_ws[idx])).cuda()
+                        param.data -= (torch.from_numpy(delta_ws[idx]).cuda())
                     else:
                         if newEpoch == 0:
                             param.data = (torch.from_numpy(delta_ws[idx]).cuda()) * ratioSample
@@ -214,8 +216,8 @@ def run(model, test_data, queue, param_q, stop_signal, clientSampler):
 
                     # resampling the clients if necessary
                     if epoch_count % args.resampling_interval == 0:
-                        logging.info("====Try to resample clients with metrics {}".format(repr(clientSampler.getAllMetrics())))
-                        sampledClients = clientSampler.resampleClients(len(workers), max(args.total_worker, len(workers)))
+                        sampledClients = sorted(clientSampler.resampleClients(len(workers), max(args.total_worker, len(workers))))
+                        logging.info("====Try to resample clients with metrics {}, result is {}".format(repr(clientSampler.getAllMetrics()), repr(sampledClients)))
                         for i, w in enumerate(workers):
                             clientSampler.clientOnHost(sampledClients[i], w)
 
@@ -391,7 +393,7 @@ if __name__ == "__main__":
     MyManager.register('get_queue', callable=lambda: queue)
     MyManager.register('get_param', callable=lambda: param)
     MyManager.register('get_stop_signal', callable=lambda: stop_or_not)
-    manager = MyManager(address=(args.ps_ip, 5001+int(args.gpu_device)), authkey=b'queue')
+    manager = MyManager(address=(args.ps_ip, args.manager_port+10*int(args.gpu_device)), authkey=b'queue')
     manager.start()
     
     q = manager.get_queue()  # queue for parameter_server signal process

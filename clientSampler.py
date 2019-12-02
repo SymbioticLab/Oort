@@ -49,13 +49,13 @@ class ClientSampler(object):
         self.clientOnHosts[hostId] = clientId
 
     def getSampleRatio(self, clientId, hostId):
-        totalSampleInTraining = 0.
+        # totalSampleInTraining = 0.
 
-        for key in self.clientOnHosts:
-            uniqueId = self.getUniqueId(key, self.clientOnHosts[key])
-            totalSampleInTraining += self.Clients[uniqueId].size
+        # for key in self.clientOnHosts:
+        #     uniqueId = self.getUniqueId(key, self.clientOnHosts[key])
+        #     totalSampleInTraining += self.Clients[uniqueId].size
 
-        return (float(self.Clients[self.getUniqueId(hostId, clientId)].size)/totalSampleInTraining)
+        return (1.0/len(self.clientOnHosts.keys()))#float(self.Clients[self.getUniqueId(hostId, clientId)].size)/totalSampleInTraining)
 
     def resampleClients(self, numOfClients, totalClients):
         if self.mode == "bandit":
@@ -70,4 +70,7 @@ class ClientSampler(object):
         #if self.mode == "bandit":
         return self.ucbSampler.getAllMetrics()
         #return {}
+
+    def getClientReward(self, clientId):
+        return self.ucbSampler.getClientReward(clientId)
 

@@ -6,3 +6,4 @@ server*.lsf
 *save*
 *pyc
 *log
+./scripts/log/*

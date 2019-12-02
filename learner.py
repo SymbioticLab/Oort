@@ -59,6 +59,7 @@ os.environ['MASTER_PORT'] = str(int(args.ps_port) + int(args.gpu_device))
 # os.environ['MKL_NUM_THREADS'] = args.threads
 
 clientIdToRun = args.this_rank
+workers = [int(v) for v in str(args.learners).split('-')]
 
 logging.info("===== Experiment start =====")
 
@@ -140,7 +141,7 @@ def run(rank, model, train_data, test_data, queue, param_q, stop_flag, client_cf
 
         if reloadClientData:
             train_data = []
-            train_data.append(select_dataset(workers, nextClientId, entire_train_data, batch_size=train_bsz))
+            train_data.append(select_dataset(nextClientId, entire_train_data, batch_size=train_bsz))
             train_data_itr = [iter(data) for data in train_data]
             reloadClientData = False
 
@@ -415,7 +416,6 @@ if __name__ == "__main__":
     model, train_dataset, test_dataset, client_cfg = init_dataset()
 
     splitTrainRatio = []
-    workers = [int(v) for v in str(args.learners).split('-')]
 
     # Initialize PS - client communication channel
     world_size = len(workers) + 1
@@ -424,7 +424,7 @@ if __name__ == "__main__":
     MyManager.register('get_queue')
     MyManager.register('get_param')
     MyManager.register('get_stop_signal')
-    manager = MyManager(address=(args.ps_ip, 5001+int(args.gpu_device)), authkey=b'queue')
+    manager = MyManager(address=(args.ps_ip, args.manager_port+10*int(args.gpu_device)), authkey=b'queue')
     manager.connect()
 
     q = manager.get_queue()  # queue for parameter_server signal process
@@ -434,11 +434,19 @@ if __name__ == "__main__":
 
     # Split the dataset
     # total_worker != 0 indicates we create more virtual clients for simulation
-    if args.total_worker > 0:
+    if args.total_worker > 0 and args.duplicate_data == 1:
         workers = [i for i in range(1, args.total_worker + 1)]
 
-    entire_train_data = partition_dataset(train_dataset, workers, splitTrainRatio, args.sequential, 
-                                    filter_class=args.filter_class, arg = {'balanced_client':0, 'param': args.zipf_alpha})
+    # load data partitioner (entire_train_data)
+    entire_train_data = DataPartitioner(train_dataset)
+
+    dataDistribution = [int(x) for x in args.sequential.split('-')]
+    distributionParam = [float(x) for x in args.zipf_alpha.split('-')]
+
+    for i in range(args.duplicate_data):
+        partition_dataset(entire_train_data, workers, splitTrainRatio, dataDistribution[i], 
+                                    filter_class=args.filter_class, arg = {'balanced_client':0, 'param': distributionParam[i]})
+    entire_train_data.log_selection()
 
     clientIdToRun = report_data_info(this_rank, q, entire_train_data)
 
@@ -446,15 +454,16 @@ if __name__ == "__main__":
 
     if args.single_sim != 0:
         for rank in workers:
-            train_datas.append(select_dataset(workers, rank, entire_train_data, batch_size=train_bsz))
+            train_datas.append(select_dataset(rank, entire_train_data, batch_size=train_bsz))
     else:
-        train_datas.append(select_dataset(workers, clientIdToRun, entire_train_data, batch_size=train_bsz))
+        train_datas.append(select_dataset(clientIdToRun, entire_train_data, batch_size=train_bsz))
 
     testWorkers = workers
     splitTestRatio = []
 
-    test_data = partition_dataset(test_dataset, [1], splitTestRatio)
-    test_data = select_dataset(testWorkers, this_rank, test_data, batch_size=test_bsz, istest=True)
+    testsetPartitioner = DataPartitioner(test_dataset)
+    partition_dataset(testsetPartitioner, [1], splitTestRatio)
+    test_data = select_dataset(this_rank, testsetPartitioner, batch_size=test_bsz, istest=True)
 
     stop_flag = Value(c_bool, False)
     init_myprocesses(this_rank, world_size, model, train_datas, test_data,

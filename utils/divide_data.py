@@ -26,37 +26,55 @@ class DataPartitioner(object):
 
     # len(sizes) is the number of workers
     # sequential 1-> random 2->zipf 3-> identical
-    def __init__(self, data, sizes=None, sequential=0, ratioOfClassWorker=None, filter_class=0, seed=10, args = None):
-        
-        self.data = data
+    def __init__(self, data, seed=10):
         self.partitions = []
-        targets = {}
-        indexToLabel = {}
-
-        rng = Random()
-        rng.seed(seed)
+        self.rng = Random()
+        self.rng.seed(seed)
+        self.data = data
         np.random.seed(seed)
-        totalSamples = 0
-        usedSamples = 100000
+
+
+        self.targets = {}
+        self.indexToLabel = {}
+        self.totalSamples = 0
 
         # categarize the samples
-        for index, (inputs, label) in enumerate(data):
-            if label not in targets:
-                targets[label] = []
-            targets[label].append(index)
-            indexToLabel[index] = label
-            totalSamples += 1
+        for index, (inputs, label) in enumerate(self.data):
+            if label not in self.targets:
+                self.targets[label] = []
+            self.targets[label].append(index)
+            self.indexToLabel[index] = label
+            self.totalSamples += 1
 
+        self.data_len = len(self.data)
+        self.numOfLabels = len(self.targets.keys())
+        self.workerDistance = []
+        self.classPerWorker = None
+
+    def getTargets(self):
+        return self.targets
+
+    def getNumOfLabels(self):
+        return self.numOfLabels
+
+    def getDataLen(self):
+        return self.data_len
+
+    def partitionData(self, sizes=None, sequential=0, ratioOfClassWorker=None, filter_class=0, args = None):
+        targets = self.getTargets()
+        numOfLabels = self.getNumOfLabels()
+        data_len = self.getDataLen()
+
+        usedSamples = 100000
         keyDir = {key:i for i, key in enumerate(targets.keys())}
         keyLength = [len(targets[key]) for key in targets.keys()]
 
         # classPerWorker -> Rows are workers and cols are classes
-        self.classPerWorker = np.zeros([len(sizes), len(list(targets.keys()))])
-        data_len = len(data)
-
+        tempClassPerWorker = np.zeros([len(sizes), numOfLabels])
+        
         if sequential == 0:
             indexes = [x for x in range(0, data_len)]
-            rng.shuffle(indexes)
+            self.rng.shuffle(indexes)
 
             for ratio in sizes:
                 part_len = int(ratio * data_len)
@@ -65,13 +83,13 @@ class DataPartitioner(object):
 
             for id, partition in enumerate(self.partitions):
                 for index in partition:
-                    self.classPerWorker[id][indexToLabel[index]] += 1
+                    tempClassPerWorker[id][self.indexToLabel[index]] += 1
         else:
             logging.info('========= Start of Class/Worker =========\n')
 
             # deal with the balanced dataset
             if args['balanced_client'] > 0:
-                balanced_class_len = int(sizes[i] * data_len/len(targets.keys()))
+                balanced_class_len = int(sizes[i] * data_len/numOfLabels)
 
                 for i in range(args['balanced_client']):
                     balacned_class_set = []
@@ -81,31 +99,30 @@ class DataPartitioner(object):
                         targets[key] = targets[key][balanced_class_len:]
 
                     self.partitions.append(balacned_class_set)
-                    rng.shuffle(self.partitions[-1])
+                    self.rng.shuffle(self.partitions[-1])
 
-                    logging.info(repr([balanced_class_len for i in range(len(targets.keys()))]) + '\n')
+                    logging.info(repr([balanced_class_len for i in range(numOfLabels)]) + '\n')
 
                 sizes = sizes[args['balanced_client']:]
 
             if ratioOfClassWorker is None:
                 # random distribution
                 if sequential == 1:
-                    ratioOfClassWorker = np.random.rand(len(sizes), len(targets.keys()))
+                    ratioOfClassWorker = np.random.rand(len(sizes), numOfLabels)
                 # zipf distribution
                 elif sequential == 2:
-                    ratioOfClassWorker = np.random.zipf(args['param'], [len(sizes), len(targets.keys())])
+                    ratioOfClassWorker = np.random.zipf(args['param'], [len(sizes), numOfLabels])
                     logging.info("==== Load Zipf Distribution ====\n {} \n".format(repr(ratioOfClassWorker)))
                     ratioOfClassWorker = ratioOfClassWorker.astype(np.float32)
                 else:
-                    ratioOfClassWorker = np.ones((len(sizes), len(targets.keys()))).astype(np.float32)
+                    ratioOfClassWorker = np.ones((len(sizes), numOfLabels)).astype(np.float32)
 
             if filter_class > 0:
                 for w in range(len(sizes)):
                     # randomly filter classes
-                    wrandom = rng.sample(range(len(targets.keys())), filter_class)
+                    wrandom = self.rng.sample(range(numOfLabels), filter_class)
                     for wr in wrandom:
                         ratioOfClassWorker[w][wr] = 0.001
-
 
             # normalize the ratios
             if sequential == 1 or sequential == 3:
@@ -118,12 +135,11 @@ class DataPartitioner(object):
                     # enumerate the ratio of classes it should take
                     for c in list(targets.keys()):
                         takeLength = min(floor(usedSamples * ratioOfClassWorker[worker][keyDir[c]]), keyLength[keyDir[c]])
-                        rng.shuffle(targets[c])
+                        self.rng.shuffle(targets[c])
                         self.partitions[-1] += targets[c][0:takeLength]
-                        self.classPerWorker[worker][keyDir[c]] += takeLength
-                        #targets[c] = targets[c][takeLength:]
+                        tempClassPerWorker[worker][keyDir[c]] += takeLength
 
-                    rng.shuffle(self.partitions[-1])
+                    self.rng.shuffle(self.partitions[-1])
             else:
                 sumRatiosPerClass = np.sum(ratioOfClassWorker, axis=0)
                 for c in targets.keys():
@@ -136,33 +152,37 @@ class DataPartitioner(object):
                     for c in list(targets.keys()):
                         takeLength = floor(keyLength[keyDir[c]] * ratioOfClassWorker[worker][keyDir[c]])
                         self.partitions[-1] += targets[c][0:takeLength]
-                        self.classPerWorker[worker][keyDir[c]] += takeLength
+                        tempClassPerWorker[worker][keyDir[c]] += takeLength
                         targets[c] = targets[c][takeLength:]
 
-                    rng.shuffle(self.partitions[-1])
+                    self.rng.shuffle(self.partitions[-1])
+
+        # concatenate ClassPerWorker
+        if self.classPerWorker is None:
+            self.classPerWorker = tempClassPerWorker
+        else:
+            self.classPerWorker = np.concatenate((self.classPerWorker, tempClassPerWorker), axis=0)
 
         # Calculates statistical distances
         # Overall data distribution
-        self.workerDistance = []
         totalDataSize = sum(keyLength)
         dataDistr = dit.ScalarDistribution(np.arange(len(keyLength)), [key / float(totalDataSize) for key in keyLength])
 
         # Caculates Jensen-Shannon Divergence for each worker
         for worker in range(len(sizes)):
-            tempDataSize = sum(self.classPerWorker[worker])
+            tempDataSize = sum(tempClassPerWorker[worker])
             if tempDataSize == 0:
                 continue
-            tempDistr = dit.ScalarDistribution(np.arange(len(self.classPerWorker[worker])), [c / float(tempDataSize) for c in self.classPerWorker[worker]])
+            tempDistr = dit.ScalarDistribution(np.arange(len(tempClassPerWorker[worker])), [c / float(tempDataSize) for c in tempClassPerWorker[worker]])
             self.workerDistance.append(jensen_shannon_divergence([dataDistr, tempDistr]))
             #logging.info("Worker number " + str(worker) + " has data " + str(tempDataSize) + " tempDistri is " + str(tempDistr) + " and JS divergence is " + str(self.workerDistance[-1]))
 
-        logging.info("Distance Vector is: " + str(self.workerDistance))
-        logging.info("Raw class per worker is : " + repr(self.classPerWorker) + '\n')
+        logging.info("Raw class per worker is : " + repr(tempClassPerWorker) + '\n')
         logging.info('========= End of Class/Worker =========\n')
 
-        self.log_selection()
+        #self.log_selection()
 
-        print("====Total samples {}, Label types {}, with {} \n".format(totalSamples, len(targets.keys()), repr(keyLength)))
+        #print("====Total samples {}, Label types {}, with {} \n".format(self.totalSamples, len(targets.keys()), repr(keyLength)))
 
     def log_selection(self):
         totalLabels = [0 for i in range(len(self.classPerWorker[0]))]
@@ -175,7 +195,7 @@ class DataPartitioner(object):
                 totalLabels[i] += label
                 numSamples += label
 
-            logging.info(str(index) + ':\t' + rowStr + '\n' + 'with sum:\t' + str(numSamples) + '\t' + repr(len(self.partitions[index]))+'\n')
+            logging.info(str(index) + ':\t' + rowStr + '\n' + 'with sum:\t' + str(numSamples) + '\t' + repr(len(self.partitions[index]))+ '\nDistance: ' + str(self.workerDistance[index])+ '\n')
             logging.info("=====================================\n")
 
         logging.info("Total selected samples is: {}, with {}\n".format(str(sum(totalLabels)), repr(totalLabels)))
@@ -184,7 +204,8 @@ class DataPartitioner(object):
     def use(self, partition, istest):
         _partition = -1 if istest else partition
 
-        print("====Data length for client {} is {}".format(partition, len(self.partitions[_partition])))
+        logging.info("====Data length for client {} is {}".format(partition, len(self.partitions[_partition])))
+        self.rng.shuffle(self.partitions[_partition])
         return Partition(self.data, self.partitions[_partition])
 
     def getDistance(self):
@@ -194,7 +215,7 @@ class DataPartitioner(object):
         # return the size of samples
         return [len(partition) for partition in self.partitions]
 
-def partition_dataset(dataset, workers, partitionRatio=[], sequential=0, ratioOfClassWorker=None, filter_class=0, arg={'balanced_client':0, 'param': 1.95}):
+def partition_dataset(partitioner, workers, partitionRatio=[], sequential=0, ratioOfClassWorker=None, filter_class=0, arg={'balanced_client':0, 'param': 1.95}):
     """ Partitioning Data """
     workers_num = len(workers)
     partition_sizes = [1.0 / workers_num for _ in range(workers_num)]
@@ -202,13 +223,10 @@ def partition_dataset(dataset, workers, partitionRatio=[], sequential=0, ratioOf
     if len(partitionRatio) > 0:
         partition_sizes = partitionRatio
 
-    partition = DataPartitioner(data=dataset, sizes=partition_sizes, sequential=sequential, ratioOfClassWorker=ratioOfClassWorker,filter_class=filter_class, args=arg)
-    return partition
+    partitioner.partitionData(sizes=partition_sizes, sequential=sequential, ratioOfClassWorker=ratioOfClassWorker,filter_class=filter_class, args=arg)
 
-
-def select_dataset(workers: list, rank: int, partition: DataPartitioner, batch_size: int, istest=False):
-    workers_num = len(workers)
-    partition_dict = {workers[i]: i for i in range(workers_num)}
-    partition = partition.use(partition_dict[rank], istest)
+def select_dataset(rank: int, partition: DataPartitioner, batch_size: int, istest=False):
+    #workers_num = len(workers)
+    #partition_dict = {workers[i]: i for i in range(workers_num)}
+    partition = partition.use(rank - 1, istest)
     return DataLoader(partition, batch_size=batch_size, shuffle=True, pin_memory=True, num_workers=0)
-
