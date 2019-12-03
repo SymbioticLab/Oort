@@ -4,8 +4,9 @@ from torch.utils.data import DataLoader
 import numpy as np
 from math import *
 import logging
-import dit,numpy as np
-from dit.divergences import jensen_shannon_divergence
+from scipy import stats
+import numpy as np
+from pyemd import emd
 
 class Partition(object):
     """ Dataset partitioning helper """
@@ -64,6 +65,40 @@ class DataPartitioner(object):
 
     def getDataLen(self):
         return self.data_len
+
+    # Calculates JSD between pairs of distribution
+    def js_distance(self, x, y):
+        m = (x + y)/2
+        js = 0.5 * stats.entropy(x, m) + 0.5 * stats.entropy(y, m)
+        return js
+
+    # Caculates Jensen-Shannon Divergence for each worker
+    def get_JSD(self, dataDistr, tempClassPerWorker, sizes):
+        for worker in range(len(sizes)):
+            tempDataSize = sum(tempClassPerWorker[worker])
+            if tempDataSize == 0:
+                continue
+            tempDistr =np.array([c / float(tempDataSize) for c in tempClassPerWorker[worker]])
+            self.workerDistance.append(self.js_distance(dataDistr, tempDistr))
+
+    # Generates a distance matrix for EMD
+    def generate_distance_matrix(self, size):
+        m = np.zeros((size,size))
+        for i in range(size):
+            for j in range(size):
+                m[i][j] = abs(j - i)
+        return m
+
+    # Caculates Earth Mover's Distance for each worker
+    def get_EMD(self, dataDistr, tempClassPerWorker, sizes):
+        dist_matrix = self.generate_distance_matrix(len(dataDistr))
+        for worker in range(len(sizes)):
+            tempDataSize = sum(tempClassPerWorker[worker])
+            if tempDataSize == 0:
+                continue
+            tempDistr =np.array([c / float(tempDataSize) for c in tempClassPerWorker[worker]])
+            self.workerDistance.append(emd(dataDistr, tempDistr, dist_matrix))
+
 
     def partitionData(self, sizes=None, sequential=0, ratioOfClassWorker=None, filter_class=0, args = None):
         targets = self.getTargets()
@@ -169,17 +204,10 @@ class DataPartitioner(object):
             self.classPerWorker = np.concatenate((self.classPerWorker, tempClassPerWorker), axis=0)
 
         # Calculates statistical distances
-        # Overall data distribution
         totalDataSize = sum(keyLength)
-        dataDistr = dit.ScalarDistribution(np.arange(len(keyLength)), [key / float(totalDataSize) for key in keyLength])
-
-        # Caculates Jensen-Shannon Divergence for each worker
-        for worker in range(len(sizes)):
-            tempDataSize = sum(tempClassPerWorker[worker])
-            if tempDataSize == 0:
-                continue
-            tempDistr = dit.ScalarDistribution(np.arange(len(tempClassPerWorker[worker])), [c / float(tempDataSize) for c in tempClassPerWorker[worker]])
-            self.workerDistance.append(jensen_shannon_divergence([dataDistr, tempDistr]))
+        # Overall data distribution
+        dataDistr = np.array([key / float(totalDataSize) for key in keyLength])
+        self.get_JSD(dataDistr, tempClassPerWorker, sizes)
             
         logging.info("Raw class per worker is : " + repr(tempClassPerWorker) + '\n')
         logging.info('========= End of Class/Worker =========\n')
