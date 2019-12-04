@@ -99,6 +99,17 @@ class DataPartitioner(object):
             tempDistr =np.array([c / float(tempDataSize) for c in tempClassPerWorker[worker]])
             self.workerDistance.append(emd(dataDistr, tempDistr, dist_matrix))
 
+    def generate_distance_matrix_v2(self, size):
+        return np.logical_xor(1, np.identity(size)) * 1.0
+
+    def get_EMD_v2(self, dataDistr, tempClassPerWorker, sizes):
+        dist_matrix = self.generate_distance_matrix_v2(len(dataDistr))
+        for worker in range(len(sizes)):
+            tempDataSize = sum(tempClassPerWorker[worker])
+            if tempDataSize == 0:
+                continue
+            tempDistr =np.array([c / float(tempDataSize) for c in tempClassPerWorker[worker]])
+            self.workerDistance.append(emd(dataDistr, tempDistr, dist_matrix))
 
     def partitionData(self, sizes=None, sequential=0, ratioOfClassWorker=None, filter_class=0, args = None):
         targets = self.getTargets()
