@@ -31,13 +31,13 @@ class UCB(object):
             clientIds.append(key)
 
         # static UCB
-        #index = np2.array(scores).argsort()[-numOfSamples:][::-1] + 1
+        index = np2.array(scores).argsort()[-numOfSamples:][::-1] + 1
         scores = np2.array(scores)/float(sum(scores))
 
         for i, clientId in enumerate(clientIds):
             self.totalArms[clientId][2] = scores[i]
 
-        index = np2.random.choice(clientIds, size=numOfSamples, p = scores.ravel(), replace=False)
+        #index = np2.random.choice(clientIds, size=numOfSamples, p = scores.ravel(), replace=False)
 
         return index
 

@@ -45,7 +45,7 @@ torch.cuda.set_device(args.gpu_device)
 
 def initiate_sampler_query(numOfClients):
     # Initiate the clientSampler 
-    clientSampler = ClientSampler(args.sample_mode)
+    clientSampler = ClientSampler(args.sample_mode, args.score_mode)
     collectedClients = 0
     initial_time = time.time()
 
