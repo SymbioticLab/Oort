@@ -5,3 +5,6 @@
 #BSUB -R "span[ptile=10]"               # limit 40 processes per node. See note above about HT
 #BSUB -q gpu_p100                       # choose the queue to use: normal or large_memory
 #BSUB -u fanlai@umich.edu                 # email address to send notifications
+
+source /gpfs/gpfs0/groups/chowdhury/jcgu/script/pytorch_install.sh
+source /gpfs/gpfs0/groups/chowdhury/jcgu/mxib/torch1129/bin/activate

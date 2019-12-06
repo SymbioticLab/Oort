@@ -296,13 +296,14 @@ def run(rank, model, train_data, test_data, queue, param_q, stop_flag, client_cf
                 break
 
         # Check the top 1 test accuracy after training
-        print("For epoch {}, training loss {}, CumulTime {}, local Step {} ".format(epoch, epoch_train_loss/float(epoch_train_batch), time.time() - startTime, local_step))
+        # print("For epoch {}, training loss {}, CumulTime {}, local Step {} ".format(epoch, epoch_train_loss/float(epoch_train_batch), time.time() - startTime, local_step))
         #test_loss, acc = test_model(rank, model, test_data, criterion=criterion)
         #logging.info("For epoch {}, CumulTime {}, training loss {}, test_loss {}, test_accuracy {} \n".format(epoch, time.time() - startTime, epoch_train_loss/float(epoch_train_batch), test_loss, acc))
         last_test = time.time()
 
         #if stop_flag.value:
         #    break
+
     queue.put({rank: [[], [], [], True, -1, -1]})
     print("Worker {} has completed epoch {}!".format(args.this_rank, epoch))
 
@@ -367,7 +368,7 @@ def init_dataset():
     elif args.data_set == "imagenet":
         train_transform, test_transform = get_data_transform('imagenet')
         train_dataset = datasets.ImageNet(args.data_dir, split='train', download=True, transform=train_transform)
-        test_dataset = datasets.ImageNet(args.data_dir, split='train', download=True, transform=train_transform)
+        test_dataset = datasets.ImageNet(args.data_dir, split='val', download=True, transform=test_transform)
 
         model = tormodels.__dict__[args.model]()
     elif args.data_set == 'emnist':

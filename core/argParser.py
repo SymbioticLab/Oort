@@ -12,7 +12,7 @@ parser.add_argument('--total_worker', type=int, default=0)
 parser.add_argument('--duplicate_data', type=int, default=1)
 
 # The configuration of model and dataset
-parser.add_argument('--data_dir', type=str, default='/tmp/')
+parser.add_argument('--data_dir', type=str, default='~/cifar10/')
 parser.add_argument('--save_path', type=str, default='./')
 parser.add_argument('--client_path', type=str, default='/tmp/client.cfg')
 parser.add_argument('--model', type=str, default='resnet')
@@ -52,4 +52,5 @@ parser.add_argument('--eval_interval', type=int, default=5)
 parser.add_argument('--gpu_device', type=int, default=0)
 parser.add_argument('--zipf_alpha', type=str, default='5')
 parser.add_argument('--timeout', type=float, default=9999999)
+
 args = parser.parse_args()
