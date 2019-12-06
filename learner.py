@@ -367,8 +367,8 @@ def init_dataset():
 
     elif args.data_set == "imagenet":
         train_transform, test_transform = get_data_transform('imagenet')
-        train_dataset = datasets.ImageNet(args.data_dir, split='train', download=True, transform=train_transform)
-        test_dataset = datasets.ImageNet(args.data_dir, split='val', download=True, transform=test_transform)
+        train_dataset = datasets.ImageNet(args.data_dir, split='train', download=False, transform=train_transform)
+        test_dataset = datasets.ImageNet(args.data_dir, split='val', download=False, transform=test_transform)
 
         model = tormodels.__dict__[args.model]()
     elif args.data_set == 'emnist':
