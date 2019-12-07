@@ -37,6 +37,8 @@ trainloss_file = '/tmp/trainloss' + args.model + '.txt'
 staleness_file = '/tmp/staleness' + args.model + ".txt"
 os.environ['MASTER_ADDR'] = args.ps_ip
 os.environ['MASTER_PORT'] = str(int(args.ps_port) + int(args.gpu_device))
+os.environ['NCCL_SOCKET_IFNAME'] = 'ib0'
+os.environ['GLOO_SOCKET_IFNAME'] = 'ib0'
 # os.environ['OMP_NUM_THREADS'] = args.threads
 # os.environ['MKL_NUM_THREADS'] = args.threads
 
@@ -247,23 +249,17 @@ def run(model, test_data, queue, param_q, stop_signal, clientSampler):
                 if len(workersToSend) > 0:
                     send_start = time.time()
                     for idx, param in enumerate(model.parameters()):
-                        pendingSend = []    # working channels in communication
-                        for worker in workersToSend:
-                            pendingSend.append(dist.isend(tensor=(param.data).cpu(), dst=worker))
-                            #dist.send(tensor=(param.data/float(normWeight)).cpu(), dst=worker)
-                        for item in pendingSend:
-                            item.wait()
+                        #for worker in workersToSend:
+                        dist.broadcast(tensor=param.data.cuda(), src=0)
 
-                    pendingSend = []
-                    for worker in workersToSend:
-                        pendingSend.append(dist.isend(tensor=torch.tensor([currentMinStep, clientSampler.getCurrentClientId(worker)], dtype=torch.int).cpu(), dst=worker))
-                        #dist.send(tensor=torch.tensor([currentMinStep, clientSampler.getCurrentClientId(worker)], dtype=torch.int).cpu(), dst=worker)
+                    clientIdsToRun = [currentMinStep]
+                    for worker in workersToSend:  
                         learner_cache_step[worker] = currentMinStep
+                        clientIdsToRun.append(clientSampler.getCurrentClientId(worker))
                         # remove from the pending workers
                         del pendingWorkers[worker]
 
-                    for item in pendingSend:
-                        item.wait()
+                    dist.broadcast(tensor=torch.tensor(clientIdsToRun, dtype=torch.int).cuda(), src=0)
 
                     if global_update % args.display_step == 0:
                         logging.info("Handle Wight {} | Send {}".format(handle_dur, time.time() - send_start))
@@ -297,10 +293,13 @@ def init_myprocesses(rank, size, model, test_data, queue, param_q, stop_signal, 
     workerRanks = [int(v) for v in str(args.learners).split('-')]
     clientSampler = initiate_sampler_query(len(workerRanks))
     
+    clientIdsToRun = []
     for wrank in workerRanks:
         nextClientIdToRun = clientSampler.nextClientIdToRun(hostId=wrank)
         clientSampler.clientOnHost(nextClientIdToRun, wrank)
-        dist.send(tensor=torch.tensor([nextClientIdToRun], dtype=torch.int).cpu(), dst=wrank)
+        clientIdsToRun.append(nextClientIdToRun)
+    
+    dist.broadcast(tensor=torch.tensor(clientIdsToRun, dtype=torch.int).cuda(), src=0)
 
     # Start the PS service
     fn(model, test_data, queue, param_q, stop_signal, clientSampler)

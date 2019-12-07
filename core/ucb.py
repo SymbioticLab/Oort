@@ -7,6 +7,10 @@ class UCB(object):
         self.totalArms = {}
         self.totalTries = 0
         self.alpha = 0.8
+
+        self.exploration = 0.2
+        self.exploitation = 1.0 - self.exploration
+
         np2.random.seed(123)
 
     def registerArm(self, armId, reward):
@@ -30,8 +34,15 @@ class UCB(object):
             scores.append(sc)
             clientIds.append(key)
 
-        # static UCB
-        index = np2.array(scores).argsort()[-numOfSamples:][::-1] + 1
+        # static UCB, take the top-k
+        index = np2.array(scores).argsort()[-int(numOfSamples*self.exploitation):][::-1] + 1
+
+        # exploration 
+        while len(index) < numOfSamples:
+            nextId = np2.random.randint(low=1, high=len(scores) + 1, size=1)
+            if nextId not in index:
+                index.append(nextId)
+
         scores = np2.array(scores)/float(sum(scores))
 
         for i, clientId in enumerate(clientIds):

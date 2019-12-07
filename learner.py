@@ -55,10 +55,13 @@ logging.basicConfig(format='%(asctime)s,%(msecs)d %(levelname)s %(message)s',
 entire_train_data = None
 os.environ['MASTER_ADDR'] = args.ps_ip
 os.environ['MASTER_PORT'] = str(int(args.ps_port) + int(args.gpu_device))
+os.environ['NCCL_SOCKET_IFNAME'] = 'ib0'
+os.environ['GLOO_SOCKET_IFNAME'] = 'ib0'
 # os.environ['OMP_NUM_THREADS'] = args.threads
 # os.environ['MKL_NUM_THREADS'] = args.threads
 
 clientIdToRun = args.this_rank
+world_size = 0
 workers = [int(v) for v in str(args.learners).split('-')]
 
 logging.info("===== Experiment start =====")
@@ -140,10 +143,13 @@ def run(rank, model, train_data, test_data, queue, param_q, stop_flag, client_cf
             learning_rate = max(0.001, learning_rate * args.decay_factor)
 
         if reloadClientData:
+            # release the threads in dataloader
+            del train_data, train_data_itr
             train_data = []
+            reloadClientData = False
+            #time.sleep(0.05)
             train_data.append(select_dataset(nextClientId, entire_train_data, batch_size=train_bsz))
             train_data_itr = [iter(data) for data in train_data]
-            reloadClientData = False
 
         for batch_idx in range(len(train_data[-1])):
             # for every mini-batch/iteration
@@ -239,21 +245,19 @@ def run(rank, model, train_data, test_data, queue, param_q, stop_flag, client_cf
                     rece_dur = 0
 
                     #if globalMinStep < local_step - args.stale_threshold or args.force_read:
-                    if numOfUploads % args.eval_interval == 0:
+                    if numOfUploads % args.eval_interval_prior == 0:
                         test_loss, acc = test_model(rank, model, test_data, criterion=criterion)
                         logging.info("Before aggregation with client {}, for epoch {}, upload_epoch {}, local step {}, CumulTime {}, training loss {}, test_loss {}, test_accuracy {} \n".format(currentClientId, epoch, numOfUploads, local_step, time.time() - startTime, epoch_train_loss/float(epoch_train_batch), test_loss, acc))
 
                     rece_start = time.time()
                     
                     for idx, param in enumerate(model.parameters()):
-                        tmp_tensor = torch.zeros_like(param.data).cpu()
-                        dist.recv(tensor=tmp_tensor, src=0)
-                        param.data = tmp_tensor.cuda()
+                        dist.broadcast(tensor=param.data, src=0)
 
                     # receive current minimum step, and the clientId for next training
-                    step_tensor = torch.zeros([2], dtype=torch.int).cpu()
-                    dist.recv(tensor=step_tensor, src=0)
-                    globalMinStep, nextClientId = step_tensor[0].item(), step_tensor[1].item()
+                    step_tensor = torch.zeros([world_size], dtype=torch.int).cuda()
+                    dist.broadcast(tensor=step_tensor, src=0)
+                    globalMinStep, nextClientId = step_tensor[0].item(), step_tensor[args.this_rank].item()
 
                     lastGlobalModel = model
 
@@ -270,7 +274,7 @@ def run(rank, model, train_data, test_data, queue, param_q, stop_flag, client_cf
 
                     rece_dur = time.time() - rece_start
 
-                    if numOfUploads % args.eval_interval == 0:
+                    if numOfUploads % int(args.eval_interval) == 0:
                         test_loss, acc = test_model(rank, model, test_data, criterion=criterion)
                         logging.info("After aggregation, for epoch {}, upload_epoch {}, local step {}, globalStep {}, CumulTime {}, training loss {}, test_loss {}, test_accuracy {} \n".format(epoch, numOfUploads, local_step, globalMinStep, time.time() - startTime, epoch_train_loss/float(epoch_train_batch), test_loss, acc))
                         model.train()
@@ -314,9 +318,9 @@ def report_data_info(rank, queue, entire_train_data):
     })
 
     # get the partitionId to run
-    clientIdToRun = torch.zeros([1], dtype=torch.int).cpu()
-    dist.recv(tensor=clientIdToRun, src=0)
-    return clientIdToRun.item()
+    clientIdToRun = torch.zeros([world_size - 1], dtype=torch.int).cuda()
+    dist.broadcast(tensor=clientIdToRun, src=0)
+    return clientIdToRun[args.this_rank - 1].item()
 
 def init_myprocesses(rank, size, model,
                    train_dataset, test_dataset,
@@ -439,7 +443,9 @@ if __name__ == "__main__":
         workers = [i for i in range(1, args.total_worker + 1)]
 
     # load data partitioner (entire_train_data)
-    entire_train_data = DataPartitioner(train_dataset)
+    dataConf = os.path.join(args.data_dir, 'sampleConf') if args.data_set == 'imagenet' else None
+
+    entire_train_data = DataPartitioner(data=train_dataset, splitConfFile=dataConf)
 
     dataDistribution = [int(x) for x in args.sequential.split('-')]
     distributionParam = [float(x) for x in args.zipf_alpha.split('-')]
@@ -462,7 +468,7 @@ if __name__ == "__main__":
     testWorkers = workers
     splitTestRatio = []
 
-    testsetPartitioner = DataPartitioner(test_dataset)
+    testsetPartitioner = DataPartitioner(data=test_dataset, isTest=True)
     partition_dataset(testsetPartitioner, [1], splitTestRatio)
     test_data = select_dataset(this_rank, testsetPartitioner, batch_size=test_bsz, istest=True)
 

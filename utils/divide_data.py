@@ -27,7 +27,7 @@ class DataPartitioner(object):
 
     # len(sizes) is the number of workers
     # sequential 1-> random 2->zipf 3-> identical
-    def __init__(self, data, seed=10):
+    def __init__(self, data, seed=10, splitConfFile=None, isTest=False):
         self.partitions = []
         self.rng = Random()
         self.rng.seed(seed)
@@ -38,16 +38,37 @@ class DataPartitioner(object):
         self.targets = {}
         self.indexToLabel = {}
         self.totalSamples = 0
-
-        # categarize the samples
-        for index, (inputs, label) in enumerate(self.data):
-            if label not in self.targets:
-                self.targets[label] = []
-            self.targets[label].append(index)
-            self.indexToLabel[index] = label
-            self.totalSamples += 1
-
         self.data_len = len(self.data)
+
+        if isTest:
+            # randomly generate some
+            # categarize the samples
+            self.targets[0] = []
+            for index in range(self.data_len):
+                self.targets[0].append(index)
+                self.indexToLabel[index] = 0
+                self.totalSamples += 1
+
+        elif splitConfFile is None:
+            # categarize the samples
+            for index, (inputs, label) in enumerate(self.data):
+                if label not in self.targets:
+                    self.targets[label] = []
+                self.targets[label].append(index)
+                self.indexToLabel[index] = label
+                self.totalSamples += 1
+        else:
+            with open(splitConfFile, 'r') as fin:
+                labelSamples = [int(x.strip()) for x in fin.readlines()]
+            # categarize the samples
+            baseIndex = 0
+            for label, _samples in enumerate(labelSamples):
+                for k in range(_samples):
+                    self.indexToLabel[baseIndex + k] = label
+                self.targets[label] = [baseIndex + k for k in range(_samples)]
+                self.totalSamples += _samples
+                baseIndex += _samples
+
         self.numOfLabels = len(self.targets.keys())
         self.workerDistance = []
         self.classPerWorker = None
@@ -269,4 +290,4 @@ def select_dataset(rank: int, partition: DataPartitioner, batch_size: int, istes
     #workers_num = len(workers)
     #partition_dict = {workers[i]: i for i in range(workers_num)}
     partition = partition.use(rank - 1, istest)
-    return DataLoader(partition, batch_size=batch_size, shuffle=True, pin_memory=True, num_workers=0)
+    return DataLoader(partition, batch_size=batch_size, shuffle=True, pin_memory=False, num_workers=0)

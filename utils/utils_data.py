@@ -28,6 +28,7 @@ def get_data_transform(data: str):
         ])
 
         test_transform = transforms.Compose([
+            transforms.RandomCrop(32, padding=4),
             transforms.ToTensor(),
             #transforms.Normalize((0.4914, 0.4822, 0.4465), (0.2023, 0.1994, 0.2010)),
             # transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5)),
@@ -35,7 +36,7 @@ def get_data_transform(data: str):
     elif data == 'imagenet':
         train_transform = transforms.Compose([
             #transforms.RandomCrop(32, padding=4),   # 传入的参数就是截取出的图片的长和宽，对图片在随机位置进行截取 - input arguments: length&width of a figure
-            transforms.RandomResizedCrop(200),
+            transforms.RandomResizedCrop(32),
             transforms.RandomHorizontalFlip(),
             transforms.ToTensor(),  # convert PIL image or numpy.ndarray to tensor
             #transforms.Normalize((0.4914, 0.4822, 0.4465), (0.2023, 0.1994, 0.2010)),
@@ -43,6 +44,7 @@ def get_data_transform(data: str):
         ])
 
         test_transform = transforms.Compose([
+            transforms.RandomResizedCrop(32),
             transforms.ToTensor(),
             #transforms.Normalize((0.4914, 0.4822, 0.4465), (0.2023, 0.1994, 0.2010)),
             # transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5)),
