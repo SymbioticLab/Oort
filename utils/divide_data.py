@@ -159,24 +159,6 @@ class DataPartitioner(object):
         else:
             logging.info('========= Start of Class/Worker =========\n')
 
-            # deal with the balanced dataset
-            if args['balanced_client'] > 0:
-                balanced_class_len = int(sizes[i] * data_len/numOfLabels)
-
-                for i in range(args['balanced_client']):
-                    balacned_class_set = []
-
-                    for key in targets:
-                        balacned_class_set += targets[key][:balanced_class_len]
-                        targets[key] = targets[key][balanced_class_len:]
-
-                    self.partitions.append(balacned_class_set)
-                    self.rng.shuffle(self.partitions[-1])
-
-                    logging.info(repr([balanced_class_len for i in range(numOfLabels)]) + '\n')
-
-                sizes = sizes[args['balanced_client']:]
-
             if ratioOfClassWorker is None:
                 # random distribution
                 if sequential == 1:
@@ -264,10 +246,14 @@ class DataPartitioner(object):
 
     def use(self, partition, istest):
         _partition = -1 if istest else partition
+        resultIndex = self.partitions[_partition]
 
-        logging.info("====Data length for client {} is {}".format(partition, len(self.partitions[_partition])))
-        self.rng.shuffle(self.partitions[_partition])
-        return Partition(self.data, self.partitions[_partition])
+        if istest:
+            resultIndex = resultIndex[:10000]
+
+        logging.info("====Data length for client {} is {}".format(partition, len(resultIndex)))
+        self.rng.shuffle(resultIndex)
+        return Partition(self.data, resultIndex)
 
     def getDistance(self):
         return self.workerDistance
@@ -290,4 +276,4 @@ def select_dataset(rank: int, partition: DataPartitioner, batch_size: int, istes
     #workers_num = len(workers)
     #partition_dict = {workers[i]: i for i in range(workers_num)}
     partition = partition.use(rank - 1, istest)
-    return DataLoader(partition, batch_size=batch_size, shuffle=True, pin_memory=False, num_workers=0)
+    return DataLoader(partition, batch_size=batch_size, shuffle=True, pin_memory=True, num_workers=16, drop_last=True)

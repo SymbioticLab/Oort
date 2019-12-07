@@ -147,7 +147,7 @@ def run(rank, model, train_data, test_data, queue, param_q, stop_flag, client_cf
             del train_data, train_data_itr
             train_data = []
             reloadClientData = False
-            #time.sleep(0.05)
+            time.sleep(0.05)
             train_data.append(select_dataset(nextClientId, entire_train_data, batch_size=train_bsz))
             train_data_itr = [iter(data) for data in train_data]
 
