@@ -21,7 +21,7 @@ from torch.utils.data import DataLoader
 from torchvision import datasets, transforms
 import torchvision.models as tormodels
 
-logFile = '/tmp/log_' + str(datetime.datetime.fromtimestamp(time.time()).strftime('%m%d_%H%M%S'))
+logFile = '/tmp/torch/log_' + str(datetime.datetime.fromtimestamp(time.time()).strftime('%m%d_%H%M%S'))
 logging.basicConfig(format='%(asctime)s,%(msecs)d %(levelname)s %(message)s',
                     datefmt='%H:%M:%S',
                     level=logging.DEBUG,
@@ -83,10 +83,10 @@ def run(model, test_data, queue, param_q, stop_signal, clientSampler):
             logging.info("====Error: Failed to load model due to {}\n".format(str(e)))
             pass
     
-    if os.path.isdir(logDir):
-        shutil.rmtree(logDir)
-    os.mkdir(logDir)
-
+    if not os.path.isdir(logDir):
+        os.mkdir(logDir)
+        #shutil.rmtree(logDir)
+    
     # convert gradient tensor to numpy structure
     tmp = map(lambda item: (item[0], item[1].numpy), model.state_dict().items())
     _tmp = OrderedDict(map(lambda item: (item[0], item[1].cpu().numpy()), model.state_dict().items()))
@@ -213,7 +213,7 @@ def run(model, test_data, queue, param_q, stop_signal, clientSampler):
                     # dump the model into file for backup
                     if epoch_count % args.dump_epoch == 0:
                         logging.info("====Try to dump the model")
-                        torch.save(model.state_dict(), logDir+'/'+str(args.model)+'.pth.tar')
+                        torch.save(model.state_dict(), logDir+'/'+str(args.model)+'_'+str(currentMinStep)+'.pth.tar')
 
                     # resampling the clients if necessary
                     if epoch_count % args.resampling_interval == 0:
@@ -246,6 +246,8 @@ def run(model, test_data, queue, param_q, stop_signal, clientSampler):
                         workersToSend.append(pworker)
 
                 if len(workersToSend) > 0:
+                    workersToSend = sorted(workersToSend)
+
                     send_start = time.time()
 
                     for idx, param in enumerate(model.parameters()):
