@@ -37,7 +37,7 @@ params = ' '.join(sys.argv[2:]) + learner + ' '
 timeStamp = str(datetime.datetime.fromtimestamp(time.time()).strftime('%m%d_%H%M%S')) + '_'
 jobPrefix = 'learner' + timeStamp
 
-rawCmd = '\npython ~/DMFL/learner.py --ps_ip=10.255.11.91 --model=MobileNetV2 --epochs=20000 --upload_epoch=30  --dump_epoch=200 --learning_rate=0.005 --decay_epoch=500 --model_avg=True --total_worker=1000 --resampling_interval=1 --batch_size=64 '
+rawCmd = '\npython ~/DMFL/learner.py --ps_ip=10.255.11.91 --model=MobileNetV2 --epochs=20000 --upload_epoch=30  --dump_epoch=200 --learning_rate=0.005 --decay_epoch=500 --model_avg=True --total_worker=10 --resampling_interval=10000000 --batch_size=64 '
 
 availGPUs = list(avaiVms.keys())
 
@@ -55,7 +55,7 @@ for w in range(1, numOfWorkers + 1):
         fout.writelines(runCmd)
 
 # deal with ps
-rawCmdPs = '\npython ~/DMFL/param_server.py --ps_ip=10.255.11.91 --model=MobileNetV2 --epochs=20000 --upload_epoch=30  --dump_epoch=200 --learning_rate=0.005 --decay_epoch=500 --model_avg=True --total_worker=1000 --resampling_interval=1 --batch_size=64 --this_rank=0 ' + params
+rawCmdPs = '\npython ~/DMFL/param_server.py --ps_ip=10.255.11.91 --model=MobileNetV2 --epochs=20000 --upload_epoch=30  --dump_epoch=200 --learning_rate=0.005 --decay_epoch=500 --model_avg=True --total_worker=10 --resampling_interval=10000000 --batch_size=64 --this_rank=0 ' + params
 
 with open('server.lsf', 'w') as fout:
     scriptPS = template + '\n#BSUB -J server\n#BSUB -e server{}'.format(timeStamp) + '.e\n#BSUB -o server{}'.format(timeStamp) + '.o\n' + '#BSUB -m "gpu-cn001"\n\n' + rawCmdPs

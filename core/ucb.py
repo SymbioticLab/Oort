@@ -35,11 +35,11 @@ class UCB(object):
             clientIds.append(key)
 
         # static UCB, take the top-k
-        index = np2.array(scores).argsort()[-int(numOfSamples*self.exploitation):][::-1] + 1
+        index = (np2.array(scores).argsort()[-int(numOfSamples*self.exploitation):][::-1] + 1).tolist()
 
         # exploration 
         while len(index) < numOfSamples:
-            nextId = np2.random.randint(low=1, high=len(scores) + 1, size=1)
+            nextId = np2.random.randint(low=1, high=len(scores) + 1, size=1)[0]
             if nextId not in index:
                 index.append(nextId)
 

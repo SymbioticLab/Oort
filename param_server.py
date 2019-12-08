@@ -117,7 +117,7 @@ def run(model, test_data, queue, param_q, stop_signal, clientSampler):
     # The fast worker exceeding the duration will be pushed into the queue to wait
     stale_stack = []
     global_update = 0
-    newEpoch = True
+    newEpoch = 0
 
     logging.info(repr(clientSampler.getClientsInfo()))
 
@@ -164,9 +164,9 @@ def run(model, test_data, queue, param_q, stop_signal, clientSampler):
                         param.data -= (torch.from_numpy(delta_ws[idx]).cuda())
                     else:
                         if newEpoch == 0:
-                            param.data = (torch.from_numpy(delta_ws[idx]).cuda()) * ratioSample
+                            param.data = (torch.from_numpy(delta_ws[idx]).cuda())
                         else:
-                            param.data += (torch.from_numpy(delta_ws[idx]).cuda()) * ratioSample
+                            param.data += (torch.from_numpy(delta_ws[idx]).cuda())
 
                 newEpoch += 1
 
@@ -174,7 +174,7 @@ def run(model, test_data, queue, param_q, stop_signal, clientSampler):
                 global_update += 1
                 currentMinStep = 9999999999
 
-                # get the current minimum local steps
+                # get the current minimum local staleness_sum_epoch
                 for rankStep in learner_local_step.keys():
                     currentMinStep = min(currentMinStep, learner_local_step[rankStep])
 
@@ -184,7 +184,6 @@ def run(model, test_data, queue, param_q, stop_signal, clientSampler):
                 staleness += 1
                 learner_staleness[rank_src] = staleness
                 stale_stack.append(rank_src)
-
 
                 # once reach an epoch, count the average train loss
                 if global_update%len(workers) == 0:
@@ -248,10 +247,10 @@ def run(model, test_data, queue, param_q, stop_signal, clientSampler):
 
                 if len(workersToSend) > 0:
                     send_start = time.time()
-                    for idx, param in enumerate(model.parameters()):
-                        #for worker in workersToSend:
-                        dist.broadcast(tensor=param.data.cuda(), src=0)
 
+                    for idx, param in enumerate(model.parameters()):
+                        dist.broadcast(tensor=(param.data.cuda() * ratioSample), src=0)
+                        
                     clientIdsToRun = [currentMinStep]
                     for worker in workersToSend:  
                         learner_cache_step[worker] = currentMinStep
@@ -261,10 +260,10 @@ def run(model, test_data, queue, param_q, stop_signal, clientSampler):
 
                     dist.broadcast(tensor=torch.tensor(clientIdsToRun, dtype=torch.int).cuda(), src=0)
 
+                    newEpoch = 0
+
                     if global_update % args.display_step == 0:
                         logging.info("Handle Wight {} | Send {}".format(handle_dur, time.time() - send_start))
-
-                    newEpoch = 0
 
                 # The training stop
                 if(epoch_count >= args.epochs * args.upload_epoch):

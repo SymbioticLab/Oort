@@ -53,5 +53,6 @@ parser.add_argument('--eval_interval_prior', type=int, default=9999999)
 parser.add_argument('--gpu_device', type=int, default=0)
 parser.add_argument('--zipf_alpha', type=str, default='5')
 parser.add_argument('--timeout', type=float, default=9999999)
+parser.add_argument('--full_gradient_interval', type=int, default=20)
 
 args = parser.parse_args()

@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 from random import Random
-from torch.utils.data import DataLoader
+from core.dataloader import DataLoader
 import numpy as np
 from math import *
 import logging
@@ -204,7 +204,7 @@ class DataPartitioner(object):
                     self.partitions.append([])
                     # enumerate the ratio of classes it should take
                     for c in list(targets.keys()):
-                        takeLength = floor(keyLength[keyDir[c]] * ratioOfClassWorker[worker][keyDir[c]])
+                        takeLength = min(int(keyLength[keyDir[c]] * ratioOfClassWorker[worker][keyDir[c]] + 0.5), len(targets[c]))
                         self.partitions[-1] += targets[c][0:takeLength]
                         tempClassPerWorker[worker][keyDir[c]] += takeLength
                         targets[c] = targets[c][takeLength:]
@@ -262,7 +262,7 @@ class DataPartitioner(object):
         # return the size of samples
         return [len(partition) for partition in self.partitions]
 
-def partition_dataset(partitioner, workers, partitionRatio=[], sequential=0, ratioOfClassWorker=None, filter_class=0, arg={'balanced_client':0, 'param': 1.95}):
+def partition_dataset(partitioner, workers, partitionRatio=[], sequential=0, ratioOfClassWorker=None, filter_class=0, arg={'param': 1.95}):
     """ Partitioning Data """
     workers_num = len(workers)
     partition_sizes = [1.0 / workers_num for _ in range(workers_num)]
@@ -273,7 +273,9 @@ def partition_dataset(partitioner, workers, partitionRatio=[], sequential=0, rat
     partitioner.partitionData(sizes=partition_sizes, sequential=sequential, ratioOfClassWorker=ratioOfClassWorker,filter_class=filter_class, args=arg)
 
 def select_dataset(rank: int, partition: DataPartitioner, batch_size: int, istest=False):
-    #workers_num = len(workers)
-    #partition_dict = {workers[i]: i for i in range(workers_num)}
     partition = partition.use(rank - 1, istest)
-    return DataLoader(partition, batch_size=batch_size, shuffle=True, pin_memory=True, num_workers=16, drop_last=True)
+
+    if istest:
+        return DataLoader(partition, batch_size=batch_size, shuffle=False, pin_memory=False, num_workers=16, drop_last=True)
+    else:
+        return DataLoader(partition, batch_size=batch_size, shuffle=True, pin_memory=False, num_workers=16, drop_last=True)

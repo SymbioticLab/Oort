@@ -14,6 +14,7 @@ from multiprocessing import Process, Value
 from multiprocessing.managers import BaseManager
 import threading
 import random
+import multiprocessing
 
 import numpy as np
 import torch
@@ -57,11 +58,13 @@ os.environ['MASTER_ADDR'] = args.ps_ip
 os.environ['MASTER_PORT'] = str(int(args.ps_port) + int(args.gpu_device))
 os.environ['NCCL_SOCKET_IFNAME'] = 'ib0'
 os.environ['GLOO_SOCKET_IFNAME'] = 'ib0'
+# multiprocessing.set_start_method('spawn')
 # os.environ['OMP_NUM_THREADS'] = args.threads
 # os.environ['MKL_NUM_THREADS'] = args.threads
 
 clientIdToRun = args.this_rank
 world_size = 0
+nextClientId = args.this_rank
 workers = [int(v) for v in str(args.learners).split('-')]
 
 logging.info("===== Experiment start =====")
@@ -76,6 +79,7 @@ def unbalanced_partition_dataset(dataset, hetero):
 
 def run(rank, model, train_data, test_data, queue, param_q, stop_flag, client_cfg):
     print("====Worker: Start running")
+    global nextClientId
     # Fetch the initial parameters from the server side (we called it parameter_server)
     while True:
         if not param_q.empty():
@@ -93,7 +97,7 @@ def run(rank, model, train_data, test_data, queue, param_q, stop_flag, client_cf
         optimizer = MySGD(model.parameters(), lr=args.learning_rate, momentum=0.5)
         criterion = torch.nn.CrossEntropyLoss().cuda()
     else:
-        optimizer = MySGD(model.parameters(), lr=args.learning_rate, momentum=0, weight_decay=5e-4)
+        optimizer = MySGD(model.parameters(), lr=args.learning_rate, momentum=0.9, weight_decay=5e-4)
         criterion = torch.nn.CrossEntropyLoss().cuda()
 
     print('Begin!')
@@ -133,8 +137,10 @@ def run(rank, model, train_data, test_data, queue, param_q, stop_flag, client_cf
     sleepForCommunicate = 0 if currentClientId not in client_cfg else client_cfg[currentClientId][1]
     lastGlobalModel = model
 
+    # start training
+    model.train()
+
     for epoch in range(int(args.epochs)):
-        model.train()
         epoch_train_loss = 0
         epoch_train_batch = 0
         needEval = False
@@ -144,11 +150,11 @@ def run(rank, model, train_data, test_data, queue, param_q, stop_flag, client_cf
 
         if reloadClientData:
             # release the threads in dataloader
-            del train_data, train_data_itr
-            train_data = []
+            for item in train_data_itr:
+                del item
+
             reloadClientData = False
-            time.sleep(0.05)
-            train_data.append(select_dataset(nextClientId, entire_train_data, batch_size=train_bsz))
+            train_data = [select_dataset(nextClientId, entire_train_data, batch_size=train_bsz)]
             train_data_itr = [iter(data) for data in train_data]
 
         for batch_idx in range(len(train_data[-1])):
@@ -163,8 +169,11 @@ def run(rank, model, train_data, test_data, queue, param_q, stop_flag, client_cf
                 try:
                     (data, target) = next(train_data_itr[machineId])
                 except StopIteration:
+                    # clean up the current threads
+                    del train_data_itr[machineId]
+
                     # start from the beginning again
-                    train_data_itr[machineId] = iter(train_data[machineId])
+                    train_data_itr.insert(machineId, iter(train_data[machineId]))
                     (data, target) = next(train_data_itr[machineId])
 
                 # LR is not compatible with the image input as of now, thus needs to reformat it 
@@ -191,7 +200,6 @@ def run(rank, model, train_data, test_data, queue, param_q, stop_flag, client_cf
             it_duration = it_end - it_start
 
             if sleepForCompute != 0:
-                #sleep_time = random.uniform(0, args.sleep_up)/1000.0
                 time.sleep(sleepForCompute * it_duration)
 
             local_step += 1
@@ -281,12 +289,11 @@ def run(rank, model, train_data, test_data, queue, param_q, stop_flag, client_cf
                         needEval = False
 
                 logging.info('LocalStep {}, CumulTime {}, Epoch {}, Batch {}/{}, Loss:{} | TotalTime {} | Comptime: {} | SendTime: {} | ReceTime: {} | Sleep: {} | staleness: {} \n'
-                            .format(local_step, time.time() - startTime, epoch, batch_idx, len(train_data[0]), round(loss.data.item(), 4), round(time.time() - it_start, 4), round(it_duration, 4), round(send_dur,4), round(rece_dur, 4), sleepForCompute, local_step - globalMinStep))
+                            .format(local_step, time.time() - startTime, epoch, batch_idx, len(train_data[-1]), round(loss.data.item(), 4), round(time.time() - it_start, 4), round(it_duration, 4), round(send_dur,4), round(rece_dur, 4), sleepForCompute, local_step - globalMinStep))
 
             except Exception as e:
                 exc_type, exc_obj, exc_tb = sys.exc_info()
                 fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
-                print('Should Stop: {}!'.format(stop_flag.value))
                 logging.info("====Error: {}, {}, {}, {}".format(e, exc_type, fname, exc_tb.tb_lineno))
                 break
 
@@ -299,14 +306,10 @@ def run(rank, model, train_data, test_data, queue, param_q, stop_flag, client_cf
             if reloadClientData:
                 break
 
-        # Check the top 1 test accuracy after training
-        # print("For epoch {}, training loss {}, CumulTime {}, local Step {} ".format(epoch, epoch_train_loss/float(epoch_train_batch), time.time() - startTime, local_step))
-        #test_loss, acc = test_model(rank, model, test_data, criterion=criterion)
-        #logging.info("For epoch {}, CumulTime {}, training loss {}, test_loss {}, test_accuracy {} \n".format(epoch, time.time() - startTime, epoch_train_loss/float(epoch_train_batch), test_loss, acc))
         last_test = time.time()
 
-        #if stop_flag.value:
-        #    break
+        if stop_flag.value:
+            break
 
     queue.put({rank: [[], [], [], True, -1, -1]})
     print("Worker {} has completed epoch {}!".format(args.this_rank, epoch))
@@ -455,7 +458,7 @@ if __name__ == "__main__":
                                     filter_class=args.filter_class, arg = {'balanced_client':0, 'param': distributionParam[i]})
     entire_train_data.log_selection()
 
-    clientIdToRun = report_data_info(this_rank, q, entire_train_data)
+    nextClientId = clientIdToRun = report_data_info(this_rank, q, entire_train_data)
 
     train_datas = []
 
