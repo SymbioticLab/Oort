@@ -74,7 +74,8 @@ def run(model, test_data, queue, param_q, stop_signal, clientSampler):
     f_staleness = open(staleness_file, 'w')
 
     logDir = "/tmp/" + args.model
-
+    
+    # convert gradient tensor to numpy structure
     if args.load_model:
         try:
             model.load_state_dict(torch.load(logDir+'/'+str(args.model)+'.pth.tar'))
@@ -85,11 +86,9 @@ def run(model, test_data, queue, param_q, stop_signal, clientSampler):
     
     if not os.path.isdir(logDir):
         os.mkdir(logDir)
-        #shutil.rmtree(logDir)
-    
-    # convert gradient tensor to numpy structure
-    tmp = map(lambda item: (item[0], item[1].numpy), model.state_dict().items())
+
     _tmp = OrderedDict(map(lambda item: (item[0], item[1].cpu().numpy()), model.state_dict().items()))
+    
     workers = [int(v) for v in str(args.learners).split('-')]
 
     for _ in workers:
@@ -135,8 +134,7 @@ def run(model, test_data, queue, param_q, stop_signal, clientSampler):
                 else:
                     sc = 1.0 - clientSampler.getScore(rank_src, clientId)
                     clientSampler.registerScore(clientId, sc)
-                    #logging.info("====Score for client {} is {}, now the reward is {}".format(clientId, sc, clientSampler.getClientReward(clientId)))
-
+                    
                 if isWorkerEnd:
                     print("Worker {} has completed all its data computation!".format(rank_src))
                     learner_staleness.pop(rank_src)
@@ -164,9 +162,9 @@ def run(model, test_data, queue, param_q, stop_signal, clientSampler):
                         param.data -= (torch.from_numpy(delta_ws[idx]).cuda())
                     else:
                         if newEpoch == 0:
-                            param.data = (torch.from_numpy(delta_ws[idx]).cuda())
+                            param.data = (torch.from_numpy(delta_ws[idx]).cuda()) * ratioSample
                         else:
-                            param.data += (torch.from_numpy(delta_ws[idx]).cuda())
+                            param.data += (torch.from_numpy(delta_ws[idx]).cuda()) * ratioSample
 
                 newEpoch += 1
 
@@ -210,18 +208,6 @@ def run(model, test_data, queue, param_q, stop_signal, clientSampler):
                     data_size_epoch = 0
                     epoch_time = e_epoch_time
 
-                    # dump the model into file for backup
-                    if epoch_count % args.dump_epoch == 0:
-                        logging.info("====Try to dump the model")
-                        torch.save(model.state_dict(), logDir+'/'+str(args.model)+'_'+str(currentMinStep)+'.pth.tar')
-
-                    # resampling the clients if necessary
-                    if epoch_count % args.resampling_interval == 0:
-                        sampledClients = sorted(clientSampler.resampleClients(len(workers), max(args.total_worker, len(workers))))
-                        logging.info("====Try to resample clients with metrics {}, result is {}".format(repr(clientSampler.getAllMetrics()), repr(sampledClients)))
-                        for i, w in enumerate(workers):
-                            clientSampler.clientOnHost(sampledClients[i], w)
-
                 # if the worker is within the staleness, then continue w/ local cache and do nothing
                 # Otherwise, block it 
                 if learner_local_step[rank_src] >= args.stale_threshold + currentMinStep:
@@ -247,12 +233,18 @@ def run(model, test_data, queue, param_q, stop_signal, clientSampler):
 
                 if len(workersToSend) > 0:
                     workersToSend = sorted(workersToSend)
-
                     send_start = time.time()
 
                     for idx, param in enumerate(model.parameters()):
-                        dist.broadcast(tensor=(param.data.cuda() * ratioSample), src=0)
-                        
+                        dist.broadcast(tensor=(param.data.cuda()), src=0)
+
+                    # resampling the clients if necessary
+                    if epoch_count % args.resampling_interval == 0:
+                        sampledClients = sorted(clientSampler.resampleClients(len(workers), max(args.total_worker, len(workers))))
+                        logging.info("====Try to resample clients with metrics {}, result is {}".format(repr(clientSampler.getAllMetrics()), repr(sampledClients)))
+                        for i, w in enumerate(workers):
+                            clientSampler.clientOnHost(sampledClients[i], w)
+
                     clientIdsToRun = [currentMinStep]
                     for worker in workersToSend:  
                         learner_cache_step[worker] = currentMinStep
@@ -266,6 +258,11 @@ def run(model, test_data, queue, param_q, stop_signal, clientSampler):
 
                     if global_update % args.display_step == 0:
                         logging.info("Handle Wight {} | Send {}".format(handle_dur, time.time() - send_start))
+
+                    # dump the model into file for backup
+                    if epoch_count % args.dump_epoch == 0:
+                        torch.save(model.state_dict(), logDir+'/'+str(args.model)+'_'+str(currentMinStep)+'.pth.tar')
+                        logging.info("====Dump model successfully")
 
                 # The training stop
                 if(epoch_count >= args.epochs * args.upload_epoch):

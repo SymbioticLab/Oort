@@ -204,7 +204,7 @@ class DataPartitioner(object):
                     self.partitions.append([])
                     # enumerate the ratio of classes it should take
                     for c in list(targets.keys()):
-                        takeLength = min(int(keyLength[keyDir[c]] * ratioOfClassWorker[worker][keyDir[c]] + 0.5), len(targets[c]))
+                        takeLength = min(int(math.ceil(keyLength[keyDir[c]] * ratioOfClassWorker[worker][keyDir[c]])), len(targets[c]))
                         self.partitions[-1] += targets[c][0:takeLength]
                         tempClassPerWorker[worker][keyDir[c]] += takeLength
                         targets[c] = targets[c][takeLength:]
