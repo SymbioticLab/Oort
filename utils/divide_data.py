@@ -245,11 +245,11 @@ class DataPartitioner(object):
         logging.info("=====================================\n")
 
     def use(self, partition, istest):
-        _partition = -1 if istest else partition
+        _partition = partition
         resultIndex = self.partitions[_partition]
 
-        if istest:
-            resultIndex = resultIndex[:10000]
+        #if istest:
+        #    resultIndex = resultIndex[:10000]
 
         logging.info("====Data length for client {} is {}".format(partition, len(resultIndex)))
         self.rng.shuffle(resultIndex)
@@ -272,10 +272,10 @@ def partition_dataset(partitioner, workers, partitionRatio=[], sequential=0, rat
 
     partitioner.partitionData(sizes=partition_sizes, sequential=sequential, ratioOfClassWorker=ratioOfClassWorker,filter_class=filter_class, args=arg)
 
-def select_dataset(rank: int, partition: DataPartitioner, batch_size: int, istest=False):
-    partition = partition.use(rank - 1, istest)
+def select_dataset(rank: int, partition: DataPartitioner, batch_size: int, isTest=False):
+    partition = partition.use(rank - 1, isTest)
 
-    if istest:
-        return DataLoader(partition, batch_size=batch_size, shuffle=False, pin_memory=False, num_workers=16, drop_last=True)
-    else:
-        return DataLoader(partition, batch_size=batch_size, shuffle=True, pin_memory=False, num_workers=16, drop_last=True)
+    #if istest:
+    #    return DataLoader(partition, batch_size=batch_size, shuffle=False, pin_memory=False, num_workers=16, drop_last=True)
+    #else:
+    return DataLoader(partition, batch_size=batch_size, shuffle=True, pin_memory=False, num_workers=10, drop_last=True)

@@ -134,7 +134,7 @@ def run(model, test_data, queue, param_q, stop_signal, clientSampler):
                 else:
                     sc = 1.0 - clientSampler.getScore(rank_src, clientId)
                     clientSampler.registerScore(clientId, sc)
-                    
+
                 if isWorkerEnd:
                     print("Worker {} has completed all its data computation!".format(rank_src))
                     learner_staleness.pop(rank_src)
@@ -376,7 +376,7 @@ if __name__ == "__main__":
     torch.manual_seed(manual_seed)
     model, train_dataset, test_dataset = init_dataset()
 
-    test_data = DataLoader(test_dataset, batch_size=100, shuffle=True)
+    test_data = DataLoader(test_dataset, batch_size=args.test_bsz, shuffle=True)
 
     print("====PS: finish loading test_data")
     world_size = len(str(args.learners).split('-')) + 1

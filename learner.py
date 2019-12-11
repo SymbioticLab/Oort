@@ -106,7 +106,7 @@ def run(rank, model, train_data, test_data, queue, param_q, stop_flag, client_cf
     local_step = 0
     startTime = time.time()
     globalMinStep = 0
-    last_test = 0
+    last_test = time.time()
     paramDic = {}
 
     logDir = "/tmp/" + args.model
@@ -472,8 +472,8 @@ if __name__ == "__main__":
     splitTestRatio = []
 
     testsetPartitioner = DataPartitioner(data=test_dataset, isTest=True)
-    partition_dataset(testsetPartitioner, [1], splitTestRatio)
-    test_data = select_dataset(this_rank, testsetPartitioner, batch_size=test_bsz, istest=True)
+    partition_dataset(testsetPartitioner, workers, splitTestRatio)
+    test_data = select_dataset(this_rank, testsetPartitioner, batch_size=test_bsz, isTest=True)
 
     stop_flag = Value(c_bool, False)
     init_myprocesses(this_rank, world_size, model, train_datas, test_data,
