@@ -83,26 +83,10 @@ class DataPartitioner(object):
 
     # Generates a distance matrix for EMD
     def generate_distance_matrix(self, size):
-        m = np.zeros((size,size))
-        for i in range(size):
-            for j in range(size):
-                m[i][j] = abs(j - i)
-        return m
+        return np.logical_xor(1, np.identity(size)) * 1.0
 
     # Caculates Earth Mover's Distance for each worker
     def get_EMD(self, dataDistr, tempClassPerWorker, sizes):
-        dist_matrix = self.generate_distance_matrix(len(dataDistr))
-        for worker in range(len(sizes)):
-            tempDataSize = sum(tempClassPerWorker[worker])
-            if tempDataSize == 0:
-                continue
-            tempDistr =np.array([c / float(tempDataSize) for c in tempClassPerWorker[worker]])
-            self.workerDistance.append(emd(dataDistr, tempDistr, dist_matrix))
-
-    def generate_distance_matrix_v2(self, size):
-        return np.logical_xor(1, np.identity(size)) * 1.0
-
-    def get_EMD_v2(self, dataDistr, tempClassPerWorker, sizes):
         dist_matrix = self.generate_distance_matrix_v2(len(dataDistr))
         for worker in range(len(sizes)):
             tempDataSize = sum(tempClassPerWorker[worker])
