@@ -4,10 +4,11 @@ import random
 
 class ClientSampler(object):
 
-    def __init__(self, mode):
+    def __init__(self, mode, score):
         self.Clients = {}
         self.clientOnHosts = {}
         self.mode = mode
+        self.score = score
         random.seed(123)
 
         self.ucbSampler = UCB()# if self.mode == "bandit" else None
@@ -16,8 +17,10 @@ class ClientSampler(object):
         uniqueId = self.getUniqueId(hostId, clientId)
         self.Clients[uniqueId] = Client(hostId, clientId, dis, size, speed)
 
-        #if self.mode == "bandit":
-        self.ucbSampler.registerArm(clientId, 1.0 - dis)
+        if self.score == "loss":
+            self.ucbSampler.registerArm(clientId, 10.0 - dis)
+        else:
+            self.ucbSampler.registerArm(clientId, 1.0 - dis)
 
     def registerSpeed(self, hostId, clientId, speed):
         uniqueId = self.getUniqueId(hostId, clientId)
@@ -73,4 +76,3 @@ class ClientSampler(object):
 
     def getClientReward(self, clientId):
         return self.ucbSampler.getClientReward(clientId)
-

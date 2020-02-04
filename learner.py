@@ -14,6 +14,7 @@ from multiprocessing import Process, Value
 from multiprocessing.managers import BaseManager
 import threading
 import random
+import multiprocessing
 
 import numpy as np
 import torch
@@ -55,10 +56,15 @@ logging.basicConfig(format='%(asctime)s,%(msecs)d %(levelname)s %(message)s',
 entire_train_data = None
 os.environ['MASTER_ADDR'] = args.ps_ip
 os.environ['MASTER_PORT'] = str(int(args.ps_port) + int(args.gpu_device))
+os.environ['NCCL_SOCKET_IFNAME'] = 'ib0'
+os.environ['GLOO_SOCKET_IFNAME'] = 'ib0'
+# multiprocessing.set_start_method('spawn')
 # os.environ['OMP_NUM_THREADS'] = args.threads
 # os.environ['MKL_NUM_THREADS'] = args.threads
 
 clientIdToRun = args.this_rank
+world_size = 0
+nextClientId = args.this_rank
 workers = [int(v) for v in str(args.learners).split('-')]
 
 logging.info("===== Experiment start =====")
@@ -73,6 +79,7 @@ def unbalanced_partition_dataset(dataset, hetero):
 
 def run(rank, model, train_data, test_data, queue, param_q, stop_flag, client_cfg):
     print("====Worker: Start running")
+    global nextClientId
     # Fetch the initial parameters from the server side (we called it parameter_server)
     while True:
         if not param_q.empty():
@@ -90,7 +97,7 @@ def run(rank, model, train_data, test_data, queue, param_q, stop_flag, client_cf
         optimizer = MySGD(model.parameters(), lr=args.learning_rate, momentum=0.5)
         criterion = torch.nn.CrossEntropyLoss().cuda()
     else:
-        optimizer = MySGD(model.parameters(), lr=args.learning_rate, momentum=0, weight_decay=5e-4)
+        optimizer = MySGD(model.parameters(), lr=args.learning_rate, momentum=0.9, weight_decay=5e-4)
         criterion = torch.nn.CrossEntropyLoss().cuda()
 
     print('Begin!')
@@ -99,7 +106,7 @@ def run(rank, model, train_data, test_data, queue, param_q, stop_flag, client_cf
     local_step = 0
     startTime = time.time()
     globalMinStep = 0
-    last_test = 0
+    last_test = time.time()
     paramDic = {}
 
     logDir = "/tmp/" + args.model
@@ -130,8 +137,10 @@ def run(rank, model, train_data, test_data, queue, param_q, stop_flag, client_cf
     sleepForCommunicate = 0 if currentClientId not in client_cfg else client_cfg[currentClientId][1]
     lastGlobalModel = model
 
+    # start training
+    model.train()
+
     for epoch in range(int(args.epochs)):
-        model.train()
         epoch_train_loss = 0
         epoch_train_batch = 0
         needEval = False
@@ -140,10 +149,13 @@ def run(rank, model, train_data, test_data, queue, param_q, stop_flag, client_cf
             learning_rate = max(0.001, learning_rate * args.decay_factor)
 
         if reloadClientData:
-            train_data = []
-            train_data.append(select_dataset(nextClientId, entire_train_data, batch_size=train_bsz))
-            train_data_itr = [iter(data) for data in train_data]
+            # release the threads in dataloader
+            for item in train_data_itr:
+                del item
+
             reloadClientData = False
+            train_data = [select_dataset(nextClientId, entire_train_data, batch_size=train_bsz)]
+            train_data_itr = [iter(data) for data in train_data]
 
         for batch_idx in range(len(train_data[-1])):
             # for every mini-batch/iteration
@@ -157,8 +169,11 @@ def run(rank, model, train_data, test_data, queue, param_q, stop_flag, client_cf
                 try:
                     (data, target) = next(train_data_itr[machineId])
                 except StopIteration:
+                    # clean up the current threads
+                    del train_data_itr[machineId]
+
                     # start from the beginning again
-                    train_data_itr[machineId] = iter(train_data[machineId])
+                    train_data_itr.insert(machineId, iter(train_data[machineId]))
                     (data, target) = next(train_data_itr[machineId])
 
                 # LR is not compatible with the image input as of now, thus needs to reformat it 
@@ -185,7 +200,6 @@ def run(rank, model, train_data, test_data, queue, param_q, stop_flag, client_cf
             it_duration = it_end - it_start
 
             if sleepForCompute != 0:
-                #sleep_time = random.uniform(0, args.sleep_up)/1000.0
                 time.sleep(sleepForCompute * it_duration)
 
             local_step += 1
@@ -239,21 +253,19 @@ def run(rank, model, train_data, test_data, queue, param_q, stop_flag, client_cf
                     rece_dur = 0
 
                     #if globalMinStep < local_step - args.stale_threshold or args.force_read:
-                    if numOfUploads % args.eval_interval == 0:
+                    if numOfUploads % args.eval_interval_prior == 0:
                         test_loss, acc = test_model(rank, model, test_data, criterion=criterion)
                         logging.info("Before aggregation with client {}, for epoch {}, upload_epoch {}, local step {}, CumulTime {}, training loss {}, test_loss {}, test_accuracy {} \n".format(currentClientId, epoch, numOfUploads, local_step, time.time() - startTime, epoch_train_loss/float(epoch_train_batch), test_loss, acc))
 
                     rece_start = time.time()
                     
                     for idx, param in enumerate(model.parameters()):
-                        tmp_tensor = torch.zeros_like(param.data).cpu()
-                        dist.recv(tensor=tmp_tensor, src=0)
-                        param.data = tmp_tensor.cuda()
+                        dist.broadcast(tensor=param.data, src=0)
 
                     # receive current minimum step, and the clientId for next training
-                    step_tensor = torch.zeros([2], dtype=torch.int).cpu()
-                    dist.recv(tensor=step_tensor, src=0)
-                    globalMinStep, nextClientId = step_tensor[0].item(), step_tensor[1].item()
+                    step_tensor = torch.zeros([world_size], dtype=torch.int).cuda()
+                    dist.broadcast(tensor=step_tensor, src=0)
+                    globalMinStep, nextClientId = step_tensor[0].item(), step_tensor[args.this_rank].item()
 
                     lastGlobalModel = model
 
@@ -270,19 +282,18 @@ def run(rank, model, train_data, test_data, queue, param_q, stop_flag, client_cf
 
                     rece_dur = time.time() - rece_start
 
-                    if numOfUploads % args.eval_interval == 0:
+                    if numOfUploads % int(args.eval_interval) == 0:
                         test_loss, acc = test_model(rank, model, test_data, criterion=criterion)
                         logging.info("After aggregation, for epoch {}, upload_epoch {}, local step {}, globalStep {}, CumulTime {}, training loss {}, test_loss {}, test_accuracy {} \n".format(epoch, numOfUploads, local_step, globalMinStep, time.time() - startTime, epoch_train_loss/float(epoch_train_batch), test_loss, acc))
                         model.train()
                         needEval = False
 
                 logging.info('LocalStep {}, CumulTime {}, Epoch {}, Batch {}/{}, Loss:{} | TotalTime {} | Comptime: {} | SendTime: {} | ReceTime: {} | Sleep: {} | staleness: {} \n'
-                            .format(local_step, time.time() - startTime, epoch, batch_idx, len(train_data[0]), round(loss.data.item(), 4), round(time.time() - it_start, 4), round(it_duration, 4), round(send_dur,4), round(rece_dur, 4), sleepForCompute, local_step - globalMinStep))
+                            .format(local_step, time.time() - startTime, epoch, batch_idx, len(train_data[-1]), round(loss.data.item(), 4), round(time.time() - it_start, 4), round(it_duration, 4), round(send_dur,4), round(rece_dur, 4), sleepForCompute, local_step - globalMinStep))
 
             except Exception as e:
                 exc_type, exc_obj, exc_tb = sys.exc_info()
                 fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
-                print('Should Stop: {}!'.format(stop_flag.value))
                 logging.info("====Error: {}, {}, {}, {}".format(e, exc_type, fname, exc_tb.tb_lineno))
                 break
 
@@ -295,14 +306,11 @@ def run(rank, model, train_data, test_data, queue, param_q, stop_flag, client_cf
             if reloadClientData:
                 break
 
-        # Check the top 1 test accuracy after training
-        print("For epoch {}, training loss {}, CumulTime {}, local Step {} ".format(epoch, epoch_train_loss/float(epoch_train_batch), time.time() - startTime, local_step))
-        #test_loss, acc = test_model(rank, model, test_data, criterion=criterion)
-        #logging.info("For epoch {}, CumulTime {}, training loss {}, test_loss {}, test_accuracy {} \n".format(epoch, time.time() - startTime, epoch_train_loss/float(epoch_train_batch), test_loss, acc))
         last_test = time.time()
 
-        #if stop_flag.value:
-        #    break
+        if stop_flag.value:
+            break
+
     queue.put({rank: [[], [], [], True, -1, -1]})
     print("Worker {} has completed epoch {}!".format(args.this_rank, epoch))
 
@@ -313,9 +321,9 @@ def report_data_info(rank, queue, entire_train_data):
     })
 
     # get the partitionId to run
-    clientIdToRun = torch.zeros([1], dtype=torch.int).cpu()
-    dist.recv(tensor=clientIdToRun, src=0)
-    return clientIdToRun.item()
+    clientIdToRun = torch.zeros([world_size - 1], dtype=torch.int).cuda()
+    dist.broadcast(tensor=clientIdToRun, src=0)
+    return clientIdToRun[args.this_rank - 1].item()
 
 def init_myprocesses(rank, size, model,
                    train_dataset, test_dataset,
@@ -366,8 +374,8 @@ def init_dataset():
 
     elif args.data_set == "imagenet":
         train_transform, test_transform = get_data_transform('imagenet')
-        train_dataset = datasets.ImageNet(args.data_dir, split='train', download=True, transform=train_transform)
-        test_dataset = datasets.ImageNet(args.data_dir, split='train', download=True, transform=train_transform)
+        train_dataset = datasets.ImageNet(args.data_dir, split='train', download=False, transform=train_transform)
+        test_dataset = datasets.ImageNet(args.data_dir, split='val', download=False, transform=test_transform)
 
         model = tormodels.__dict__[args.model]()
     elif args.data_set == 'emnist':
@@ -438,7 +446,9 @@ if __name__ == "__main__":
         workers = [i for i in range(1, args.total_worker + 1)]
 
     # load data partitioner (entire_train_data)
-    entire_train_data = DataPartitioner(train_dataset)
+    dataConf = os.path.join(args.data_dir, 'sampleConf') if args.data_set == 'imagenet' else None
+
+    entire_train_data = DataPartitioner(data=train_dataset, splitConfFile=dataConf)
 
     dataDistribution = [int(x) for x in args.sequential.split('-')]
     distributionParam = [float(x) for x in args.zipf_alpha.split('-')]
@@ -448,7 +458,7 @@ if __name__ == "__main__":
                                     filter_class=args.filter_class, arg = {'balanced_client':0, 'param': distributionParam[i]})
     entire_train_data.log_selection()
 
-    clientIdToRun = report_data_info(this_rank, q, entire_train_data)
+    nextClientId = clientIdToRun = report_data_info(this_rank, q, entire_train_data)
 
     train_datas = []
 
@@ -461,9 +471,9 @@ if __name__ == "__main__":
     testWorkers = workers
     splitTestRatio = []
 
-    testsetPartitioner = DataPartitioner(test_dataset)
-    partition_dataset(testsetPartitioner, [1], splitTestRatio)
-    test_data = select_dataset(this_rank, testsetPartitioner, batch_size=test_bsz, istest=True)
+    testsetPartitioner = DataPartitioner(data=test_dataset, isTest=True)
+    partition_dataset(testsetPartitioner, workers, splitTestRatio)
+    test_data = select_dataset(this_rank, testsetPartitioner, batch_size=test_bsz, isTest=True)
 
     stop_flag = Value(c_bool, False)
     init_myprocesses(this_rank, world_size, model, train_datas, test_data,

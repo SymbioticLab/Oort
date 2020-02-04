@@ -6,4 +6,8 @@ server*.lsf
 *save*
 *pyc
 *log
+learn*.lsf
+server*.lsf
+vms
+jobinfo
 ./scripts/logs/*

@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 from random import Random
-from torch.utils.data import DataLoader
+from core.dataloader import DataLoader
 import numpy as np
 from math import *
 import logging
@@ -27,7 +27,7 @@ class DataPartitioner(object):
 
     # len(sizes) is the number of workers
     # sequential 1-> random 2->zipf 3-> identical
-    def __init__(self, data, seed=10):
+    def __init__(self, data, seed=10, splitConfFile=None, isTest=False):
         self.partitions = []
         self.rng = Random()
         self.rng.seed(seed)
@@ -38,16 +38,37 @@ class DataPartitioner(object):
         self.targets = {}
         self.indexToLabel = {}
         self.totalSamples = 0
-
-        # categarize the samples
-        for index, (inputs, label) in enumerate(self.data):
-            if label not in self.targets:
-                self.targets[label] = []
-            self.targets[label].append(index)
-            self.indexToLabel[index] = label
-            self.totalSamples += 1
-
         self.data_len = len(self.data)
+
+        if isTest:
+            # randomly generate some
+            # categarize the samples
+            self.targets[0] = []
+            for index in range(self.data_len):
+                self.targets[0].append(index)
+                self.indexToLabel[index] = 0
+                self.totalSamples += 1
+
+        elif splitConfFile is None:
+            # categarize the samples
+            for index, (inputs, label) in enumerate(self.data):
+                if label not in self.targets:
+                    self.targets[label] = []
+                self.targets[label].append(index)
+                self.indexToLabel[index] = label
+                self.totalSamples += 1
+        else:
+            with open(splitConfFile, 'r') as fin:
+                labelSamples = [int(x.strip()) for x in fin.readlines()]
+            # categarize the samples
+            baseIndex = 0
+            for label, _samples in enumerate(labelSamples):
+                for k in range(_samples):
+                    self.indexToLabel[baseIndex + k] = label
+                self.targets[label] = [baseIndex + k for k in range(_samples)]
+                self.totalSamples += _samples
+                baseIndex += _samples
+
         self.numOfLabels = len(self.targets.keys())
         self.workerDistance = []
         self.classPerWorker = None
@@ -122,24 +143,6 @@ class DataPartitioner(object):
         else:
             logging.info('========= Start of Class/Worker =========\n')
 
-            # deal with the balanced dataset
-            if args['balanced_client'] > 0:
-                balanced_class_len = int(sizes[i] * data_len/numOfLabels)
-
-                for i in range(args['balanced_client']):
-                    balacned_class_set = []
-
-                    for key in targets:
-                        balacned_class_set += targets[key][:balanced_class_len]
-                        targets[key] = targets[key][balanced_class_len:]
-
-                    self.partitions.append(balacned_class_set)
-                    self.rng.shuffle(self.partitions[-1])
-
-                    logging.info(repr([balanced_class_len for i in range(numOfLabels)]) + '\n')
-
-                sizes = sizes[args['balanced_client']:]
-
             if ratioOfClassWorker is None:
                 # random distribution
                 if sequential == 1:
@@ -185,7 +188,7 @@ class DataPartitioner(object):
                     self.partitions.append([])
                     # enumerate the ratio of classes it should take
                     for c in list(targets.keys()):
-                        takeLength = floor(keyLength[keyDir[c]] * ratioOfClassWorker[worker][keyDir[c]])
+                        takeLength = min(int(math.ceil(keyLength[keyDir[c]] * ratioOfClassWorker[worker][keyDir[c]])), len(targets[c]))
                         self.partitions[-1] += targets[c][0:takeLength]
                         tempClassPerWorker[worker][keyDir[c]] += takeLength
                         targets[c] = targets[c][takeLength:]
@@ -226,11 +229,15 @@ class DataPartitioner(object):
         logging.info("=====================================\n")
 
     def use(self, partition, istest):
-        _partition = -1 if istest else partition
+        _partition = partition
+        resultIndex = self.partitions[_partition]
 
-        logging.info("====Data length for client {} is {}".format(partition, len(self.partitions[_partition])))
-        self.rng.shuffle(self.partitions[_partition])
-        return Partition(self.data, self.partitions[_partition])
+        #if istest:
+        #    resultIndex = resultIndex[:10000]
+
+        logging.info("====Data length for client {} is {}".format(partition, len(resultIndex)))
+        self.rng.shuffle(resultIndex)
+        return Partition(self.data, resultIndex)
 
     def getDistance(self):
         return self.workerDistance
@@ -239,7 +246,7 @@ class DataPartitioner(object):
         # return the size of samples
         return [len(partition) for partition in self.partitions]
 
-def partition_dataset(partitioner, workers, partitionRatio=[], sequential=0, ratioOfClassWorker=None, filter_class=0, arg={'balanced_client':0, 'param': 1.95}):
+def partition_dataset(partitioner, workers, partitionRatio=[], sequential=0, ratioOfClassWorker=None, filter_class=0, arg={'param': 1.95}):
     """ Partitioning Data """
     workers_num = len(workers)
     partition_sizes = [1.0 / workers_num for _ in range(workers_num)]
@@ -249,8 +256,10 @@ def partition_dataset(partitioner, workers, partitionRatio=[], sequential=0, rat
 
     partitioner.partitionData(sizes=partition_sizes, sequential=sequential, ratioOfClassWorker=ratioOfClassWorker,filter_class=filter_class, args=arg)
 
-def select_dataset(rank: int, partition: DataPartitioner, batch_size: int, istest=False):
-    #workers_num = len(workers)
-    #partition_dict = {workers[i]: i for i in range(workers_num)}
-    partition = partition.use(rank - 1, istest)
-    return DataLoader(partition, batch_size=batch_size, shuffle=True, pin_memory=True, num_workers=0)
+def select_dataset(rank: int, partition: DataPartitioner, batch_size: int, isTest=False):
+    partition = partition.use(rank - 1, isTest)
+
+    #if istest:
+    #    return DataLoader(partition, batch_size=batch_size, shuffle=False, pin_memory=False, num_workers=16, drop_last=True)
+    #else:
+    return DataLoader(partition, batch_size=batch_size, shuffle=True, pin_memory=False, num_workers=10, drop_last=True)

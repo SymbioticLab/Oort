@@ -21,7 +21,7 @@ from torch.utils.data import DataLoader
 from torchvision import datasets, transforms
 import torchvision.models as tormodels
 
-logFile = '/tmp/log_' + str(datetime.datetime.fromtimestamp(time.time()).strftime('%m%d_%H%M%S'))
+logFile = '/tmp/torch/log_' + str(datetime.datetime.fromtimestamp(time.time()).strftime('%m%d_%H%M%S'))
 logging.basicConfig(format='%(asctime)s,%(msecs)d %(levelname)s %(message)s',
                     datefmt='%H:%M:%S',
                     level=logging.DEBUG,
@@ -37,6 +37,8 @@ trainloss_file = '/tmp/trainloss' + args.model + '.txt'
 staleness_file = '/tmp/staleness' + args.model + ".txt"
 os.environ['MASTER_ADDR'] = args.ps_ip
 os.environ['MASTER_PORT'] = str(int(args.ps_port) + int(args.gpu_device))
+os.environ['NCCL_SOCKET_IFNAME'] = 'ib0'
+os.environ['GLOO_SOCKET_IFNAME'] = 'ib0'
 # os.environ['OMP_NUM_THREADS'] = args.threads
 # os.environ['MKL_NUM_THREADS'] = args.threads
 
@@ -45,7 +47,7 @@ torch.cuda.set_device(args.gpu_device)
 
 def initiate_sampler_query(numOfClients):
     # Initiate the clientSampler 
-    clientSampler = ClientSampler(args.sample_mode)
+    clientSampler = ClientSampler(args.sample_mode, args.score_mode)
     collectedClients = 0
     initial_time = time.time()
 
@@ -72,7 +74,8 @@ def run(model, test_data, queue, param_q, stop_signal, clientSampler):
     f_staleness = open(staleness_file, 'w')
 
     logDir = "/tmp/" + args.model
-
+    
+    # convert gradient tensor to numpy structure
     if args.load_model:
         try:
             model.load_state_dict(torch.load(logDir+'/'+str(args.model)+'.pth.tar'))
@@ -81,13 +84,11 @@ def run(model, test_data, queue, param_q, stop_signal, clientSampler):
             logging.info("====Error: Failed to load model due to {}\n".format(str(e)))
             pass
     
-    if os.path.isdir(logDir):
-        shutil.rmtree(logDir)
-    os.mkdir(logDir)
+    if not os.path.isdir(logDir):
+        os.mkdir(logDir)
 
-    # convert gradient tensor to numpy structure
-    tmp = map(lambda item: (item[0], item[1].numpy), model.state_dict().items())
     _tmp = OrderedDict(map(lambda item: (item[0], item[1].cpu().numpy()), model.state_dict().items()))
+    
     workers = [int(v) for v in str(args.learners).split('-')]
 
     for _ in workers:
@@ -115,7 +116,7 @@ def run(model, test_data, queue, param_q, stop_signal, clientSampler):
     # The fast worker exceeding the duration will be pushed into the queue to wait
     stale_stack = []
     global_update = 0
-    newEpoch = True
+    newEpoch = 0
 
     logging.info(repr(clientSampler.getClientsInfo()))
 
@@ -133,7 +134,6 @@ def run(model, test_data, queue, param_q, stop_signal, clientSampler):
                 else:
                     sc = 1.0 - clientSampler.getScore(rank_src, clientId)
                     clientSampler.registerScore(clientId, sc)
-                    #logging.info("====Score for client {} is {}, now the reward is {}".format(clientId, sc, clientSampler.getClientReward(clientId)))
 
                 if isWorkerEnd:
                     print("Worker {} has completed all its data computation!".format(rank_src))
@@ -172,7 +172,7 @@ def run(model, test_data, queue, param_q, stop_signal, clientSampler):
                 global_update += 1
                 currentMinStep = 9999999999
 
-                # get the current minimum local steps
+                # get the current minimum local staleness_sum_epoch
                 for rankStep in learner_local_step.keys():
                     currentMinStep = min(currentMinStep, learner_local_step[rankStep])
 
@@ -182,7 +182,6 @@ def run(model, test_data, queue, param_q, stop_signal, clientSampler):
                 staleness += 1
                 learner_staleness[rank_src] = staleness
                 stale_stack.append(rank_src)
-
 
                 # once reach an epoch, count the average train loss
                 if global_update%len(workers) == 0:
@@ -209,18 +208,6 @@ def run(model, test_data, queue, param_q, stop_signal, clientSampler):
                     data_size_epoch = 0
                     epoch_time = e_epoch_time
 
-                    # dump the model into file for backup
-                    if epoch_count % args.dump_epoch == 0:
-                        logging.info("====Try to dump the model")
-                        torch.save(model.state_dict(), logDir+'/'+str(args.model)+'.pth.tar')
-
-                    # resampling the clients if necessary
-                    if epoch_count % args.resampling_interval == 0:
-                        sampledClients = sorted(clientSampler.resampleClients(len(workers), max(args.total_worker, len(workers))))
-                        logging.info("====Try to resample clients with metrics {}, result is {}".format(repr(clientSampler.getAllMetrics()), repr(sampledClients)))
-                        for i, w in enumerate(workers):
-                            clientSampler.clientOnHost(sampledClients[i], w)
-
                 # if the worker is within the staleness, then continue w/ local cache and do nothing
                 # Otherwise, block it 
                 if learner_local_step[rank_src] >= args.stale_threshold + currentMinStep:
@@ -245,30 +232,37 @@ def run(model, test_data, queue, param_q, stop_signal, clientSampler):
                         workersToSend.append(pworker)
 
                 if len(workersToSend) > 0:
+                    workersToSend = sorted(workersToSend)
                     send_start = time.time()
-                    for idx, param in enumerate(model.parameters()):
-                        pendingSend = []    # working channels in communication
-                        for worker in workersToSend:
-                            pendingSend.append(dist.isend(tensor=(param.data).cpu(), dst=worker))
-                            #dist.send(tensor=(param.data/float(normWeight)).cpu(), dst=worker)
-                        for item in pendingSend:
-                            item.wait()
 
-                    pendingSend = []
-                    for worker in workersToSend:
-                        pendingSend.append(dist.isend(tensor=torch.tensor([currentMinStep, clientSampler.getCurrentClientId(worker)], dtype=torch.int).cpu(), dst=worker))
-                        #dist.send(tensor=torch.tensor([currentMinStep, clientSampler.getCurrentClientId(worker)], dtype=torch.int).cpu(), dst=worker)
+                    for idx, param in enumerate(model.parameters()):
+                        dist.broadcast(tensor=(param.data.cuda()), src=0)
+
+                    # resampling the clients if necessary
+                    if epoch_count % args.resampling_interval == 0:
+                        sampledClients = sorted(clientSampler.resampleClients(len(workers), max(args.total_worker, len(workers))))
+                        logging.info("====Try to resample clients with metrics {}, result is {}".format(repr(clientSampler.getAllMetrics()), repr(sampledClients)))
+                        for i, w in enumerate(workers):
+                            clientSampler.clientOnHost(sampledClients[i], w)
+
+                    clientIdsToRun = [currentMinStep]
+                    for worker in workersToSend:  
                         learner_cache_step[worker] = currentMinStep
+                        clientIdsToRun.append(clientSampler.getCurrentClientId(worker))
                         # remove from the pending workers
                         del pendingWorkers[worker]
 
-                    for item in pendingSend:
-                        item.wait()
+                    dist.broadcast(tensor=torch.tensor(clientIdsToRun, dtype=torch.int).cuda(), src=0)
+
+                    newEpoch = 0
 
                     if global_update % args.display_step == 0:
                         logging.info("Handle Wight {} | Send {}".format(handle_dur, time.time() - send_start))
 
-                    newEpoch = 0
+                    # dump the model into file for backup
+                    if epoch_count % args.dump_epoch == 0:
+                        torch.save(model.state_dict(), logDir+'/'+str(args.model)+'_'+str(currentMinStep)+'.pth.tar')
+                        logging.info("====Dump model successfully")
 
                 # The training stop
                 if(epoch_count >= args.epochs * args.upload_epoch):
@@ -297,10 +291,13 @@ def init_myprocesses(rank, size, model, test_data, queue, param_q, stop_signal, 
     workerRanks = [int(v) for v in str(args.learners).split('-')]
     clientSampler = initiate_sampler_query(len(workerRanks))
     
+    clientIdsToRun = []
     for wrank in workerRanks:
         nextClientIdToRun = clientSampler.nextClientIdToRun(hostId=wrank)
         clientSampler.clientOnHost(nextClientIdToRun, wrank)
-        dist.send(tensor=torch.tensor([nextClientIdToRun], dtype=torch.int).cpu(), dst=wrank)
+        clientIdsToRun.append(nextClientIdToRun)
+    
+    dist.broadcast(tensor=torch.tensor(clientIdsToRun, dtype=torch.int).cuda(), src=0)
 
     # Start the PS service
     fn(model, test_data, queue, param_q, stop_signal, clientSampler)
@@ -336,8 +333,8 @@ def init_dataset():
 
     elif args.data_set == "imagenet":
         train_transform, test_transform = get_data_transform('imagenet')
-        train_dataset = datasets.ImageNet(args.data_dir, split='train', download=True, transform=train_transform)
-        test_dataset = datasets.ImageNet(args.data_dir, split='train', download=True, transform=train_transform)
+        train_dataset = datasets.ImageNet(args.data_dir, split='train', download=False, transform=train_transform)
+        test_dataset = datasets.ImageNet(args.data_dir, split='val', download=False, transform=test_transform)
 
         model = tormodels.__dict__[args.model]()
     elif args.data_set == 'emnist':
@@ -379,7 +376,7 @@ if __name__ == "__main__":
     torch.manual_seed(manual_seed)
     model, train_dataset, test_dataset = init_dataset()
 
-    test_data = DataLoader(test_dataset, batch_size=100, shuffle=True)
+    test_data = DataLoader(test_dataset, batch_size=args.test_bsz, shuffle=True)
 
     print("====PS: finish loading test_data")
     world_size = len(str(args.learners).split('-')) + 1
