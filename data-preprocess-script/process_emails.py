@@ -6,6 +6,21 @@ from nltk import word_tokenize
 from data_div import measureAllDistance
 
 """
+# Rename the incorrect folders
+folders = os.listdir('maildir')
+# Iterate all names
+for name in folders:
+    sent_folder = './maildir/' + name + '/sent/'
+    if not path.exists(sent_folder):
+
+        sent_item_folder = './maildir/' + name + '/sent_items/'
+        if path.exists(sent_item_folder):
+            print("renamed!!!")
+            os.rename(sent_item_folder, sent_folder)
+"""
+
+
+"""
 dict = {}
 
 def parse_email(sentence):
