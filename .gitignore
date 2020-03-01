@@ -6,6 +6,7 @@ server*.lsf
 *save*
 *pyc
 *log
+*pys
 learn*.lsf
 server*.lsf
 vms

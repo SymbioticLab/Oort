@@ -47,7 +47,8 @@ class DataPartitioner(object):
             for index in range(self.data_len):
                 self.targets[0].append(index)
                 self.indexToLabel[index] = 0
-                self.totalSamples += 1
+
+            self.totalSamples += self.data_len
 
         elif splitConfFile is None:
             # categarize the samples
@@ -56,10 +57,13 @@ class DataPartitioner(object):
                     self.targets[label] = []
                 self.targets[label].append(index)
                 self.indexToLabel[index] = label
-                self.totalSamples += 1
+            
+            self.totalSamples += len(self.data)
         else:
+            # each row denotes the number of samples in this class
             with open(splitConfFile, 'r') as fin:
                 labelSamples = [int(x.strip()) for x in fin.readlines()]
+
             # categarize the samples
             baseIndex = 0
             for label, _samples in enumerate(labelSamples):
@@ -128,7 +132,9 @@ class DataPartitioner(object):
         # classPerWorker -> Rows are workers and cols are classes
         tempClassPerWorker = np.zeros([len(sizes), numOfLabels])
         
+        # random partition
         if sequential == 0:
+            logging.info("========= Start of Random Partition =========\n")
             indexes = [x for x in range(0, data_len)]
             self.rng.shuffle(indexes)
 
@@ -157,7 +163,7 @@ class DataPartitioner(object):
 
             if filter_class > 0:
                 for w in range(len(sizes)):
-                    # randomly filter classes
+                    # randomly filter classes by forcing zero samples
                     wrandom = self.rng.sample(range(numOfLabels), filter_class)
                     for wr in wrandom:
                         ratioOfClassWorker[w][wr] = 0.001
@@ -167,6 +173,7 @@ class DataPartitioner(object):
                 sumRatiosPerClass = np.sum(ratioOfClassWorker, axis=1)
                 for worker in range(len(sizes)):
                     ratioOfClassWorker[worker, :] = ratioOfClassWorker[worker, :]/float(sumRatiosPerClass[worker])
+
                 # split the classes
                 for worker in range(len(sizes)):
                     self.partitions.append([])
@@ -178,7 +185,7 @@ class DataPartitioner(object):
                         tempClassPerWorker[worker][keyDir[c]] += takeLength
 
                     self.rng.shuffle(self.partitions[-1])
-            else:
+            elif sequential == 2:
                 sumRatiosPerClass = np.sum(ratioOfClassWorker, axis=0)
                 for c in targets.keys():
                     ratioOfClassWorker[:, keyDir[c]] = ratioOfClassWorker[:, keyDir[c]]/float(sumRatiosPerClass[keyDir[c]])
@@ -194,6 +201,30 @@ class DataPartitioner(object):
                         targets[c] = targets[c][takeLength:]
 
                     self.rng.shuffle(self.partitions[-1])
+
+            elif sequential == 4:
+                # load data from given config file
+                clientGivenSamples = {}
+                with open(args['clientSampleConf'], 'r') as fin:
+                    for clientId, line in enumerate(fin.readlines()):
+                        clientGivenSamples[clientId] = [int(x) for x in line.strip().split()]
+
+                # split the data
+                for clientId in range(len(clientGivenSamples.keys())):
+                    self.partitions.append([])
+
+                    for c in list(targets.keys()):
+                        takeLength = clientGivenSamples[clientId][c]
+                        if clientGivenSamples[clientId][c] > targets[c]:
+                            logging.info("========== Failed to allocate {} samples for class {} to client {}, actual quota is {}"/
+                                .format(clientGivenSamples[clientId][c], c, clientId, targets[c]))
+                            takeLength = targets[c]
+
+                        self.partitions[-1] += targets[c][0:takeLength]
+                        tempClassPerWorker[worker][keyDir[c]] += takeLength
+                        targets[c] = targets[c][takeLength:]
+
+                self.rng.shuffle(self.partitions[-1])
 
         # concatenate ClassPerWorker
         if self.classPerWorker is None:
@@ -231,12 +262,9 @@ class DataPartitioner(object):
     def use(self, partition, istest):
         _partition = partition
         resultIndex = self.partitions[_partition]
-
-        #if istest:
-        #    resultIndex = resultIndex[:10000]
+        self.rng.shuffle(resultIndex)
 
         logging.info("====Data length for client {} is {}".format(partition, len(resultIndex)))
-        self.rng.shuffle(resultIndex)
         return Partition(self.data, resultIndex)
 
     def getDistance(self):
