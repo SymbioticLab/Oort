@@ -17,9 +17,9 @@ import random
 # rc('font',**{'family':'serif','serif':['Times']})
 # rc('text', usetex=True)
 
-random.seed(33334)
+random.seed(133334)
 
-numOfTries = 20
+numOfTries = 50
 
 def cdf_transfer(X):
     X = sorted(X)
@@ -203,17 +203,17 @@ def read_from_sum(name, threshold=99999999):
 
     return nres
 
-def read_client_samples(name, threshold=99999999):
+def read_client_samples(name, threshold=99999999, skip=0, sumT = 0):
     res = []
     totalClients = 0
 
     with open(name, 'r') as fin:
         lines = fin.readlines()
         threshold = min(threshold, len(lines))
-        for l in lines[:threshold]:
+        for l in lines[skip:threshold]:
             clientSamples = [int(x) for x in l.strip().split()]
 
-            if sum(clientSamples) > 0:
+            if sum(clientSamples) > sumT:
                 res.append(clientSamples)
                 totalClients += 1
 
@@ -240,6 +240,23 @@ def pickSubset(clientSampleList, numOfSample):
             subsetSample[i] += cl
 
     return subsetSample
+
+def openImgFull():
+    # 507
+    clientSampleList, allSamples, totalClients = read_client_samples("openImg_size.txt", skip=2, sumT = 50)
+
+    dis = []
+    sampleRs = []
+    for i in range(numOfTries):
+        print('...current openImgFull trial ' + str(i))
+        distances, sampleRatios = draw_rs(clientSampleList, allSamples, totalClients)
+        dis.append(distances)
+        sampleRs.append(sampleRatios)
+
+    #distances, sampleRatios = draw_ss(clientSampleList, allSamples, totalClients)
+    return dis, sampleRs
+    #plot_line([distances], [sampleRatios], [''], "Ratio of Clients Sampled", "Divergence to Overall", "diffallImg.pdf")
+
 
 def openImg():
     # 507
@@ -367,15 +384,17 @@ ss = []
 #     dQ, sQ = quickDraw()
 #     print('...current quickDraw trial ' + str(i))
 
+
 dE, sE = email()
 dB, sB = blog()
 dO, sO = openImg()
 dQ, sQ = quickDraw()
+dOF, sOF = openImgFull()
 
-ds.append([dE, dB, dO, dQ])
-ss.append([sE, sB, sO, sQ])
+ds.append([dE, dB, dO, dQ, dOF])
+ss.append([sE, sB, sO, sQ, sOF])
 
-with open("MultiRs", 'wb') as fout:
+with open("MultiRsFull", 'wb') as fout:
     pickle.dump(ds, fout)
     pickle.dump(ss, fout)
 
