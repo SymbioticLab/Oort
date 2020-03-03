@@ -19,7 +19,7 @@ import random
 
 random.seed(133334)
 
-numOfTries = 50
+numOfTries = 100
 
 def cdf_transfer(X):
     X = sorted(X)
@@ -260,7 +260,7 @@ def openImgFull():
 
 def openImg():
     # 507
-    clientSampleList, allSamples, totalClients = read_client_samples("openImg_size.txt", 507)
+    clientSampleList, allSamples, totalClients = read_client_samples("openImg_size.txt", 5000)
 
     dis = []
     sampleRs = []
@@ -275,7 +275,7 @@ def openImg():
     #plot_line([distances], [sampleRatios], [''], "Ratio of Clients Sampled", "Divergence to Overall", "diffallImg.pdf")
 
 def quickDraw():
-    clientSampleList, allSamples, totalClients = read_client_samples("quickdraw_size.txt", 30000)
+    clientSampleList, allSamples, totalClients = read_client_samples("quickdraw_size.txt")
 
     dis = []
     sampleRs = []
@@ -289,7 +289,7 @@ def quickDraw():
     return dis, sampleRs
 
 def blog():
-    clientSampleList, allSamples, totalClients = readFromSerialized("blog_data_dist.txt", 1000)
+    clientSampleList, allSamples, totalClients = readFromSerialized("blog_data_dist.txt")
 
     dis = []
     sampleRs = []
@@ -304,7 +304,7 @@ def blog():
     #plot_line([distances], [sampleRatios], [''], "Ratio of Clients Sampled", "Divergence to Overall", "diffallBlog.pdf")
 
 def email():
-    clientSampleList, allSamples, totalClients = readFromSerialized("email_data_dist.txt", 30000)
+    clientSampleList, allSamples, totalClients = readFromSerialized("email_data_dist.txt")
 
     dis = []
     sampleRs = []
