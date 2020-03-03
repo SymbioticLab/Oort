@@ -369,6 +369,13 @@ def draw_rs(clientSampleList, allSamples, totalClients, figCaption="diffall.pdf"
 
     return distances, numOfSamples #array(numOfSamples)/float(totalClients)
 
+def hoeffding_sim():
+    import math
+
+    x = [i for i in range(1, 1000)]
+    y = [1.0/float(math.e)**(2*i*0.005) for i in x]
+    print(y[-10:-1])
+    plot_line([y], [x], [''], "N", "Confidence", "hoeffding_sim.pdf")
 
 ds = []
 ss = []
