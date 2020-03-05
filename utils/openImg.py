@@ -51,23 +51,25 @@ class OPENIMG():
     def __init__(self, root, train=True, transform=None, target_transform=None):
         
         self.train = train  # training set or test set
-
-        if not self._check_exists():
-            raise RuntimeError('Dataset not found.' +
-                               ' You have to download it')
+        self.root = root
 
         if self.train:
             self.data_file = self.training_file
         else:
             self.data_file = self.test_file
 
+        if not self._check_exists():
+            raise RuntimeError('Dataset not found.' +
+                               ' You have to download it')
+
         # load class information
         with open(os.path.join(self.processed_folder, 'classTags'), 'r') as fin:
             self.classes = [tag.strip() for tag in fin.readlines()]
 
         self.classMapping = self.class_to_idx
+        self.path = os.path.join(self.processed_folder, self.data_file)
         # load data and targets
-        self.data, self.targets = self.load_file(os.path.join(self.processed_folder, self.data_file))
+        self.data, self.targets = self.load_file(self.path)
 
     def __getitem__(self, index):
         """
@@ -77,11 +79,11 @@ class OPENIMG():
         Returns:
             tuple: (image, target) where target is index of the target class.
         """
-        img, target = self.data[index], int(self.targets[index])
+        imgName, target = self.data[index], int(self.targets[index])
 
         # doing this so that it is consistent with all other datasets
         # to return a PIL Image
-        img = Image.fromarray(img.numpy(), mode='L')
+        img = Image.open(os.path.join(self.path, imgName))
 
         if self.transform is not None:
             img = self.transform(img)
@@ -112,10 +114,10 @@ class OPENIMG():
 
     def load_file(self, path):
         rawImg, rawTags = [], []
-        imgFiles = [f for f in os.listdir(path) if os.path.isfile(os.path.join(path, f) and '.jpg' in f)]
+        imgFiles = [f for f in os.listdir(path) if os.path.isfile(os.path.join(path, f)) and '.jpg' in f]
 
         for imgFile in imgFiles:
-            rawImg.append(Image.open(os.path.join(path, imgFile)))
-            rawTags.append(self.classMapping(imgFile.replace('.jpg', '').split('__')[1]))
+            rawImg.append(imgFile)
+            rawTags.append(self.classMapping[imgFile.replace('.jpg', '').split('__')[1]])
 
         return rawImg, rawTags

@@ -15,17 +15,18 @@ from multiprocessing.managers import BaseManager
 import threading
 import random
 import multiprocessing
-
 import numpy as np
 import torch
 import torch.distributed as dist
+from torch.autograd import Variable
+from torchvision import datasets, transforms
+import torchvision.models as tormodels
+
+from utils.openImg import *
 from utils.divide_data import partition_dataset, select_dataset, DataPartitioner
 from utils.models import *
 from utils.utils_data import get_data_transform
 from utils.utils_model import MySGD, test_model
-from torch.autograd import Variable
-from torchvision import datasets, transforms
-import torchvision.models as tormodels
 
 torch.cuda.set_device(args.gpu_device)
 #torch.set_num_threads(int(args.threads))
@@ -395,6 +396,12 @@ def init_dataset():
         else:
             print('Model must be {} or {}!'.format('MnistCNN', 'AlexNet'))
             sys.exit(-1)
+    elif args.data_set == 'openImg':
+        train_transform, test_transform = get_data_transform('openImg')
+        train_dataset = OPENIMG(args.data_dir, train=True, transform=train_transform)
+        test_dataset = OPENIMG(args.data_dir, train=False, transform=test_transform)
+
+        model = tormodels.__dict__[args.model](num_classes=600)
     else:
         print('DataSet must be {} or {}!'.format('Mnist', 'Cifar'))
         sys.exit(-1)

@@ -216,7 +216,7 @@ class DataPartitioner(object):
                     for c in list(targets.keys()):
                         takeLength = clientGivenSamples[clientId][c]
                         if clientGivenSamples[clientId][c] > targets[c]:
-                            logging.info("========== Failed to allocate {} samples for class {} to client {}, actual quota is {}"/
+                            logging.info("========== Failed to allocate {} samples for class {} to client {}, actual quota is {}"\
                                 .format(clientGivenSamples[clientId][c], c, clientId, targets[c]))
                             takeLength = targets[c]
 

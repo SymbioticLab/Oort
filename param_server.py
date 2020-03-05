@@ -12,23 +12,31 @@ from collections import OrderedDict
 from multiprocessing.managers import BaseManager
 import torch
 import torch.distributed as dist
-from utils.models import *
-from utils.utils_data import get_data_transform
-from utils.utils_model import test_model
 from torch.multiprocessing import Process
 from torch.multiprocessing import Queue
 from torch.utils.data import DataLoader
 from torchvision import datasets, transforms
 import torchvision.models as tormodels
 
+from utils.models import *
+from utils.utils_data import get_data_transform
+from utils.utils_model import test_model
+from utils.openImg import *
+
 logFile = '/tmp/torch/log_' + str(datetime.datetime.fromtimestamp(time.time()).strftime('%m%d_%H%M%S'))
-logging.basicConfig(format='%(asctime)s,%(msecs)d %(levelname)s %(message)s',
-                    datefmt='%H:%M:%S',
-                    level=logging.DEBUG,
-                    handlers=[
-                        logging.FileHandler(logFile, mode='a'),
-                        logging.StreamHandler()
-                    ])
+def init_logging():
+    if not os.path.isdir('/tmp/torch'):
+        os.mkdir('/tmp/torch')
+
+    logging.basicConfig(format='%(asctime)s,%(msecs)d %(levelname)s %(message)s',
+                        datefmt='%H:%M:%S',
+                        level=logging.DEBUG,
+                        handlers=[
+                            logging.FileHandler(logFile, mode='a'),
+                            logging.StreamHandler()
+                        ])
+
+init_logging()
 
 entire_train_data = None
 sample_size_dic = {}
@@ -39,6 +47,7 @@ os.environ['MASTER_ADDR'] = args.ps_ip
 os.environ['MASTER_PORT'] = str(int(args.ps_port) + int(args.gpu_device))
 os.environ['NCCL_SOCKET_IFNAME'] = 'ib0'
 os.environ['GLOO_SOCKET_IFNAME'] = 'ib0'
+
 # os.environ['OMP_NUM_THREADS'] = args.threads
 # os.environ['MKL_NUM_THREADS'] = args.threads
 
@@ -330,7 +339,6 @@ def init_dataset():
         else:
             print('Model must be {} or {}!'.format('MnistCNN', 'AlexNet'))
             sys.exit(-1)
-
     elif args.data_set == "imagenet":
         train_transform, test_transform = get_data_transform('imagenet')
         train_dataset = datasets.ImageNet(args.data_dir, split='train', download=False, transform=train_transform)
@@ -354,6 +362,13 @@ def init_dataset():
         else:
             print('Model must be {} or {}!'.format('MnistCNN', 'AlexNet'))
             sys.exit(-1)
+
+    elif args.data_set == 'openImg':
+        train_transform, test_transform = get_data_transform('openImg')
+        train_dataset = OPENIMG(args.data_dir, train=True, transform=train_transform)
+        test_dataset = OPENIMG(args.data_dir, train=False, transform=test_transform)
+
+        model = tormodels.__dict__[args.model](num_classes=600)
     else:
         print('DataSet must be {} or {}!'.format('Mnist', 'Cifar'))
         sys.exit(-1)

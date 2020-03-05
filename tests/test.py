@@ -3,6 +3,7 @@ import argparse
 import math
 import os, shutil
 import sys
+sys.path.append("../")
 import time
 import logging
 from collections import OrderedDict
@@ -12,7 +13,7 @@ from multiprocessing.managers import BaseManager
 import threading
 import random
 
-import numpy as np
+#import numpy as np
 import torch
 import torch.distributed as dist
 from utils.divide_data import partition_dataset, select_dataset, DataPartitioner
@@ -28,7 +29,7 @@ import random
 import sys
 import time
 import logging
-from clientSampler import ClientSampler
+#from clientSampler import ClientSampler
 from collections import OrderedDict
 from multiprocessing.managers import BaseManager
 import torch
@@ -42,3 +43,7 @@ from torch.utils.data import DataLoader
 from torchvision import datasets, transforms
 import torchvision.models as tormodels
 
+print(torch.__version__)
+
+#device = torch.device("cuda")
+print(torch.rand(10).cuda())
