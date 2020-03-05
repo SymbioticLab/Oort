@@ -7,6 +7,7 @@ import logging
 from scipy import stats
 import numpy as np
 from pyemd import emd
+from collections import OrderedDict
 
 class Partition(object):
     """ Dataset partitioning helper """
@@ -27,15 +28,14 @@ class DataPartitioner(object):
 
     # len(sizes) is the number of workers
     # sequential 1-> random 2->zipf 3-> identical
-    def __init__(self, data, seed=10, splitConfFile=None, isTest=False):
+    def __init__(self, data, numOfClass=0, seed=10, splitConfFile=None, isTest=False):
         self.partitions = []
         self.rng = Random()
         self.rng.seed(seed)
         self.data = data
         np.random.seed(seed)
 
-
-        self.targets = {}
+        self.targets = OrderedDict()
         self.indexToLabel = {}
         self.totalSamples = 0
         self.data_len = len(self.data)
@@ -73,7 +73,7 @@ class DataPartitioner(object):
                 self.totalSamples += _samples
                 baseIndex += _samples
 
-        self.numOfLabels = len(self.targets.keys())
+        self.numOfLabels = max(len(self.targets.keys()), numOfClass)
         self.workerDistance = []
         self.classPerWorker = None
 
@@ -126,8 +126,11 @@ class DataPartitioner(object):
         data_len = self.getDataLen()
 
         usedSamples = 100000
-        keyDir = {key:i for i, key in enumerate(targets.keys())}
-        keyLength = [len(targets[key]) for key in targets.keys()]
+        keyDir = {key:int(key) for i, key in enumerate(targets.keys())}
+        keyLength = [0] * numOfLabels
+
+        for key in keyDir.keys():
+            keyLength[keyDir[key]] = len(targets[key])
 
         # classPerWorker -> Rows are workers and cols are classes
         tempClassPerWorker = np.zeros([len(sizes), numOfLabels])

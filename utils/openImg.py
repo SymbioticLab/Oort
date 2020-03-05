@@ -52,6 +52,8 @@ class OPENIMG():
         
         self.train = train  # training set or test set
         self.root = root
+        self.transform = transform
+        self.target_transform = target_transform
 
         if self.train:
             self.data_file = self.training_file
@@ -84,6 +86,9 @@ class OPENIMG():
         # doing this so that it is consistent with all other datasets
         # to return a PIL Image
         img = Image.open(os.path.join(self.path, imgName))
+        
+        # avoid channel error
+        img = img.convert('RGB')
 
         if self.transform is not None:
             img = self.transform(img)
@@ -117,7 +122,9 @@ class OPENIMG():
         imgFiles = [f for f in os.listdir(path) if os.path.isfile(os.path.join(path, f)) and '.jpg' in f]
 
         for imgFile in imgFiles:
-            rawImg.append(imgFile)
-            rawTags.append(self.classMapping[imgFile.replace('.jpg', '').split('__')[1]])
+            classTag = imgFile.replace('.jpg', '').split('__')[1]
+            if classTag in self.classMapping:
+                rawImg.append(imgFile)
+                rawTags.append(self.classMapping[classTag])
 
         return rawImg, rawTags

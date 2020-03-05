@@ -48,7 +48,7 @@ init_logging()
 
 logging.basicConfig(format='%(asctime)s,%(msecs)d %(levelname)s %(message)s',
                     datefmt='%H:%M:%S',
-                    level=logging.DEBUG,
+                    level=logging.INFO,
                     handlers=[
                         logging.FileHandler(logFile, mode='a'),
                         logging.StreamHandler()
@@ -455,7 +455,7 @@ if __name__ == "__main__":
     # load data partitioner (entire_train_data)
     dataConf = os.path.join(args.data_dir, 'sampleConf') if args.data_set == 'imagenet' else None
 
-    entire_train_data = DataPartitioner(data=train_dataset, splitConfFile=dataConf)
+    entire_train_data = DataPartitioner(data=train_dataset, splitConfFile=dataConf, numOfClass=args.num_class)
 
     dataDistribution = [int(x) for x in args.sequential.split('-')]
     distributionParam = [float(x) for x in args.zipf_alpha.split('-')]
