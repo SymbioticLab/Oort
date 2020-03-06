@@ -8,6 +8,7 @@ from scipy import stats
 import numpy as np
 from pyemd import emd
 from collections import OrderedDict
+import time
 
 class Partition(object):
     """ Dataset partitioning helper """
@@ -35,24 +36,27 @@ class DataPartitioner(object):
         self.data = data
         np.random.seed(seed)
 
+        stime = time.time()
+        #logging.info("====Start to initiate DataPartitioner")
+
         self.targets = OrderedDict()
         self.indexToLabel = {}
         self.totalSamples = 0
         self.data_len = len(self.data)
 
-        if isTest:
-            # randomly generate some
-            # categarize the samples
-            self.targets[0] = []
-            for index in range(self.data_len):
-                self.targets[0].append(index)
-                self.indexToLabel[index] = 0
+        # if isTest:
+        #     # randomly generate some
+        #     # categarize the samples
+        #     self.targets[0] = []
+        #     for index in range(self.data_len):
+        #         self.targets[0].append(index)
+        #         self.indexToLabel[index] = 0
 
-            self.totalSamples += self.data_len
+        #     self.totalSamples += self.data_len
 
-        elif splitConfFile is None:
+        if splitConfFile is None:
             # categarize the samples
-            for index, (inputs, label) in enumerate(self.data):
+            for index, label in enumerate(self.data.train_labels):
                 if label not in self.targets:
                     self.targets[label] = []
                 self.targets[label].append(index)
@@ -76,6 +80,8 @@ class DataPartitioner(object):
         self.numOfLabels = max(len(self.targets.keys()), numOfClass)
         self.workerDistance = []
         self.classPerWorker = None
+
+        logging.info("====Initiating DataPartitioner takes {} s\n".format(time.time() - stime))
 
     def getTargets(self):
         tempTarget = self.targets.copy()
@@ -279,6 +285,7 @@ class DataPartitioner(object):
 
 def partition_dataset(partitioner, workers, partitionRatio=[], sequential=0, ratioOfClassWorker=None, filter_class=0, arg={'param': 1.95}):
     """ Partitioning Data """
+    stime = time.time()
     workers_num = len(workers)
     partition_sizes = [1.0 / workers_num for _ in range(workers_num)]
 
@@ -286,6 +293,7 @@ def partition_dataset(partitioner, workers, partitionRatio=[], sequential=0, rat
         partition_sizes = partitionRatio
 
     partitioner.partitionData(sizes=partition_sizes, sequential=sequential, ratioOfClassWorker=ratioOfClassWorker,filter_class=filter_class, args=arg)
+    #logging.info("====Partitioning data takes {} s\n".format(time.time() - stime()))
 
 def select_dataset(rank: int, partition: DataPartitioner, batch_size: int, isTest=False):
     partition = partition.use(rank - 1, isTest)
@@ -293,4 +301,4 @@ def select_dataset(rank: int, partition: DataPartitioner, batch_size: int, isTes
     #if istest:
     #    return DataLoader(partition, batch_size=batch_size, shuffle=False, pin_memory=False, num_workers=16, drop_last=True)
     #else:
-    return DataLoader(partition, batch_size=batch_size, shuffle=True, pin_memory=False, num_workers=10, drop_last=True)
+    return DataLoader(partition, batch_size=batch_size, shuffle=True, pin_memory=False, num_workers=32, drop_last=True)

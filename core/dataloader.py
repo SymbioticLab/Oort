@@ -12,6 +12,7 @@ from torch.utils.data import _utils
 import threading
 from torch._six import queue
 import logging
+from collections import OrderedDict
 
 # This function used to be defined in this file. However, it was moved to
 # _utils/collate.py. Although it is rather hard to access this from user land
@@ -194,6 +195,7 @@ class DataLoader(object):
 
     def __len__(self):
         return len(self.batch_sampler)
+
 
 class _DataLoaderIter(object):
     r"""Iterates once over the DataLoader's dataset, as specified by the sampler"""
@@ -446,6 +448,7 @@ class _DataLoaderIter(object):
             self.rcvd_idx = 0
             self.reorder_dict = {}
             self.done_event = multiprocessing.Event()
+            self.preorder_degree = 3
 
             self.index_queues = []
             self.workers = []
@@ -488,7 +491,7 @@ class _DataLoaderIter(object):
             self.worker_pids_set = True
 
             # prime the prefetch loop
-            for _ in range(2 * self.num_workers):
+            for _ in range(self.preorder_degree * self.num_workers):
                 self._put_indices()
 
     def __len__(self):
@@ -553,6 +556,8 @@ class _DataLoaderIter(object):
                 if success:
                     return data
 
+
+    # once exist, then return 
     def __next__(self):
         if self.num_workers == 0:  # same-process loading
             indices = next(self.sample_iter)  # may raise StopIteration
@@ -560,11 +565,6 @@ class _DataLoaderIter(object):
             if self.pin_memory:
                 batch = _utils.pin_memory.pin_memory_batch(batch)
             return batch
-
-        # check if the next sample has already been generated
-        if self.rcvd_idx in self.reorder_dict:
-            batch = self.reorder_dict.pop(self.rcvd_idx)
-            return self._process_next_batch(batch)
 
         if self.batches_outstanding == 0:
             self._shutdown_workers()
@@ -574,11 +574,49 @@ class _DataLoaderIter(object):
             assert (not self.shutdown and self.batches_outstanding > 0)
             idx, batch = self._get_batch()
             self.batches_outstanding -= 1
-            if idx != self.rcvd_idx:
-                # store out-of-order samples
-                self.reorder_dict[idx] = batch
-                continue
+
             return self._process_next_batch(batch)
+
+            # if idx != self.rcvd_idx:
+            #     # store out-of-order samples
+            #     self.reorder_dict[idx] = batch
+            #     # should move on
+            #     self._process_next_batch(batch)
+            # else:
+            #     self.rcvd_idx += 1
+            #     return self._process_next_batch(batch)
+
+    # def __next__(self):
+    #     if self.num_workers == 0:  # same-process loading
+    #         indices = next(self.sample_iter)  # may raise StopIteration
+    #         batch = self.collate_fn([self.dataset[i] for i in indices])
+    #         if self.pin_memory:
+    #             batch = _utils.pin_memory.pin_memory_batch(batch)
+    #         return batch
+
+    #     # check if the next sample has already been generated
+    #     if self.rcvd_idx in self.reorder_dict:
+    #         batch = self.reorder_dict.pop(self.rcvd_idx)
+    #         self.rcvd_idx += 1
+    #         return batch
+    #         #self._process_next_batch(batch)
+
+    #     if self.batches_outstanding == 0:
+    #         self._shutdown_workers()
+    #         raise StopIteration
+
+    #     while True:
+    #         assert (not self.shutdown and self.batches_outstanding > 0)
+    #         idx, batch = self._get_batch()
+    #         self.batches_outstanding -= 1
+    #         if idx != self.rcvd_idx:
+    #             # store out-of-order samples
+    #             self.reorder_dict[idx] = batch
+    #             # should move on
+    #             self._process_next_batch(batch)
+    #         else:
+    #             self.rcvd_idx += 1
+    #             return self._process_next_batch(batch)
 
     next = __next__  # Python 2 compatibility
 
@@ -586,7 +624,7 @@ class _DataLoaderIter(object):
         return self
 
     def _put_indices(self):
-        assert self.batches_outstanding < 2 * self.num_workers
+        assert self.batches_outstanding < self.preorder_degree * self.num_workers
         indices = next(self.sample_iter, None)
         if indices is None:
             return
@@ -596,7 +634,6 @@ class _DataLoaderIter(object):
         self.send_idx += 1
 
     def _process_next_batch(self, batch):
-        self.rcvd_idx += 1
         self._put_indices()
         if isinstance(batch, _utils.ExceptionWrapper):
             # make multiline KeyError msg readable by working around
@@ -656,7 +693,6 @@ class _DataLoaderIter(object):
                     q.close()
                 for w in self.workers:
                     w.terminate()
-                    #w.join()
             finally:
                 # Even though all this function does is putting into queues that
                 # we have called `cancel_join_thread` on, weird things can
@@ -675,4 +711,3 @@ class _DataLoaderIter(object):
     def __del__(self):
         if self.num_workers > 0:
             self._shutdown_workers()
-

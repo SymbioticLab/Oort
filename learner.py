@@ -28,7 +28,7 @@ from utils.models import *
 from utils.utils_data import get_data_transform
 from utils.utils_model import MySGD, test_model
 
-torch.cuda.set_device(args.gpu_device)
+#torch.cuda.set_device(args.gpu_device)
 #torch.set_num_threads(int(args.threads))
 
 dirPath = '/tmp/torch/'
@@ -478,7 +478,7 @@ if __name__ == "__main__":
     testWorkers = workers
     splitTestRatio = []
 
-    testsetPartitioner = DataPartitioner(data=test_dataset, isTest=True)
+    testsetPartitioner = DataPartitioner(data=test_dataset, isTest=True, numOfClass=args.num_class)
     partition_dataset(testsetPartitioner, workers, splitTestRatio)
     test_data = select_dataset(this_rank, testsetPartitioner, batch_size=test_bsz, isTest=True)
 

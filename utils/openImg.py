@@ -7,6 +7,7 @@ import numpy as np
 import torch
 import codecs
 import string
+import time
 
 class OPENIMG():
     """
@@ -118,13 +119,19 @@ class OPENIMG():
                                             self.data_file)))
 
     def load_file(self, path):
+        stime = time.time()
         rawImg, rawTags = [], []
-        imgFiles = [f for f in os.listdir(path) if os.path.isfile(os.path.join(path, f)) and '.jpg' in f]
+
+        imgFiles = os.scandir(path)
+        #imgFiles = [f for f in os.listdir(path)]# if os.path.isfile(os.path.join(path, f)) and '.jpg' in f]
 
         for imgFile in imgFiles:
+            imgFile = imgFile.name
             classTag = imgFile.replace('.jpg', '').split('__')[1]
             if classTag in self.classMapping:
                 rawImg.append(imgFile)
                 rawTags.append(self.classMapping[classTag])
 
+        dtime = time.time() - stime
+        print(dtime)
         return rawImg, rawTags
