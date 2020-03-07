@@ -147,7 +147,7 @@ def run(rank, model, train_data, test_data, queue, param_q, stop_flag, client_cf
         needEval = False
 
         if epoch % args.decay_epoch == 0:
-            learning_rate = max(0.001, learning_rate * args.decay_factor)
+            learning_rate = max(0.0001, learning_rate * args.decay_factor)
 
         if reloadClientData:
             # release the threads in dataloader

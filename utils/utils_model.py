@@ -8,6 +8,7 @@ import torch.nn as nn
 import torch.optim as optim
 from torch.autograd import Variable
 import numpy as np
+import logging
 
 class MySGD(optim.SGD):
 
@@ -88,6 +89,11 @@ class MySGD(optim.SGD):
 def test_model(rank, model, test_data, criterion=nn.NLLLoss()):
     test_loss = 0
     correct = 0
+    top_5 = 0
+
+    correct2 = 0
+    test_len = 0
+
     model.eval()
     for data, target in test_data:
         #data, target = Variable(data.view(-1, 28*28)), Variable(target)
@@ -95,8 +101,15 @@ def test_model(rank, model, test_data, criterion=nn.NLLLoss()):
         output = model(data)
         test_loss += criterion(output, target).data.item()  # Variable.data
         # get the index of the max log-probability
-        pred = output.data.max(1)[1]
-        correct += pred.eq(target.data).sum().item()
+        #pred = output.data.max(1)[1]
+        #correct += pred.eq(target.data).sum().item()
+
+        acc = accuracy(output, target, topk=(1, 5))
+
+        correct += acc[0].item()
+        top_5 += acc[1].item()
+
+        test_len += len(target)
 
         # prediction = torch.max(output, 1)
         # correct += np.sum(prediction[1].cpu().numpy() == target.cpu().numpy())
@@ -104,11 +117,33 @@ def test_model(rank, model, test_data, criterion=nn.NLLLoss()):
     # loss function averages over batch size
     test_loss /= len(test_data)
     test_loss = format(test_loss, '.4f')
-    acc = format(correct / len(test_data.dataset), '.4%')
-    print('Rank {}: Test set: Average loss: {}, Accuracy: {}/{} ({})'
-          .format(rank, test_loss, correct, len(test_data.dataset), acc))
+
+    acc = format(correct / test_len, '.4%')
+    acc_5 = format(top_5 / test_len, '.4%')
+
+    logging.info('Rank {}: Test set: Average loss: {}, Top-1 Accuracy: {}/{} ({}), Top-5 Accuracy: {}'
+          .format(rank, test_loss, correct, len(test_data.dataset), acc, acc_5))
+
     return test_loss, acc
 
+def accuracy(output, target, topk=(1,)):
+    """Computes the accuracy over the k top predictions for the specified values of k"""
+    with torch.no_grad():
+        maxk = max(topk)
+        #batch_size = target.size(0)
+
+        _, pred = output.topk(maxk, 1, True, True)
+        pred = pred.t()
+        correct = pred.eq(target.view(1, -1).expand_as(pred))
+
+        #logging.info("====Start to capture accuracy result")
+        res = []
+        for k in topk:
+            correct_k = correct[:k].view(-1).float().sum(0, keepdim=True)
+            res.append(correct_k)
+
+        #logging.info("====Accuracy result is {}".format(res))
+        return res
 
 class RandomParams(object):
 
