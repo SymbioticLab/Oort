@@ -455,7 +455,8 @@ if __name__ == "__main__":
     # load data partitioner (entire_train_data)
     dataConf = os.path.join(args.data_dir, 'sampleConf') if args.data_set == 'imagenet' else None
 
-    entire_train_data = DataPartitioner(data=train_dataset, splitConfFile=dataConf, numOfClass=args.num_class)
+    entire_train_data = DataPartitioner(data=train_dataset, splitConfFile=dataConf, 
+                        numOfClass=args.num_class, dataMapFile=args.data_mapfile)
 
     dataDistribution = [int(x) for x in args.sequential.split('-')]
     distributionParam = [float(x) for x in args.zipf_alpha.split('-')]

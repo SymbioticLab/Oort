@@ -132,6 +132,7 @@ class DataPartitioner(object):
         
         # data share the same index with labels
         for index, sample in enumerate(self.data.data):
+            sample = sample.split('__')[0]
             clientId = dataToClient[sample]
             labelId = self.labels[index]
 
@@ -140,21 +141,22 @@ class DataPartitioner(object):
                 clientNumSamples[clientId] = [0] * numOfLabels
 
             clientToData[clientId].append(index)
-            classPerWorker[clientId][labelId] += 1
+            clientNumSamples[clientId][labelId] += 1
 
         numOfClients = len(clientToData.keys())
-        tempClassPerWorker = np.zeros([numOfClients, numOfLabels])
+        self.classPerWorker = np.zeros([numOfClients, numOfLabels])
 
         for clientId in range(numOfClients):
-            tempClassPerWorker[clientId] = clientNumSamples[clientId]
-            self.partitions.append(self.rng.shuffle(clientToData[clientId]))
+            self.classPerWorker[clientId] = clientNumSamples[clientId]
+            self.rng.shuffle(clientToData[clientId])
+            self.partitions.append(clientToData[clientId])
         
-        overallNumSamples = np.asarray(tempClassPerWorker.sum(axis=0)).reshape(-1)
+        overallNumSamples = np.asarray(self.classPerWorker.sum(axis=0)).reshape(-1)
         totalNumOfSamples = self.classPerWorker.sum()
 
-        self.get_JSD(overallNumSamples/float(totalNumOfSamples), tempClassPerWorker, [0] * numOfClients)
+        self.get_JSD(overallNumSamples/float(totalNumOfSamples), self.classPerWorker, [0] * numOfClients)
 
-    def partitionDataByDefault(self, sizes=None, sequential=0, ratioOfClassWorker=None, filter_class=0, args = None):
+    def partitionDataByDefault(self, sizes, sequential, ratioOfClassWorker, filter_class, args):
         if self.is_trace:
             # read the serialized sampleToClient file
             dataToClient = OrderedDict()
@@ -165,7 +167,7 @@ class DataPartitioner(object):
             # use the real trace, thus no need to partition
             self.partitionTrace(dataToClient=dataToClient)
         else:
-            self.partitionData(sizes=partition_sizes, sequential=sequential, ratioOfClassWorker=ratioOfClassWorker,filter_class=filter_class, args=arg)
+            self.partitionData(sizes=sizes, sequential=sequential, ratioOfClassWorker=ratioOfClassWorker, filter_class=filter_class, args=args)
 
     def partitionData(self, sizes=None, sequential=0, ratioOfClassWorker=None, filter_class=0, args = None):
         targets = self.getTargets()
@@ -292,22 +294,24 @@ class DataPartitioner(object):
         logging.info('========= End of Class/Worker =========\n')
 
     def log_selection(self):
-        totalLabels = [0 for i in range(len(self.classPerWorker[0]))]
-        logging.info("====Total # of workers is :{}, w/ {} labels, {}, {}".format(len(self.classPerWorker), len(self.classPerWorker[0]), len(self.partitions), len(self.workerDistance)))
+        # totalLabels = [0 for i in range(len(self.classPerWorker[0]))]
+        # logging.info("====Total # of workers is :{}, w/ {} labels, {}, {}".format(len(self.classPerWorker), len(self.classPerWorker[0]), len(self.partitions), len(self.workerDistance)))
 
-        for index, row in enumerate(self.classPerWorker):
-            rowStr = ''
-            numSamples = 0
-            for i, label in enumerate(self.classPerWorker[index]):
-                rowStr += '\t'+str(int(label))
-                totalLabels[i] += label
-                numSamples += label
+        # for index, row in enumerate(self.classPerWorker):
+        #     rowStr = ''
+        #     numSamples = 0
+        #     for i, label in enumerate(self.classPerWorker[index]):
+        #         rowStr += '\t'+str(int(label))
+        #         totalLabels[i] += label
+        #         numSamples += label
 
-            logging.info(str(index) + ':\t' + rowStr + '\n' + 'with sum:\t' + str(numSamples) + '\t' + repr(len(self.partitions[index]))+ '\nDistance: ' + str(self.workerDistance[index])+ '\n')
-            logging.info("=====================================\n")
+        #     logging.info(str(index) + ':\t' + rowStr + '\n' + 'with sum:\t' + str(numSamples) + '\t' + repr(len(self.partitions[index]))+ '\nDistance: ' + str(self.workerDistance[index])+ '\n')
+        #     logging.info("=====================================\n")
 
-        logging.info("Total selected samples is: {}, with {}\n".format(str(sum(totalLabels)), repr(totalLabels)))
-        logging.info("=====================================\n")
+        # logging.info("Total selected samples is: {}, with {}\n".format(str(sum(totalLabels)), repr(totalLabels)))
+        # logging.info("=====================================\n")
+
+        pass
 
     def use(self, partition, istest):
         _partition = partition

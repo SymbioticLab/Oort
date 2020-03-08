@@ -10,6 +10,7 @@ parser.add_argument('--this_rank', type=int, default=1)
 parser.add_argument('--learners', type=str, default='1-2-3-4')
 parser.add_argument('--total_worker', type=int, default=0)
 parser.add_argument('--duplicate_data', type=int, default=1)
+parser.add_argument('--data_mapfile', type=str, default=None)
 
 # The configuration of model and dataset
 parser.add_argument('--data_dir', type=str, default='~/cifar10/')
