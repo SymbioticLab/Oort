@@ -6,7 +6,7 @@ avaiVms = {}
 with open('vms', 'r') as fin:
     lines = fin.readlines()
     for line in lines:
-        if 'gpu-cn0' in line and 'gpu-cn001' not in line and 'gpu-cn006' not in line and 'gpu-cn010' not in line and 'gpu-cn003' not in line and 'gpu-cn012' not in line:
+        if 'gpu-cn0' in line and 'gpu-cn001' not in line and 'gpu-cn006' not in line and 'gpu-cn010' not in line and 'gpu-cn012' not in line and 'gpu-cn005' not in line and 'gpu-cn008' not in line:
             items = line.strip().split()
             status = items[1]
             threadsGpu = int(items[5])
@@ -37,7 +37,7 @@ params = ' '.join(sys.argv[2:]) + learner + ' '
 timeStamp = str(datetime.datetime.fromtimestamp(time.time()).strftime('%m%d_%H%M%S')) + '_'
 jobPrefix = 'learner' + timeStamp
 
-rawCmd = '\npython ~/DMFL/learner.py --ps_ip=10.255.11.91 --model=mobilenet_v2 --epochs=20000 --upload_epoch=50  --dump_epoch=500 --learning_rate=0.01 --decay_epoch=50 --model_avg=True --batch_size=128 '
+rawCmd = '\npython ~/DMFL/learner.py --ps_ip=10.255.11.91 --model=squeezenet1_1 --epochs=20000 --upload_epoch=50  --dump_epoch=500 --learning_rate=0.005 --decay_epoch=50 --model_avg=True --batch_size=256 '
 
 availGPUs = list(avaiVms.keys())
 
@@ -55,7 +55,7 @@ for w in range(1, numOfWorkers + 1):
         fout.writelines(runCmd)
 
 # deal with ps
-rawCmdPs = '\npython ~/DMFL/param_server.py --ps_ip=10.255.11.91 --model=mobilenet_v2 --epochs=20000 --upload_epoch=50  --dump_epoch=500 --learning_rate=0.01 --decay_epoch=50 --model_avg=True --batch_size=128 --this_rank=0 ' + params
+rawCmdPs = '\npython ~/DMFL/param_server.py --ps_ip=10.255.11.91 --model=squeezenet1_1 --epochs=20000 --upload_epoch=50  --dump_epoch=500 --learning_rate=0.005 --decay_epoch=50 --model_avg=True --batch_size=256 --this_rank=0 ' + params
 
 with open('server.lsf', 'w') as fout:
     scriptPS = template + '\n#BSUB -J server\n#BSUB -e server{}'.format(timeStamp) + '.e\n#BSUB -o server{}'.format(timeStamp) + '.o\n' + '#BSUB -m "gpu-cn001"\n\n' + rawCmdPs

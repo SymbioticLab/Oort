@@ -9,6 +9,7 @@ import numpy as np
 from pyemd import emd
 from collections import OrderedDict
 import time
+import pickle
 
 class Partition(object):
     """ Dataset partitioning helper """
@@ -29,11 +30,15 @@ class DataPartitioner(object):
 
     # len(sizes) is the number of workers
     # sequential 1-> random 2->zipf 3-> identical
-    def __init__(self, data, numOfClass=0, seed=10, splitConfFile=None, isTest=False):
+    def __init__(self, data, numOfClass=0, seed=10, splitConfFile=None, isTest=False, dataMapFile=None):
         self.partitions = []
         self.rng = Random()
         self.rng.seed(seed)
         self.data = data
+        self.labels = self.data.train_labels
+        self.is_trace = False
+        self.dataMapFile = None
+
         np.random.seed(seed)
 
         stime = time.time()
@@ -44,19 +49,9 @@ class DataPartitioner(object):
         self.totalSamples = 0
         self.data_len = len(self.data)
 
-        # if isTest:
-        #     # randomly generate some
-        #     # categarize the samples
-        #     self.targets[0] = []
-        #     for index in range(self.data_len):
-        #         self.targets[0].append(index)
-        #         self.indexToLabel[index] = 0
-
-        #     self.totalSamples += self.data_len
-
         if splitConfFile is None:
             # categarize the samples
-            for index, label in enumerate(self.data.train_labels):
+            for index, label in enumerate(self.labels):
                 if label not in self.targets:
                     self.targets[label] = []
                 self.targets[label].append(index)
@@ -76,6 +71,10 @@ class DataPartitioner(object):
                 self.targets[label] = [baseIndex + k for k in range(_samples)]
                 self.totalSamples += _samples
                 baseIndex += _samples
+
+        if dataMapFile is not None:
+            self.dataMapFile = dataMapFile
+            self.is_trace = True
 
         self.numOfLabels = max(len(self.targets.keys()), numOfClass)
         self.workerDistance = []
@@ -125,6 +124,48 @@ class DataPartitioner(object):
                 continue
             tempDistr =np.array([c / float(tempDataSize) for c in tempClassPerWorker[worker]])
             self.workerDistance.append(emd(dataDistr, tempDistr, dist_matrix))
+
+    def partitionTrace(self, dataToClient):
+        clientToData = {}
+        clientNumSamples = {}
+        numOfLabels = self.numOfLabels
+        
+        # data share the same index with labels
+        for index, sample in enumerate(self.data.data):
+            clientId = dataToClient[sample]
+            labelId = self.labels[index]
+
+            if clientId not in clientToData:
+                clientToData[clientId] = []
+                clientNumSamples[clientId] = [0] * numOfLabels
+
+            clientToData[clientId].append(index)
+            classPerWorker[clientId][labelId] += 1
+
+        numOfClients = len(clientToData.keys())
+        tempClassPerWorker = np.zeros([numOfClients, numOfLabels])
+
+        for clientId in range(numOfClients):
+            tempClassPerWorker[clientId] = clientNumSamples[clientId]
+            self.partitions.append(self.rng.shuffle(clientToData[clientId]))
+        
+        overallNumSamples = np.asarray(tempClassPerWorker.sum(axis=0)).reshape(-1)
+        totalNumOfSamples = self.classPerWorker.sum()
+
+        self.get_JSD(overallNumSamples/float(totalNumOfSamples), tempClassPerWorker, [0] * numOfClients)
+
+    def partitionDataByDefault(self, sizes=None, sequential=0, ratioOfClassWorker=None, filter_class=0, args = None):
+        if self.is_trace:
+            # read the serialized sampleToClient file
+            dataToClient = OrderedDict()
+
+            with open(self.dataMapFile, 'rb') as db:
+                dataToClient = pickle.load(db)
+
+            # use the real trace, thus no need to partition
+            self.partitionTrace(dataToClient=dataToClient)
+        else:
+            self.partitionData(sizes=partition_sizes, sequential=sequential, ratioOfClassWorker=ratioOfClassWorker,filter_class=filter_class, args=arg)
 
     def partitionData(self, sizes=None, sequential=0, ratioOfClassWorker=None, filter_class=0, args = None):
         targets = self.getTargets()
@@ -292,7 +333,7 @@ def partition_dataset(partitioner, workers, partitionRatio=[], sequential=0, rat
     if len(partitionRatio) > 0:
         partition_sizes = partitionRatio
 
-    partitioner.partitionData(sizes=partition_sizes, sequential=sequential, ratioOfClassWorker=ratioOfClassWorker,filter_class=filter_class, args=arg)
+    partitioner.partitionDataByDefault(sizes=partition_sizes, sequential=sequential, ratioOfClassWorker=ratioOfClassWorker,filter_class=filter_class, args=arg)
     #logging.info("====Partitioning data takes {} s\n".format(time.time() - stime()))
 
 def select_dataset(rank: int, partition: DataPartitioner, batch_size: int, isTest=False):
@@ -301,4 +342,4 @@ def select_dataset(rank: int, partition: DataPartitioner, batch_size: int, isTes
     #if istest:
     #    return DataLoader(partition, batch_size=batch_size, shuffle=False, pin_memory=False, num_workers=16, drop_last=True)
     #else:
-    return DataLoader(partition, batch_size=batch_size, shuffle=True, pin_memory=False, num_workers=32, drop_last=True)
+    return DataLoader(partition, batch_size=batch_size, shuffle=True, pin_memory=False, num_workers=32, drop_last=False)

@@ -52,7 +52,7 @@ os.environ['GLOO_SOCKET_IFNAME'] = 'ib0'
 # os.environ['MKL_NUM_THREADS'] = args.threads
 
 #torch.set_num_threads(int(args.threads))
-torch.cuda.set_device(args.gpu_device)
+#torch.cuda.set_device(args.gpu_device)
 
 def initiate_sampler_query(numOfClients):
     # Initiate the clientSampler 
