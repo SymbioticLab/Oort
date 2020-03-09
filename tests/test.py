@@ -46,4 +46,4 @@ import torchvision.models as tormodels
 print(torch.__version__)
 
 #device = torch.device("cuda")
-print(torch.rand(10).cuda())
+#print(torch.rand(10).cuda())
