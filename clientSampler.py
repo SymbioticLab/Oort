@@ -1,6 +1,7 @@
 from core.ucb import UCB
 from core.client import Client
 import random
+from random import Random
 
 class ClientSampler(object):
 

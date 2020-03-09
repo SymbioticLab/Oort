@@ -14,12 +14,12 @@ for i in range(1, numOfWorkers):
     learn = learn + str(i) + '-'
 learn = learn + str(numOfWorkers)
 
-params = ' '.join(sys.argv[2:]) + ' '
+params = ' '.join(sys.argv[2:]) + ' ' + learn + ' '
 
 # deal with ps
 rawCmdPs = '\npython3 ~/DMFL/param_server.py --ps_ip=10.0.0.253 --model=squeezenet1_1 --epochs=20000 --upload_epoch=50  --dump_epoch=500 --learning_rate=0.005 --decay_epoch=50 --model_avg=True --batch_size=256 --this_rank=0 ' + params
 
-scriptPS = rawCmdPs + learn
+scriptPS = rawCmdPs
 
 # for workers
 rawCmd = '\npython3 ~/DMFL/learner.py --ps_ip=10.0.0.253 --model=squeezenet1_1 --epochs=20000 --upload_epoch=50  --dump_epoch=500 --learning_rate=0.005 --decay_epoch=50 --model_avg=True --batch_size=256 '
@@ -63,7 +63,7 @@ def shutdown(url):
             c.run("kill $(ps aux | grep 'learner.py' | awk '{print $2}')")
         except:
             pass
-
+        c.run('kill -9 -$(jobs -p)')
         c.close()
     except Exception as e:
         print (str(e))

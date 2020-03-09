@@ -47,9 +47,9 @@ sample_size_dic = {}
 trainloss_file = '/tmp/trainloss' + args.model + '.txt'
 staleness_file = '/tmp/staleness' + args.model + ".txt"
 os.environ['MASTER_ADDR'] = args.ps_ip
-os.environ['MASTER_PORT'] = str(int(args.ps_port) + int(args.gpu_device))
-os.environ['NCCL_SOCKET_IFNAME'] = 'ib0'
-os.environ['GLOO_SOCKET_IFNAME'] = 'ib0'
+os.environ['MASTER_PORT'] = str(int(args.ps_port) + 10*int(args.gpu_device))
+#os.environ['NCCL_SOCKET_IFNAME'] = 'ib0'
+os.environ['GLOO_SOCKET_IFNAME'] = 'vlan260'
 
 # os.environ['OMP_NUM_THREADS'] = args.threads
 # os.environ['MKL_NUM_THREADS'] = args.threads
@@ -58,7 +58,7 @@ os.environ['GLOO_SOCKET_IFNAME'] = 'ib0'
 #torch.cuda.set_device(args.gpu_device)
 
 def initiate_sampler_query(numOfClients):
-    # Initiate the clientSampler 
+    # Initiate the clientSampler
     clientSampler = ClientSampler(args.sample_mode, args.score_mode)
     collectedClients = 0
     initial_time = time.time()
@@ -86,7 +86,7 @@ def run(model, test_data, queue, param_q, stop_signal, clientSampler):
     f_staleness = open(staleness_file, 'w')
 
     logDir = "/tmp/" + args.model
-    
+
     # convert gradient tensor to numpy structure
     if args.load_model:
         try:
@@ -95,12 +95,12 @@ def run(model, test_data, queue, param_q, stop_signal, clientSampler):
         except Exception as e:
             logging.info("====Error: Failed to load model due to {}\n".format(str(e)))
             pass
-    
+
     if not os.path.isdir(logDir):
         os.mkdir(logDir)
 
     _tmp = OrderedDict(map(lambda item: (item[0], item[1].cpu().numpy()), model.state_dict().items()))
-    
+
     workers = [int(v) for v in str(args.learners).split('-')]
 
     for _ in workers:
@@ -165,7 +165,7 @@ def run(model, test_data, queue, param_q, stop_signal, clientSampler):
                 handlerStart = time.time()
                 delta_ws = tmp_dict[rank_src][0]
 
-                # fraction of total samples on this specific node 
+                # fraction of total samples on this specific node
                 ratioSample = clientSampler.getSampleRatio(clientId, rank_src)
 
                 # apply the update into the global model
@@ -221,18 +221,18 @@ def run(model, test_data, queue, param_q, stop_signal, clientSampler):
                     epoch_time = e_epoch_time
 
                 # if the worker is within the staleness, then continue w/ local cache and do nothing
-                # Otherwise, block it 
+                # Otherwise, block it
                 if learner_local_step[rank_src] >= args.stale_threshold + currentMinStep:
                     pendingWorkers[rank_src] = learner_local_step[rank_src]
                     # lock the worker
                     logging.info("Lock worker " + str(rank_src) + " with localStep " + str(pendingWorkers[rank_src]) +
                                             " , while globalStep is " + str(currentMinStep) + "\n")
-                
+
                 # if the local cache is too stale, then update it
                 elif learner_cache_step[rank_src] < learner_local_step[rank_src] - args.stale_threshold or args.force_read:
                     pendingWorkers[rank_src] = learner_local_step[rank_src]
-                    
-                # release all pending requests, if the staleness does not exceed the staleness threshold in SSP 
+
+                # release all pending requests, if the staleness does not exceed the staleness threshold in SSP
                 handle_dur = time.time() - handle_start
 
                 workersToSend = []
@@ -258,7 +258,7 @@ def run(model, test_data, queue, param_q, stop_signal, clientSampler):
                             clientSampler.clientOnHost(sampledClients[i], w)
 
                     clientIdsToRun = [currentMinStep]
-                    for worker in workersToSend:  
+                    for worker in workersToSend:
                         learner_cache_step[worker] = currentMinStep
                         clientIdsToRun.append(clientSampler.getCurrentClientId(worker))
                         # remove from the pending workers
@@ -302,13 +302,13 @@ def init_myprocesses(rank, size, model, test_data, queue, param_q, stop_signal, 
     # After collecting all data information, then decide the clientId to run
     workerRanks = [int(v) for v in str(args.learners).split('-')]
     clientSampler = initiate_sampler_query(len(workerRanks))
-    
+
     clientIdsToRun = []
     for wrank in workerRanks:
         nextClientIdToRun = clientSampler.nextClientIdToRun(hostId=wrank)
         clientSampler.clientOnHost(nextClientIdToRun, wrank)
         clientIdsToRun.append(nextClientIdToRun)
-    
+
     dist.broadcast(tensor=torch.tensor(clientIdsToRun, dtype=torch.int).to(device=device), src=0)
 
     # Start the PS service
@@ -354,7 +354,7 @@ def init_dataset():
         test_dataset = OPENIMG(args.data_dir, train=False, transform=test_transform)
 
         model = tormodels.__dict__[args.model](num_classes=600)
-        
+
     else:
         print('DataSet must be {} or {}!'.format('Mnist', 'Cifar'))
         sys.exit(-1)
@@ -380,7 +380,7 @@ if __name__ == "__main__":
 
     print("====PS: finish loading test_data")
     world_size = len(str(args.learners).split('-')) + 1
-        
+
     this_rank = args.this_rank
 
     queue = Queue()
@@ -392,7 +392,7 @@ if __name__ == "__main__":
     MyManager.register('get_stop_signal', callable=lambda: stop_or_not)
     manager = MyManager(address=(args.ps_ip, args.manager_port+10*int(args.gpu_device)), authkey=b'queue')
     manager.start()
-    
+
     q = manager.get_queue()  # queue for parameter_server signal process
     param_q = manager.get_param()  # init
     stop_signal = manager.get_stop_signal()  # stop

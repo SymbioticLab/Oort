@@ -35,7 +35,7 @@ class DataPartitioner(object):
         self.rng = Random()
         self.rng.seed(seed)
         self.data = data
-        self.labels = self.data.train_labels
+        self.labels = self.data.targets
         self.is_trace = False
         self.dataMapFile = None
 
@@ -56,7 +56,7 @@ class DataPartitioner(object):
                     self.targets[label] = []
                 self.targets[label].append(index)
                 self.indexToLabel[index] = label
-            
+
             self.totalSamples += len(self.data)
         else:
             # each row denotes the number of samples in this class
@@ -89,7 +89,7 @@ class DataPartitioner(object):
             self.rng.shuffle(tempTarget[key])
 
         return tempTarget
-        
+
     def getNumOfLabels(self):
         return self.numOfLabels
 
@@ -129,7 +129,7 @@ class DataPartitioner(object):
         clientToData = {}
         clientNumSamples = {}
         numOfLabels = self.numOfLabels
-        
+
         # data share the same index with labels
         for index, sample in enumerate(self.data.data):
             sample = sample.split('__')[0]
@@ -150,7 +150,7 @@ class DataPartitioner(object):
             self.classPerWorker[clientId] = clientNumSamples[clientId]
             self.rng.shuffle(clientToData[clientId])
             self.partitions.append(clientToData[clientId])
-        
+
         overallNumSamples = np.asarray(self.classPerWorker.sum(axis=0)).reshape(-1)
         totalNumOfSamples = self.classPerWorker.sum()
 
@@ -183,7 +183,7 @@ class DataPartitioner(object):
 
         # classPerWorker -> Rows are workers and cols are classes
         tempClassPerWorker = np.zeros([len(sizes), numOfLabels])
-        
+
         # random partition
         if sequential == 0:
             logging.info("========= Start of Random Partition =========\n")
@@ -289,7 +289,7 @@ class DataPartitioner(object):
         # Overall data distribution
         dataDistr = np.array([key / float(totalDataSize) for key in keyLength])
         self.get_JSD(dataDistr, tempClassPerWorker, sizes)
-            
+
         logging.info("Raw class per worker is : " + repr(tempClassPerWorker) + '\n')
         logging.info('========= End of Class/Worker =========\n')
 
