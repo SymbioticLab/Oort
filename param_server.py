@@ -323,48 +323,30 @@ def init_dataset():
                                        transform=train_transform)
         test_dataset = datasets.MNIST(args.data_dir, train=False, download=False,
                                       transform=test_transform)
+
+        model = tormodels.__dict__[args.model](num_classes=10)
+
     elif args.data_set == 'cifar10':
         train_transform, test_transform = get_data_transform('cifar')
         train_dataset = datasets.CIFAR10(args.data_dir, train=True, download=True,
                                          transform=train_transform)
         test_dataset = datasets.CIFAR10(args.data_dir, train=False, download=True,
                                         transform=test_transform)
-        if args.model == "alexnet":
-            model = AlexNet()
-        elif args.model == "vgg":
-            model = VGG(args.depth)
-        elif args.model == "resnet":
-            model = ResNet(args.depth)
-        elif args.model == "googlenet":
-            model = GoogLeNet()
-        elif args.model == "lenet":
-            model = LeNet()
-        else:
-            print('Model must be {} or {}!'.format('MnistCNN', 'AlexNet'))
-            sys.exit(-1)
+
+        model = tormodels.__dict__[args.model](num_classes=10)
+
     elif args.data_set == "imagenet":
         train_transform, test_transform = get_data_transform('imagenet')
         train_dataset = datasets.ImageNet(args.data_dir, split='train', download=False, transform=train_transform)
         test_dataset = datasets.ImageNet(args.data_dir, split='val', download=False, transform=test_transform)
 
         model = tormodels.__dict__[args.model]()
+
     elif args.data_set == 'emnist':
         test_dataset = datasets.EMNIST(args.data_dir, split='balanced', train=False, download=True, transform=transforms.ToTensor())
         train_dataset = datasets.EMNIST(args.data_dir, split='balanced', train=True, download=True, transform=transforms.ToTensor())
 
-        if args.model == "Logistic":
-            model = LogisticRegression(args.input_dim, args.output_dim)
-        elif args.model == "alexnet":
-            model = AlexNetForMnist(47)
-        elif args.model == "vgg":
-            model = VGG(args.depth, args.output_dim, 1)
-        elif args.model == "resnet":
-            model = ResNet(args.depth, args.output_dim, 1)
-        elif args.model == "lenet":
-            model = LeNetForMNIST(args.output_dim)
-        else:
-            print('Model must be {} or {}!'.format('MnistCNN', 'AlexNet'))
-            sys.exit(-1)
+        model = tormodels.__dict__[args.model](num_classes=47)
 
     elif args.data_set == 'openImg':
         train_transform, test_transform = get_data_transform('openImg')
@@ -372,6 +354,7 @@ def init_dataset():
         test_dataset = OPENIMG(args.data_dir, train=False, transform=test_transform)
 
         model = tormodels.__dict__[args.model](num_classes=600)
+        
     else:
         print('DataSet must be {} or {}!'.format('Mnist', 'Cifar'))
         sys.exit(-1)
