@@ -11,6 +11,7 @@ parser.add_argument('--learners', type=str, default='1-2-3-4')
 parser.add_argument('--total_worker', type=int, default=0)
 parser.add_argument('--duplicate_data', type=int, default=1)
 parser.add_argument('--data_mapfile', type=str, default=None)
+parser.add_argument('--to_device', type=str, default='cuda')
 
 # The configuration of model and dataset
 parser.add_argument('--data_dir', type=str, default='~/cifar10/')
@@ -56,5 +57,6 @@ parser.add_argument('--gpu_device', type=int, default=0)
 parser.add_argument('--zipf_alpha', type=str, default='5')
 parser.add_argument('--timeout', type=float, default=9999999)
 parser.add_argument('--full_gradient_interval', type=int, default=20)
+
 
 args = parser.parse_args()

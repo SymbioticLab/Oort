@@ -9,6 +9,9 @@ import torch.optim as optim
 from torch.autograd import Variable
 import numpy as np
 import logging
+from core.argParser import args
+
+device = torch.device(args.to_device)
 
 class MySGD(optim.SGD):
 
@@ -97,23 +100,16 @@ def test_model(rank, model, test_data, criterion=nn.NLLLoss()):
     model.eval()
     for data, target in test_data:
         #data, target = Variable(data.view(-1, 28*28)), Variable(target)
-        data, target = Variable(data).cuda(), Variable(target).cuda()
+        data, target = Variable(data).to(device=device), Variable(target).to(device=device)
         output = model(data)
         test_loss += criterion(output, target).data.item()  # Variable.data
-        # get the index of the max log-probability
-        #pred = output.data.max(1)[1]
-        #correct += pred.eq(target.data).sum().item()
 
         acc = accuracy(output, target, topk=(1, 5))
-
         correct += acc[0].item()
         top_5 += acc[1].item()
 
         test_len += len(target)
-
-        # prediction = torch.max(output, 1)
-        # correct += np.sum(prediction[1].cpu().numpy() == target.cpu().numpy())
-
+        
     # loss function averages over batch size
     test_loss /= len(test_data)
     test_loss = format(test_loss, '.4f')

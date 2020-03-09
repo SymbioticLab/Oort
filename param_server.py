@@ -23,7 +23,10 @@ from utils.utils_data import get_data_transform
 from utils.utils_model import test_model
 from utils.openImg import *
 
+device = torch.device(args.to_device)
+
 logFile = '/tmp/torch/log_' + str(datetime.datetime.fromtimestamp(time.time()).strftime('%m%d_%H%M%S'))
+
 def init_logging():
     if not os.path.isdir('/tmp/torch'):
         os.mkdir('/tmp/torch')
@@ -168,12 +171,12 @@ def run(model, test_data, queue, param_q, stop_signal, clientSampler):
                 # apply the update into the global model
                 for idx, param in enumerate(model.parameters()):
                     if not args.model_avg:
-                        param.data -= (torch.from_numpy(delta_ws[idx]).cuda())
+                        param.data -= (torch.from_numpy(delta_ws[idx]).to(device=device))
                     else:
                         if newEpoch == 0:
-                            param.data = (torch.from_numpy(delta_ws[idx]).cuda()) * ratioSample
+                            param.data = (torch.from_numpy(delta_ws[idx]).to(device=device)) * ratioSample
                         else:
-                            param.data += (torch.from_numpy(delta_ws[idx]).cuda()) * ratioSample
+                            param.data += (torch.from_numpy(delta_ws[idx]).to(device=device)) * ratioSample
 
                 newEpoch += 1
 
@@ -245,7 +248,7 @@ def run(model, test_data, queue, param_q, stop_signal, clientSampler):
                     send_start = time.time()
 
                     for idx, param in enumerate(model.parameters()):
-                        dist.broadcast(tensor=(param.data.cuda()), src=0)
+                        dist.broadcast(tensor=(param.data.to(device=device)), src=0)
 
                     # resampling the clients if necessary
                     if epoch_count % args.resampling_interval == 0:
@@ -261,7 +264,7 @@ def run(model, test_data, queue, param_q, stop_signal, clientSampler):
                         # remove from the pending workers
                         del pendingWorkers[worker]
 
-                    dist.broadcast(tensor=torch.tensor(clientIdsToRun, dtype=torch.int).cuda(), src=0)
+                    dist.broadcast(tensor=torch.tensor(clientIdsToRun, dtype=torch.int).to(device=device), src=0)
 
                     newEpoch = 0
 
@@ -306,7 +309,7 @@ def init_myprocesses(rank, size, model, test_data, queue, param_q, stop_signal, 
         clientSampler.clientOnHost(nextClientIdToRun, wrank)
         clientIdsToRun.append(nextClientIdToRun)
     
-    dist.broadcast(tensor=torch.tensor(clientIdsToRun, dtype=torch.int).cuda(), src=0)
+    dist.broadcast(tensor=torch.tensor(clientIdsToRun, dtype=torch.int).to(device=device), src=0)
 
     # Start the PS service
     fn(model, test_data, queue, param_q, stop_signal, clientSampler)
@@ -373,8 +376,7 @@ def init_dataset():
         print('DataSet must be {} or {}!'.format('Mnist', 'Cifar'))
         sys.exit(-1)
 
-    if torch.cuda.is_available():
-        model = model.cuda()
+    model = model.to(device=device)
 
     return model, train_dataset, test_dataset
 
