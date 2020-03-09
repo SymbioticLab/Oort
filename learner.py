@@ -37,10 +37,9 @@ dirPath = '/tmp/torch/'
 if not os.path.isdir(dirPath):
     os.mkdir(dirPath)
 
-logFile = dirPath + 'log_'+str(args.this_rank) + '_' 
-            + str(datetime.datetime.fromtimestamp(time.time()).strftime('%m%d_%H%M%S')) 
-            + '_' + str(args.this_rank)
-#os.system('rm {}'.format(dirPath + 'log_*'))
+logFile = dirPath + 'log_'+str(args.this_rank) + '_'  + \
+          str(datetime.datetime.fromtimestamp(time.time()).strftime('%m%d_%H%M%S')) + \
+          '_' + str(args.this_rank)
 
 def init_logging():
     files = [logFile, '/tmp/sampleDistribution']
@@ -106,7 +105,7 @@ def run(rank, model, train_data, test_data, queue, param_q, stop_flag, client_cf
     if args.proxy_avg:
         criterion = CrossEntropyLossProx().to(device=device)
     else:
-        criterion = CrossEntropyLoss().to(device=device)
+        criterion = torch.nn.CrossEntropyLoss().to(device=device)
 
     print('Begin!')
     logging.info('\n' + repr(args) + '\n')
@@ -196,7 +195,8 @@ def run(rank, model, train_data, test_data, queue, param_q, stop_flag, client_cf
                 forD = time.time() - forwardS
 
                 if args.proxy_avg:
-                    loss = criterion(output, target, global_weight=lastGlobalModel, individual_weight=model, mu=0.1)
+                    loss = criterion(output, target, global_weight=lastGlobalModel.parameters(), 
+                                    individual_weight=model.parameters(), mu=0.01)
                 else:
                     loss = criterion(output, target)
 

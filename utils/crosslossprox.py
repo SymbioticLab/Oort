@@ -1,29 +1,28 @@
 from torch.nn import functional as F
+import torch
 
-class CrossEntropyLossProx(torch.nn._WeightedLoss):
+class CrossEntropyLossProx(torch.nn.Module):
 
     __constants__ = ['ignore_index', 'reduction']
 
     def __init__(self, weight=None, size_average=None, ignore_index=-100,
                  reduce=None, reduction='mean'):
-        super(torch.nn.CrossEntropyLoss, self).__init__(weight, size_average, reduce, reduction)
+        super().__init__()
         self.ignore_index = ignore_index
         self.require_gradList = []
 
     def forward(self, input, target, individual_weight=None, global_weight=None, mu=0):
 
-        init_loss = F.cross_entropy(input, target, weight=self.weight,
-                               ignore_index=self.ignore_index, reduction=self.reduction)
+        init_loss = F.cross_entropy(input, target, reduction='mean')
+        surrogateLoss = 0.
 
-        if global_weight is not None:
+        if individual_weight is not None:
+            individualList = [param for param in individual_weight]
+            globalList = [param for param in global_weight]
 
-            if len(self.require_gradList) == 0:
-                for name, param in individual_weight:
-                    if param.requires_grad:
-                        self.require_gradList.append(name)
-                logging.info("====self.require_gradList is {}".format(self.require_gradList))
-            else:
-                for name in self.require_gradList:
-                    init_loss = init_loss + mu * 0.5 * ((individual_weight[name] - global_weight[name]).norm(2) ** 2.)
+            for idx in range(len(individualList)):
+                surrogateLoss += ((individualList[idx] - globalList[idx]).norm(2) ** 2.0)
+
+        init_loss = init_loss + mu * 0.5 * surrogateLoss
 
         return init_loss
