@@ -36,7 +36,9 @@ dirPath = '/tmp/torch/'
 if not os.path.isdir(dirPath):
     os.mkdir(dirPath)
 
-logFile = dirPath + 'log_'+str(args.this_rank) + '_'+ str(datetime.datetime.fromtimestamp(time.time()).strftime('%m%d_%H%M%S'))
+logFile = dirPath + 'log_'+str(args.this_rank) + '_' 
+            + str(datetime.datetime.fromtimestamp(time.time()).strftime('%m%d_%H%M%S')) 
+            + '_' + str(args.this_rank)
 #os.system('rm {}'.format(dirPath + 'log_*'))
 
 def init_logging():
@@ -57,7 +59,7 @@ logging.basicConfig(format='%(asctime)s,%(msecs)d %(levelname)s %(message)s',
 
 entire_train_data = None
 os.environ['MASTER_ADDR'] = args.ps_ip
-os.environ['MASTER_PORT'] = str(int(args.ps_port) + 10*int(args.gpu_device))
+os.environ['MASTER_PORT'] = args.ps_port
 #os.environ['NCCL_SOCKET_IFNAME'] = 'ib0'
 os.environ['GLOO_SOCKET_IFNAME'] = 'vlan260'
 # multiprocessing.set_start_method('spawn')
@@ -111,7 +113,7 @@ def run(rank, model, train_data, test_data, queue, param_q, stop_flag, client_cf
     last_test = time.time()
     paramDic = {}
 
-    logDir = "/tmp/" + args.model
+    logDir = "/tmp/" + args.model + '_' + str(args.this_rank)
     if os.path.isdir(logDir):
         shutil.rmtree(logDir)
 
@@ -119,7 +121,7 @@ def run(rank, model, train_data, test_data, queue, param_q, stop_flag, client_cf
 
     for idx, (name, param) in enumerate(model.named_parameters()):
         paramDic[idx] = repr(name) + '\t' + repr(param.size())
-
+        
         with open(logDir + "/" + str(idx), 'w') as f:
             f.write(repr(idx) + ': ' + repr(name) + '\t'+ repr(param.size()) +'\n')
 
@@ -178,7 +180,7 @@ def run(rank, model, train_data, test_data, queue, param_q, stop_flag, client_cf
                     train_data_itr.insert(machineId, iter(train_data[machineId]))
                     (data, target) = next(train_data_itr[machineId])
 
-                # LR is not compatible with the image input as of now, thus needs to reformat it
+                # LR is not compatible with the image input as of now, thus needs to reformat it 
                 if args.data_set == 'emnist' and args.model in LinearModel:
                     data = data.view(-1, 28 * 28)
 
@@ -236,12 +238,12 @@ def run(rank, model, train_data, test_data, queue, param_q, stop_flag, client_cf
 
                         if not args.model_avg:
                             queue.put_nowait({
-                                rank: [[v.cpu().numpy() for v in delta_ws], lossPerUpload,
+                                rank: [[v.cpu().numpy() for v in delta_ws], lossPerUpload, 
                                     np.array(local_trained), False, currentClientId, training_speed]
                             })
                         else:
                             queue.put_nowait({
-                                rank: [[param.data.cpu().numpy() for param in model.parameters()],
+                                rank: [[param.data.cpu().numpy() for param in model.parameters()], 
                                     lossPerUpload, np.array(local_trained), False, currentClientId, training_speed]
                             })
 
@@ -259,7 +261,7 @@ def run(rank, model, train_data, test_data, queue, param_q, stop_flag, client_cf
                             .format(currentClientId, epoch, numOfUploads, local_step, time.time() - startTime, epoch_train_loss/float(epoch_train_batch), test_loss, acc))
 
                     rece_start = time.time()
-
+                    
                     for idx, param in enumerate(model.parameters()):
                         dist.broadcast(tensor=param.data, src=0)
 
@@ -291,9 +293,9 @@ def run(rank, model, train_data, test_data, queue, param_q, stop_flag, client_cf
 
                         logging.info("After aggregation, for epoch {}, upload_epoch {}, local step {}, globalStep {}, CumulTime {}, training loss {}, test_loss {}, test_accuracy {} \n"
                                     .format(epoch, numOfUploads, local_step, globalMinStep, time.time() - startTime, epoch_train_loss/float(epoch_train_batch), test_loss, acc))
-
+                        
                 logging.info('LocalStep {}, CumulTime {}, Epoch {}, Batch {}/{}, Loss:{} | TotalTime {} | Comptime: {} | SendTime: {} | ReceTime: {} | Sleep: {} | staleness: {} \n'
-                            .format(local_step, time.time() - startTime, epoch, batch_idx, len(train_data[-1]), round(loss.data.item(), 4), round(time.time() - it_start, 4),
+                            .format(local_step, time.time() - startTime, epoch, batch_idx, len(train_data[-1]), round(loss.data.item(), 4), round(time.time() - it_start, 4), 
                                 round(it_duration, 4), round(send_dur,4), round(rece_dur, 4), sleepForCompute, local_step - globalMinStep))
 
             except Exception as e:
@@ -305,7 +307,7 @@ def run(rank, model, train_data, test_data, queue, param_q, stop_flag, client_cf
             if time.time() - last_test > args.test_interval:
                 last_test = time.time()
                 test_loss, acc = test_model(rank, model, test_data, criterion=criterion)
-
+                
                 model.train()
                 logging.info("For epoch {}, CumulTime {}, training loss {}, test_loss {}, test_accuracy {} \n".format(epoch, time.time() - startTime, epoch_train_loss/float(epoch_train_batch), test_loss, acc))
 
@@ -322,7 +324,6 @@ def run(rank, model, train_data, test_data, queue, param_q, stop_flag, client_cf
 
 def report_data_info(rank, queue, entire_train_data):
     # report data information to the clientSampler master
-    time.sleep(5)
     queue.put({
         rank: [entire_train_data.getDistance(), entire_train_data.getSize()]
     })
@@ -390,7 +391,7 @@ def init_dataset():
         test_dataset = OPENIMG(args.data_dir, train=False, transform=test_transform)
 
         model = tormodels.__dict__[args.model](num_classes=600)
-
+        
     else:
         print('DataSet must be {} or {}!'.format('Mnist', 'Cifar'))
         sys.exit(-1)
@@ -416,7 +417,6 @@ if __name__ == "__main__":
     train_bsz = args.batch_size
     test_bsz = args.test_bsz
 
-    logging.info('====Start to load data')
     model, train_dataset, test_dataset, client_cfg = init_dataset()
 
     splitTrainRatio = []
@@ -425,18 +425,16 @@ if __name__ == "__main__":
     world_size = len(workers) + 1
     this_rank = args.this_rank
 
-    logging.info('====Start to connect')
     MyManager.register('get_queue')
     MyManager.register('get_param')
     MyManager.register('get_stop_signal')
-    manager = MyManager(address=(args.ps_ip, args.manager_port+10*int(args.gpu_device)), authkey=b'queue')
+    manager = MyManager(address=(args.ps_ip, args.manager_port), authkey=b'queue')
     manager.connect()
 
     q = manager.get_queue()  # queue for parameter_server signal process
     param_q = manager.get_param()  # init
     stop_signal = manager.get_stop_signal()  # stop
     dist.init_process_group(args.backend, rank=this_rank, world_size=world_size)
-    logging.info('====Should have connected')
 
     # Split the dataset
     # total_worker != 0 indicates we create more virtual clients for simulation
@@ -446,14 +444,14 @@ if __name__ == "__main__":
     # load data partitioner (entire_train_data)
     dataConf = os.path.join(args.data_dir, 'sampleConf') if args.data_set == 'imagenet' else None
 
-    entire_train_data = DataPartitioner(data=train_dataset, splitConfFile=dataConf,
+    entire_train_data = DataPartitioner(data=train_dataset, splitConfFile=dataConf, 
                         numOfClass=args.num_class, dataMapFile=args.data_mapfile)
 
     dataDistribution = [int(x) for x in args.sequential.split('-')]
     distributionParam = [float(x) for x in args.zipf_alpha.split('-')]
 
     for i in range(args.duplicate_data):
-        partition_dataset(entire_train_data, workers, splitTrainRatio, dataDistribution[i],
+        partition_dataset(entire_train_data, workers, splitTrainRatio, dataDistribution[i], 
                                     filter_class=args.filter_class, arg = {'balanced_client':0, 'param': distributionParam[i]})
     entire_train_data.log_selection()
 
