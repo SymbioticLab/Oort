@@ -4,23 +4,30 @@ import random
 
 class ClientSampler(object):
 
-    def __init__(self, mode, score):
+    def __init__(self, mode, score, filter=0):
         self.Clients = {}
         self.clientOnHosts = {}
         self.mode = mode
         self.score = score
+        self.filter = filter
         random.seed(123)
 
         self.ucbSampler = UCB()# if self.mode == "bandit" else None
+        self.feasibleClients = []
+        self.rng = Random()
+        self.rng.seed(233)
 
     def registerClient(self, hostId, clientId, dis, size, speed = 1.0):
         uniqueId = self.getUniqueId(hostId, clientId)
         self.Clients[uniqueId] = Client(hostId, clientId, dis, size, speed)
 
-        if self.score == "loss":
-            self.ucbSampler.registerArm(clientId, 10.0 - dis)
-        else:
-            self.ucbSampler.registerArm(clientId, 1.0 - dis)
+        if size > self.filter:
+            self.feasibleClients.append(clientId)
+
+            if self.score == "loss":
+                self.ucbSampler.registerArm(clientId, 10.0 - dis)
+            else:
+                self.ucbSampler.registerArm(clientId, 1.0 - dis)
 
     def registerSpeed(self, hostId, clientId, speed):
         uniqueId = self.getUniqueId(hostId, clientId)
@@ -52,19 +59,21 @@ class ClientSampler(object):
         self.clientOnHosts[hostId] = clientId
 
     def getSampleRatio(self, clientId, hostId):
-        # totalSampleInTraining = 0.
+        totalSampleInTraining = 0.
 
-        # for key in self.clientOnHosts:
-        #     uniqueId = self.getUniqueId(key, self.clientOnHosts[key])
-        #     totalSampleInTraining += self.Clients[uniqueId].size
+        for key in self.clientOnHosts:
+            uniqueId = self.getUniqueId(key, self.clientOnHosts[key])
+            totalSampleInTraining += self.Clients[uniqueId].size
 
-        return (1.0/len(self.clientOnHosts.keys()))#float(self.Clients[self.getUniqueId(hostId, clientId)].size)/totalSampleInTraining)
+        return float(self.Clients[self.getUniqueId(hostId, clientId)].size)/totalSampleInTraining
 
     def resampleClients(self, numOfClients, totalClients):
         if self.mode == "bandit":
             return self.ucbSampler.getTopK(numOfClients)
         else:
-            return random.sample(range(1, totalClients+1), numOfClients)
+            self.rng.shuffle(self.feasibleClients)
+            return self.feasibleClients[:numOfClients]
+            #return random.sample(range(1, totalClients+1), numOfClients)
 
     def getCurrentClientId(self, hostId):
         return self.clientOnHosts[hostId]

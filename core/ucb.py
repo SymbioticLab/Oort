@@ -1,10 +1,11 @@
 import math
 import numpy as np2
+from collections import OrderedDict
 
 class UCB(object):
 
     def __init__(self):
-        self.totalArms = {}
+        self.totalArms = OrderedDict()
         self.totalTries = 0
         self.alpha = 0.8
 
@@ -12,6 +13,8 @@ class UCB(object):
         self.exploitation = 1.0 - self.exploration
 
         np2.random.seed(123)
+
+        self.orderedKeys = None
 
     def registerArm(self, armId, reward):
         # Initiate the score for arms. [score, # of tries]
@@ -28,9 +31,12 @@ class UCB(object):
         scores = []
         clientIds = []
 
-        for key in self.totalArms.keys():
-            sc = self.totalArms[key][0] #+ \
-                        #math.sqrt(0.1*math.log(self.totalTries)/float(self.totalArms[key][1]))
+        if self.orderedKeys is None:
+            self.orderedKeys = sorted(self.totalArms.keys())
+
+        for key in self.orderedKeys:
+            sc = self.totalArms[key][0] + \
+                        math.sqrt(0.1*math.log(self.totalTries)/float(self.totalArms[key][1]))
             scores.append(sc)
             clientIds.append(key)
 
@@ -39,11 +45,11 @@ class UCB(object):
 
         # exploration 
         while len(index) < numOfSamples:
-            nextId = np2.random.randint(low=1, high=len(scores) + 1, size=1)[0]
+            nextId = np2.random.choice(self.orderedKeys)
             if nextId not in index:
                 index.append(nextId)
 
-        scores = np2.array(scores)/float(sum(scores))
+        #scores = np2.array(scores)/float(sum(scores))
 
         for i, clientId in enumerate(clientIds):
             self.totalArms[clientId][2] = scores[i]
