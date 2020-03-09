@@ -27,6 +27,7 @@ from utils.divide_data import partition_dataset, select_dataset, DataPartitioner
 from utils.models import *
 from utils.utils_data import get_data_transform
 from utils.utils_model import MySGD, test_model
+from utils.crosslossprox import CrossEntropyLossProx
 
 device = torch.device(args.to_device)
 #torch.cuda.set_device(args.gpu_device)
@@ -99,10 +100,13 @@ def run(rank, model, train_data, test_data, queue, param_q, stop_flag, client_cf
 
     if args.model == 'MnistCNN':
         optimizer = MySGD(model.parameters(), lr=args.learning_rate, momentum=0.5)
-        criterion = torch.nn.CrossEntropyLoss().to(device=device)
     else:
         optimizer = MySGD(model.parameters(), lr=args.learning_rate, momentum=0.9, weight_decay=5e-4)
-        criterion = torch.nn.CrossEntropyLoss().to(device=device)
+    
+    if args.proxy_avg:
+        criterion = CrossEntropyLossProx().to(device=device)
+    else:
+        criterion = CrossEntropyLoss().to(device=device)
 
     print('Begin!')
     logging.info('\n' + repr(args) + '\n')
@@ -191,7 +195,11 @@ def run(rank, model, train_data, test_data, queue, param_q, stop_flag, client_cf
                 output = model(data)
                 forD = time.time() - forwardS
 
-                loss = criterion(output, target)
+                if args.proxy_avg:
+                    loss = criterion(output, target, global_weight=lastGlobalModel, individual_weight=model, mu=0.1)
+                else:
+                    loss = criterion(output, target)
+
                 loss.backward()
 
                 startGet = time.time()

@@ -65,7 +65,7 @@ def shutdown(url):
     try:
         # kill all thread
         try:
-            c.run("kill $(ps aux | grep 'param_server.py' | awk '{print $2}')")
+            c.run("kill $(ps aux | grep 'python3' | awk '{print $2}')")
         except:
             pass
 
@@ -105,8 +105,10 @@ def exec_cmd(_mode):
         [pool.putRequest(req) for req in conn_job]
 
     elif mode == 'shutdown':
-        conn_job = threadpool.makeRequests(shutdown, vms)
-        [pool.putRequest(req) for req in conn_job]
+        for vm in vms:
+            os.system('ssh ' + vm + ' "' + str("kill $(ps aux | grep 'python3' | awk '{print $2}')") + ' "')
+        #conn_job = threadpool.makeRequests(shutdown, vms)
+        #[pool.putRequest(req) for req in conn_job]
 
     pool.wait()
 
