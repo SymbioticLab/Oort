@@ -37,7 +37,7 @@ def start_eval(_args):
 
     try:
         if 'master' in url:
-            c.run(scriptPS, hide=False)
+            c.run(scriptPS, hide=True)
         else:
             time.sleep(5)
 
@@ -48,7 +48,7 @@ def start_eval(_args):
             if hostId != 1:
                 c.run(runCmd, hide=True)
             else:
-                c.run(runCmd)
+                c.run(runCmd, hide=True)
 
         c.close()
 
@@ -105,11 +105,13 @@ def exec_cmd(_mode):
         [pool.putRequest(req) for req in conn_job]
 
     elif mode == 'shutdown':
-        for vm in vms:
-            os.system('ssh ' + vm + ' "' + str("kill $(ps aux | grep 'python3' | awk '{print $2}')") + ' "')
+        #for vm in vms:
+        #    os.system('ssh ' + vm + ' "' + str("kill $(ps aux | grep 'python3' | awk '{print $2}')") + ' "')
         conn_job = threadpool.makeRequests(shutdown, vms)
         [pool.putRequest(req) for req in conn_job]
 
+        for vm in vms:
+            os.system('ssh ' + vm + ' "' + str("kill $(ps aux | grep 'python3' | awk '{print $2}')") + ' "')
     pool.wait()
 
 if __name__ == "__main__":
