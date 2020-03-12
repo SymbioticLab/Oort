@@ -69,183 +69,6 @@ workers = [int(v) for v in str(args.learners).split('-')]
 
 logging.info("===== Experiment start =====")
 
-def run_client(clientId, model, criterion, iters, learning_rate, argdicts = {}):
-    global global_trainDB, global_data_iter, lastGlobalModel
-
-    curBatch = 0
-    optimizer = MySGD(model.parameters(), lr=learning_rate, momentum=0.9, weight_decay=5e-4)
-
-    if clientId not in global_data_iter:
-        client_train_data = select_dataset(clientId, global_trainDB, batch_size=args.batch_size)
-        train_data_itr = iter(client_train_data)
-        total_batch_size = len(client_train_data)
-        global_data_iter[clientId] = [train_data_itr, curBatch, total_batch_size]
-    else:
-        [train_data_itr, curBatch, total_batch_size] = global_data_iter[clientId]
-
-    local_trained = 0
-    epoch_train_loss = 0.
-    comp_duration = 0.
-    
-    model.train()
-
-    for itr in range(iters):
-        it_start = time.time()
-        try:
-            (data, target) = next(train_data_itr)
-        except StopIteration:
-            del train_data_itr
-            # reload data after finishing the epoch
-            train_data_itr = iter(select_dataset(clientId, global_trainDB, batch_size=args.batch_size))
-            (data, target) = next(train_data_itr)
-
-        curBatch = curBatch + 1
-
-        data, target = Variable(data).to(device=device), Variable(target).to(device=device)
-        local_trained += len(target)
-
-        optimizer.zero_grad()
-
-        comp_start = time.time()
-        output = model(data)
-
-        if args.proxy_avg:
-            loss = criterion(output, target, global_weight=lastGlobalModel.parameters(), 
-                            individual_weight=model.parameters(), mu=0.01)
-        else:
-            loss = criterion(output, target)
-
-        loss.backward()
-        delta_w = optimizer.get_delta_w(learning_rate)
-        epoch_train_loss += loss.item()
-        
-        for idx, param in enumerate(model.parameters()):
-            param.data -= delta_w[idx].to(device=device)
-
-        comp_duration = (time.time() - comp_start)
-    
-        logging.info('For client {}, upload iter {}, epoch {}, Batch {}/{}, Loss:{} | TotalTime {} | Comptime: {} \n'
-                    .format(clientId, argdicts['iters'], int(curBatch/total_batch_size),
-                    (curBatch % (total_batch_size + 1)), total_batch_size, round(loss.data.item(), 4), 
-                    round(time.time() - it_start, 4), round(comp_duration, 4)))
-
-    # save the state of this client
-    global_data_iter[clientId] = [train_data_itr, curBatch, total_batch_size]
-
-    return model, loss.data.item(), local_trained, (time.time() - it_start)/float(iters)
-
-def run(rank, model, train_data, test_data, queue, param_q, stop_flag, client_cfg):
-    print("====Worker: Start running")
-
-    global nextClientIds, global_trainDB, lastGlobalModel
-
-    global_trainDB = train_data
-    random.seed(rank)
-    startTime = time.time()
-
-    # Fetch the initial parameters from the server side (we called it parameter_server)
-    while True:
-        if not param_q.empty():
-            param_dict = param_q.get()
-            tmp = OrderedDict(map(lambda item: (item[0], torch.from_numpy(item[1])),
-                                  param_dict.items()))
-            model.load_state_dict(tmp)
-            break
-
-    lastGlobalModel = model
-    criterion = CrossEntropyLossProx().to(device=device) if args.proxy_avg else torch.nn.CrossEntropyLoss().to(device=device)
-
-    print('Begin!')
-    logging.info('\n' + repr(args) + '\n')
-
-    logDir = "/tmp/" + args.model + '_' + str(args.this_rank)
-    if os.path.isdir(logDir):
-        shutil.rmtree(logDir)
-    os.mkdir(logDir)
-
-    learning_rate = args.learning_rate
-    last_test = time.time()
-
-    for epoch in range(1, int(args.epochs) + 1):
-
-        if epoch % args.decay_epoch == 0:
-            learning_rate = max(1e-5, learning_rate * args.decay_factor)
-
-        trainedModels = []
-        preTrainedLoss = []
-        trainedSize = []
-        trainSpeed = []
-
-        computeStart = time.time()
-        for nextClientId in nextClientIds:
-            _model, _loss, _trained_size, _speed = run_client(clientId=nextClientId, 
-                    model=pickle.loads(pickle.dumps(lastGlobalModel)), learning_rate=learning_rate, 
-                    criterion=criterion, iters=args.upload_epoch,
-                    argdicts={'iters': epoch})
-
-            trainedModels.append([param.data.cpu().numpy() for param in _model.parameters()])
-            preTrainedLoss.append(_loss)
-            trainedSize.append(_trained_size)
-            trainSpeed.append(_speed)
-
-        computeEnd = time.time() - computeStart
-
-        # upload the weight
-        sendStart = time.time()
-        queue.put_nowait({rank: [trainedModels, preTrainedLoss, trainedSize, False, nextClientIds, trainSpeed]})
-        sendDur = time.time() - sendStart
-
-        # wait for new models
-        receStart = time.time()
-
-        for idx, param in enumerate(model.parameters()):
-            dist.broadcast(tensor=param.data, src=0)
-
-        # receive current minimum step, and the clientIdLen for next training
-        step_tensor = torch.zeros([world_size], dtype=torch.int).to(device=device)
-        dist.broadcast(tensor=step_tensor, src=0)
-        globalMinStep = step_tensor[0].item()
-        totalLen = step_tensor[-1].item()
-        endIdx = step_tensor[args.this_rank].item()
-        startIdx = 0 if args.this_rank == 1 else step_tensor[args.this_rank - 1].item()
-
-        clients_tensor = torch.zeros([totalLen], dtype=torch.int).to(device=device)
-        dist.broadcast(tensor=clients_tensor, src=0)
-        nextClientIds = [clients_tensor[x].item() for x in range(startIdx, endIdx)]
-
-        receDur = time.time() - receStart
-        # If we simulate multiple workers, we have to do deep copy
-        lastGlobalModel = model
-
-        evalStart = time.time()
-        # test the model if necessary
-        if epoch % int(args.eval_interval) == 0:
-            test_loss, acc = test_model(rank, model, test_data, criterion=criterion)
-            logging.info("After aggregation epoch {}, CumulTime {}, eval_time {}, test_loss {}, test_accuracy {} \n"
-                        .format(epoch, round(time.time() - startTime, 4), round(time.time() - evalStart, 4), test_loss, acc))
-
-            last_test = time.time()
-
-        # except Exception as e:
-        #     exc_type, exc_obj, exc_tb = sys.exc_info()
-        #     fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
-        #     logging.info("====Error: {}, {}, {}, {}".format(e, exc_type, fname, exc_tb.tb_lineno))
-        #     break
-
-        if time.time() - last_test > args.test_interval:
-            last_test = time.time()
-            test_loss, acc = test_model(rank, model, test_data, criterion=criterion)
-            
-            logging.info("For epoch {}, CumulTime {}, test_loss {}, test_accuracy {} \n"
-                .format(epoch, time.time() - startTime, test_loss, acc))
-
-            last_test = time.time()
-
-        if stop_flag.value:
-            break
-
-    queue.put({rank: [None, None, None, True, -1, -1]})
-    logging.info("Worker {} has completed epoch {}!".format(args.this_rank, epoch))
 
 def report_data_info(rank, queue, entire_train_data):
     global nextClientIds
@@ -325,6 +148,185 @@ def init_dataset():
                 client_cfg[clientId] = [compute, commu]
 
     return model, train_dataset, test_dataset, client_cfg
+
+def run_client(clientId, model, criterion, iters, learning_rate, argdicts = {}):
+    global global_trainDB, global_data_iter, lastGlobalModel
+
+    curBatch = 0
+    optimizer = MySGD(model.parameters(), lr=learning_rate, momentum=0.9, weight_decay=5e-4)
+
+    if clientId not in global_data_iter:
+        client_train_data = select_dataset(clientId, global_trainDB, batch_size=args.batch_size)
+        train_data_itr = iter(client_train_data)
+        total_batch_size = len(client_train_data)
+        global_data_iter[clientId] = [train_data_itr, curBatch, total_batch_size]
+    else:
+        [train_data_itr, curBatch, total_batch_size] = global_data_iter[clientId]
+
+    local_trained = 0
+    epoch_train_loss = 0.
+    comp_duration = 0.
+    
+    model.train()
+
+    for itr in range(iters):
+        it_start = time.time()
+        try:
+            (data, target) = next(train_data_itr)
+        except StopIteration:
+            del train_data_itr
+            # reload data after finishing the epoch
+            train_data_itr = iter(select_dataset(clientId, global_trainDB, batch_size=args.batch_size))
+            (data, target) = next(train_data_itr)
+
+        curBatch = curBatch + 1
+
+        data, target = Variable(data).to(device=device), Variable(target).to(device=device)
+        local_trained += len(target)
+
+        optimizer.zero_grad()
+
+        comp_start = time.time()
+        output = model(data)
+
+        if args.proxy_avg:
+            loss = criterion(output, target, global_weight=lastGlobalModel.parameters(), 
+                            individual_weight=model.parameters(), mu=0.01)
+        else:
+            loss = criterion(output, target)
+
+        loss.backward()
+        delta_w = optimizer.get_delta_w(learning_rate)
+        epoch_train_loss += loss.item()
+        
+        for idx, param in enumerate(model.parameters()):
+            param.data -= delta_w[idx].to(device=device)
+
+        comp_duration = (time.time() - comp_start)
+    
+        logging.info('For client {}, upload iter {}, epoch {}, Batch {}/{}, Loss:{} | TotalTime {} | Comptime: {} \n'
+                    .format(clientId, argdicts['iters'], int(curBatch/total_batch_size),
+                    (curBatch % (total_batch_size + 1)), total_batch_size, round(loss.data.item(), 4), 
+                    round(time.time() - it_start, 4), round(comp_duration, 4)))
+
+    # save the state of this client
+    global_data_iter[clientId] = [train_data_itr, curBatch, total_batch_size]
+    model_param = [param.data.cpu().numpy() for param in model.parameters()]
+
+    return model_param, loss.data.item(), local_trained, (time.time() - it_start)/float(iters)
+
+def run(rank, model, train_data, test_data, queue, param_q, stop_flag, client_cfg):
+    print("====Worker: Start running")
+
+    global nextClientIds, global_trainDB, lastGlobalModel
+
+    global_trainDB = train_data
+    random.seed(rank)
+    startTime = time.time()
+
+    # Fetch the initial parameters from the server side (we called it parameter_server)
+    while True:
+        if not param_q.empty():
+            param_dict = param_q.get()
+            tmp = OrderedDict(map(lambda item: (item[0], torch.from_numpy(item[1])),
+                                  param_dict.items()))
+            model.load_state_dict(tmp)
+            break
+
+    lastGlobalModel = model
+    criterion = CrossEntropyLossProx().to(device=device) if args.proxy_avg else torch.nn.CrossEntropyLoss().to(device=device)
+
+    print('Begin!')
+    logging.info('\n' + repr(args) + '\n')
+
+    logDir = "/tmp/" + args.model + '_' + str(args.this_rank)
+    if os.path.isdir(logDir):
+        shutil.rmtree(logDir)
+    os.mkdir(logDir)
+
+    learning_rate = args.learning_rate
+    last_test = time.time()
+
+    for epoch in range(1, int(args.epochs) + 1):
+
+        if epoch % args.decay_epoch == 0:
+            learning_rate = max(1e-5, learning_rate * args.decay_factor)
+
+        trainedModels = []
+        preTrainedLoss = []
+        trainedSize = []
+        trainSpeed = []
+
+        computeStart = time.time()
+        for nextClientId in nextClientIds:
+            _model_param, _loss, _trained_size, _speed = run_client(clientId=nextClientId, 
+                    model=pickle.loads(pickle.dumps(lastGlobalModel)), learning_rate=learning_rate, 
+                    criterion=criterion, iters=args.upload_epoch,
+                    argdicts={'iters': epoch})
+
+            trainedModels.append(_model_param)
+            preTrainedLoss.append(_loss)
+            trainedSize.append(_trained_size)
+            trainSpeed.append(_speed)
+
+        computeEnd = time.time() - computeStart
+
+        # upload the weight
+        sendStart = time.time()
+        queue.put_nowait({rank: [trainedModels, preTrainedLoss, trainedSize, False, nextClientIds, trainSpeed]})
+        sendDur = time.time() - sendStart
+
+        # wait for new models
+        receStart = time.time()
+
+        for idx, param in enumerate(model.parameters()):
+            dist.broadcast(tensor=param.data, src=0)
+
+        # receive current minimum step, and the clientIdLen for next training
+        step_tensor = torch.zeros([world_size], dtype=torch.int).to(device=device)
+        dist.broadcast(tensor=step_tensor, src=0)
+        globalMinStep = step_tensor[0].item()
+        totalLen = step_tensor[-1].item()
+        endIdx = step_tensor[args.this_rank].item()
+        startIdx = 0 if args.this_rank == 1 else step_tensor[args.this_rank - 1].item()
+
+        clients_tensor = torch.zeros([totalLen], dtype=torch.int).to(device=device)
+        dist.broadcast(tensor=clients_tensor, src=0)
+        nextClientIds = [clients_tensor[x].item() for x in range(startIdx, endIdx)]
+
+        receDur = time.time() - receStart
+        # If we simulate multiple workers, we have to do deep copy
+        lastGlobalModel = model
+
+        evalStart = time.time()
+        # test the model if necessary
+        if epoch % int(args.eval_interval) == 0:
+            test_loss, acc = test_model(rank, model, test_data, criterion=criterion)
+            logging.info("After aggregation epoch {}, CumulTime {}, eval_time {}, test_loss {}, test_accuracy {} \n"
+                        .format(epoch, round(time.time() - startTime, 4), round(time.time() - evalStart, 4), test_loss, acc))
+
+            last_test = time.time()
+
+        # except Exception as e:
+        #     exc_type, exc_obj, exc_tb = sys.exc_info()
+        #     fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
+        #     logging.info("====Error: {}, {}, {}, {}".format(e, exc_type, fname, exc_tb.tb_lineno))
+        #     break
+
+        if time.time() - last_test > args.test_interval:
+            last_test = time.time()
+            test_loss, acc = test_model(rank, model, test_data, criterion=criterion)
+            
+            logging.info("For epoch {}, CumulTime {}, test_loss {}, test_accuracy {} \n"
+                .format(epoch, time.time() - startTime, test_loss, acc))
+
+            last_test = time.time()
+
+        if stop_flag.value:
+            break
+
+    queue.put({rank: [None, None, None, True, -1, -1]})
+    logging.info("Worker {} has completed epoch {}!".format(args.this_rank, epoch))
 
 if __name__ == "__main__":
 

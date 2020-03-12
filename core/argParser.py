@@ -23,6 +23,7 @@ parser.add_argument('--data_set', type=str, default='cifar10')
 parser.add_argument('--sample_mode', type=str, default='random')
 parser.add_argument('--score_mode', type=str, default='dis')
 parser.add_argument('--proxy_avg', type=bool, default=False)
+parser.add_argument('--filter_less', type=int, default=0)
 
 # The configuration of different hyper-parameters for training
 parser.add_argument('--epochs', type=int, default=2000)

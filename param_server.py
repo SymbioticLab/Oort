@@ -61,10 +61,10 @@ torch.cuda.set_device(args.gpu_device)
 
 def initiate_sampler_query(numOfClients):
     # Initiate the clientSampler 
-    clientSampler = ClientSampler(args.sample_mode, args.score_mode)
+    clientSampler = ClientSampler(args.sample_mode, args.score_mode, args.filter_less)
     collectedClients = 0
     initial_time = time.time()
-    clientId = 0
+    clientId = 1
     passed = False
 
     # In this simulation, we run data split on each worker, which amplifies the # of datasets
@@ -273,23 +273,6 @@ def run(model, test_data, queue, param_q, stop_signal, clientSampler):
                 learner_staleness[rank_src] = staleness
                 stale_stack.append(rank_src)
 
-                # once reach an epoch, count the average train loss
-                # if global_update%len(workers) == 0:
-                #     e_epoch_time = time.time()
-                #     #variance of stale
-                #     diversity_stale = (staleness_sum_suqare_epoch/iteration_in_epoch)\
-                #                      - (staleness_sum_epoch/iteration_in_epoch)**2
-                #     staleness_sum_suqare_epoch = 0
-                #     staleness_sum_epoch = 0
-                #     test_loss, test_acc = 0, 0
-                #     epoch_count += args.upload_epoch
-
-                #     f_staleness.flush()
-                #     iteration_in_epoch = 0
-                #     epoch_train_loss = 0
-                #     data_size_epoch = 0
-                #     epoch_time = e_epoch_time
-
                 # if the worker is within the staleness, then continue w/ local cache and do nothing
                 # Otherwise, block it 
                 if learner_local_step[rank_src] >= args.stale_threshold + currentMinStep:
@@ -330,7 +313,7 @@ def run(model, test_data, queue, param_q, stop_signal, clientSampler):
 
                         allocateClientToWorker = {}
                         for c in sampledClients:
-                            workerId = workers[c%len(workers)]
+                            workerId = workers[(c-1)%len(workers)]
 
                             if workerId not in allocateClientToWorker:
                                 allocateClientToWorker[workerId] = []
