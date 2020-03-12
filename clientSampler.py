@@ -1,6 +1,6 @@
 from core.ucb import UCB
 from core.client import Client
-import random
+import random, math
 from random import Random
 
 class ClientSampler(object):
@@ -22,7 +22,7 @@ class ClientSampler(object):
         uniqueId = self.getUniqueId(hostId, clientId)
         self.Clients[uniqueId] = Client(hostId, clientId, dis, size, speed)
 
-        if size > self.filter:
+        if size >= self.filter:
             self.feasibleClients.append(clientId)
 
             if self.score == "loss":
@@ -37,7 +37,8 @@ class ClientSampler(object):
     def registerScore(self, clientId, reward):
         # currently, we only use distance as reward
         #if self.mode == "bandit":
-        self.ucbSampler.registerReward(clientId, reward)
+        #self.ucbSampler.registerReward(clientId, reward)
+        pass
 
     def getScore(self, hostId, clientId):
         uniqueId = self.getUniqueId(hostId, clientId)
@@ -51,7 +52,15 @@ class ClientSampler(object):
         return clientInfo
 
     def nextClientIdToRun(self, hostId):
-        return hostId
+        init_id = hostId
+        lenPossible = len(self.feasibleClients)
+
+        while True:
+            clientId = str(self.feasibleClients[init_id])
+            if self.Clients[clientId].size >= self.filter:
+                return init_id
+
+            init_id = max(0, min(int(math.floor(self.rng.random() * lenPossible)), lenPossible - 1))
 
     def getUniqueId(self, hostId, clientId):
         return str(clientId)

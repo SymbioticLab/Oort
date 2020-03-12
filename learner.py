@@ -174,7 +174,7 @@ def run_client(clientId, model, criterion, iters, learning_rate, argdicts = {}):
         try:
             (data, target) = next(train_data_itr)
         except StopIteration:
-            del train_data_itr
+            # del train_data_itr
             # reload data after finishing the epoch
             train_data_itr = iter(select_dataset(clientId, global_trainDB, batch_size=args.batch_size))
             (data, target) = next(train_data_itr)
@@ -248,70 +248,70 @@ def run(rank, model, train_data, test_data, queue, param_q, stop_flag, client_cf
     last_test = time.time()
 
     for epoch in range(1, int(args.epochs) + 1):
+        try:
+            if epoch % args.decay_epoch == 0:
+                learning_rate = max(1e-5, learning_rate * args.decay_factor)
 
-        if epoch % args.decay_epoch == 0:
-            learning_rate = max(1e-5, learning_rate * args.decay_factor)
+            trainedModels = []
+            preTrainedLoss = []
+            trainedSize = []
+            trainSpeed = []
 
-        trainedModels = []
-        preTrainedLoss = []
-        trainedSize = []
-        trainSpeed = []
+            computeStart = time.time()
+            for nextClientId in nextClientIds:
+                _model_param, _loss, _trained_size, _speed = run_client(clientId=nextClientId, 
+                        model=pickle.loads(pickle.dumps(lastGlobalModel)), learning_rate=learning_rate, 
+                        criterion=criterion, iters=args.upload_epoch,
+                        argdicts={'iters': epoch})
 
-        computeStart = time.time()
-        for nextClientId in nextClientIds:
-            _model_param, _loss, _trained_size, _speed = run_client(clientId=nextClientId, 
-                    model=pickle.loads(pickle.dumps(lastGlobalModel)), learning_rate=learning_rate, 
-                    criterion=criterion, iters=args.upload_epoch,
-                    argdicts={'iters': epoch})
+                trainedModels.append(_model_param)
+                preTrainedLoss.append(_loss)
+                trainedSize.append(_trained_size)
+                trainSpeed.append(_speed)
 
-            trainedModels.append(_model_param)
-            preTrainedLoss.append(_loss)
-            trainedSize.append(_trained_size)
-            trainSpeed.append(_speed)
+            computeEnd = time.time() - computeStart
 
-        computeEnd = time.time() - computeStart
+            # upload the weight
+            sendStart = time.time()
+            queue.put_nowait({rank: [trainedModels, preTrainedLoss, trainedSize, False, nextClientIds, trainSpeed]})
+            sendDur = time.time() - sendStart
 
-        # upload the weight
-        sendStart = time.time()
-        queue.put_nowait({rank: [trainedModels, preTrainedLoss, trainedSize, False, nextClientIds, trainSpeed]})
-        sendDur = time.time() - sendStart
+            # wait for new models
+            receStart = time.time()
 
-        # wait for new models
-        receStart = time.time()
+            for idx, param in enumerate(model.parameters()):
+                dist.broadcast(tensor=param.data, src=0)
 
-        for idx, param in enumerate(model.parameters()):
-            dist.broadcast(tensor=param.data, src=0)
+            # receive current minimum step, and the clientIdLen for next training
+            step_tensor = torch.zeros([world_size], dtype=torch.int).to(device=device)
+            dist.broadcast(tensor=step_tensor, src=0)
+            globalMinStep = step_tensor[0].item()
+            totalLen = step_tensor[-1].item()
+            endIdx = step_tensor[args.this_rank].item()
+            startIdx = 0 if args.this_rank == 1 else step_tensor[args.this_rank - 1].item()
 
-        # receive current minimum step, and the clientIdLen for next training
-        step_tensor = torch.zeros([world_size], dtype=torch.int).to(device=device)
-        dist.broadcast(tensor=step_tensor, src=0)
-        globalMinStep = step_tensor[0].item()
-        totalLen = step_tensor[-1].item()
-        endIdx = step_tensor[args.this_rank].item()
-        startIdx = 0 if args.this_rank == 1 else step_tensor[args.this_rank - 1].item()
+            clients_tensor = torch.zeros([totalLen], dtype=torch.int).to(device=device)
+            dist.broadcast(tensor=clients_tensor, src=0)
+            nextClientIds = [clients_tensor[x].item() for x in range(startIdx, endIdx)]
 
-        clients_tensor = torch.zeros([totalLen], dtype=torch.int).to(device=device)
-        dist.broadcast(tensor=clients_tensor, src=0)
-        nextClientIds = [clients_tensor[x].item() for x in range(startIdx, endIdx)]
+            receDur = time.time() - receStart
+            # If we simulate multiple workers, we have to do deep copy
+            lastGlobalModel = model
 
-        receDur = time.time() - receStart
-        # If we simulate multiple workers, we have to do deep copy
-        lastGlobalModel = model
+            evalStart = time.time()
+            # test the model if necessary
+            if epoch % int(args.eval_interval) == 0:
+                test_loss, acc = test_model(rank, model, test_data, criterion=criterion)
+                logging.info("After aggregation epoch {}, CumulTime {}, eval_time {}, test_loss {}, test_accuracy {} \n"
+                            .format(epoch, round(time.time() - startTime, 4), round(time.time() - evalStart, 4), test_loss, acc))
 
-        evalStart = time.time()
-        # test the model if necessary
-        if epoch % int(args.eval_interval) == 0:
-            test_loss, acc = test_model(rank, model, test_data, criterion=criterion)
-            logging.info("After aggregation epoch {}, CumulTime {}, eval_time {}, test_loss {}, test_accuracy {} \n"
-                        .format(epoch, round(time.time() - startTime, 4), round(time.time() - evalStart, 4), test_loss, acc))
+                last_test = time.time()
 
-            last_test = time.time()
-
-        # except Exception as e:
-        #     exc_type, exc_obj, exc_tb = sys.exc_info()
-        #     fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
-        #     logging.info("====Error: {}, {}, {}, {}".format(e, exc_type, fname, exc_tb.tb_lineno))
-        #     break
+        except Exception as e:
+            exc_type, exc_obj, exc_tb = sys.exc_info()
+            fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
+            logging.info("====Error: {}, {}, {}, {}".format(e, exc_type, fname, exc_tb.tb_lineno))
+            break
 
         if time.time() - last_test > args.test_interval:
             last_test = time.time()

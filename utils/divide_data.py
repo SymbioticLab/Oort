@@ -10,6 +10,7 @@ from pyemd import emd
 from collections import OrderedDict
 import time
 import pickle
+from core.argParser import args
 
 class Partition(object):
     """ Dataset partitioning helper """
@@ -24,7 +25,6 @@ class Partition(object):
     def __getitem__(self, index):
         data_idx = self.index[index]
         return self.data[data_idx]
-
 
 class DataPartitioner(object):
 
@@ -344,6 +344,6 @@ def select_dataset(rank: int, partition: DataPartitioner, batch_size: int, isTes
     partition = partition.use(rank - 1, isTest)
 
     #if istest:
-    #    return DataLoader(partition, batch_size=batch_size, shuffle=False, pin_memory=False, num_workers=16, drop_last=True)
+    #    return DataLoader(partition, batch_size=batch_size, shuffle=False, pin_memory=False, num_workers=0, drop_last=False)
     #else:
-    return DataLoader(partition, batch_size=batch_size, shuffle=True, pin_memory=True, num_workers=32, drop_last=False)
+    return DataLoader(partition, batch_size=batch_size, shuffle=True, pin_memory=False, num_workers=args.num_loaders, drop_last=False)
