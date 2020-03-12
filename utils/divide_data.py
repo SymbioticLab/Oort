@@ -346,4 +346,4 @@ def select_dataset(rank: int, partition: DataPartitioner, batch_size: int, isTes
     #if istest:
     #    return DataLoader(partition, batch_size=batch_size, shuffle=False, pin_memory=False, num_workers=16, drop_last=True)
     #else:
-    return DataLoader(partition, batch_size=batch_size, shuffle=True, pin_memory=True, num_workers=0, drop_last=False)
+    return DataLoader(partition, batch_size=batch_size, shuffle=True, pin_memory=True, num_workers=32, drop_last=False)

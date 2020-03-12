@@ -7,7 +7,7 @@
 #BSUB -u fanlai@umich.edu                 # email address to send notifications
 
 
-#rm /tmp/torch/*
+rm /tmp/torch/*
 
 source /gpfs/gpfs0/groups/chowdhury/fanlai/pytorch_install.sh
 source activate mypytorch

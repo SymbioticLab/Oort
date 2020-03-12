@@ -54,30 +54,36 @@ class ClientSampler(object):
         return hostId
 
     def getUniqueId(self, hostId, clientId):
-        return (str(hostId) + '_' + str(clientId))
+        return str(clientId)
+        #return (str(hostId) + '_' + str(clientId))
 
-    def clientOnHost(self, clientId, hostId):
-        self.clientOnHosts[hostId] = clientId
+    def clientOnHost(self, clientIds, hostId):
+        self.clientOnHosts[hostId] = clientIds
+
+    def getCurrentClientIds(self, hostId):
+        return self.clientOnHosts[hostId]
+
+    def getClientLenOnHost(self, hostId):
+        return len(self.clientOnHosts[hostId])
 
     def getSampleRatio(self, clientId, hostId):
         totalSampleInTraining = 0.
 
-        for key in self.clientOnHosts:
-            uniqueId = self.getUniqueId(key, self.clientOnHosts[key])
-            totalSampleInTraining += self.Clients[uniqueId].size
+        # for key in self.clientOnHosts:
+        #     for client in self.clientOnHosts[key]:
+        #         uniqueId = self.getUniqueId(key, client)
+        #         totalSampleInTraining += self.Clients[uniqueId].size
 
-        return float(self.Clients[self.getUniqueId(hostId, clientId)].size)/totalSampleInTraining
+        # return float(self.Clients[self.getUniqueId(hostId, clientId)].size)/totalSampleInTraining
 
-    def resampleClients(self, numOfClients, totalClients):
+        return 1.0
+
+    def resampleClients(self, numOfClients):
         if self.mode == "bandit":
             return self.ucbSampler.getTopK(numOfClients)
         else:
             self.rng.shuffle(self.feasibleClients)
             return self.feasibleClients[:numOfClients]
-            #return random.sample(range(1, totalClients+1), numOfClients)
-
-    def getCurrentClientId(self, hostId):
-        return self.clientOnHosts[hostId]
 
     def getAllMetrics(self):
         #if self.mode == "bandit":
@@ -86,3 +92,4 @@ class ClientSampler(object):
 
     def getClientReward(self, clientId):
         return self.ucbSampler.getClientReward(clientId)
+

@@ -11,7 +11,7 @@ parser.add_argument('--learners', type=str, default='1-2-3-4')
 parser.add_argument('--total_worker', type=int, default=0)
 parser.add_argument('--duplicate_data', type=int, default=1)
 parser.add_argument('--data_mapfile', type=str, default=None)
-parser.add_argument('--to_device', type=str, default='cpu')
+parser.add_argument('--to_device', type=str, default='cuda')
 
 # The configuration of model and dataset
 parser.add_argument('--data_dir', type=str, default='~/cifar10/')
@@ -30,7 +30,7 @@ parser.add_argument('--batch_size', type=int, default=256)
 parser.add_argument('--test_bsz', type=int, default=256)
 parser.add_argument('--heterogeneity', type=float, default=1.0)
 parser.add_argument('--hetero_allocation', type=str, default='1.0-1.0-1.0-1.0-1.0-1.0')
-parser.add_argument('--backend', type=str, default="gloo")
+parser.add_argument('--backend', type=str, default="nccl")
 parser.add_argument('--display_step', type=int, default=20)
 parser.add_argument('--upload_epoch', type=int, default=1)
 parser.add_argument('--validate_interval', type=int, default=999999)
@@ -59,5 +59,5 @@ parser.add_argument('--zipf_alpha', type=str, default='5')
 parser.add_argument('--timeout', type=float, default=9999999)
 parser.add_argument('--full_gradient_interval', type=int, default=20)
 
-
 args = parser.parse_args()
+
