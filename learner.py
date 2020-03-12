@@ -24,7 +24,7 @@ from utils.utils_model import MySGD, test_model
 from utils.crosslossprox import CrossEntropyLossProx
 
 device = torch.device(args.to_device)
-torch.cuda.set_device(args.gpu_device)
+
 #torch.set_num_threads(int(args.threads))
 
 dirPath = '/tmp/torch/'
@@ -58,6 +58,18 @@ os.environ['NCCL_SOCKET_IFNAME'] = 'ib0'
 os.environ['GLOO_SOCKET_IFNAME'] = 'vlan260'
 # os.environ['OMP_NUM_THREADS'] = args.threads
 # os.environ['MKL_NUM_THREADS'] = args.threads
+
+# try to pick the right gpus
+cudaPrefix = 'cuda:'
+for i in range(4):
+    try:
+        device = torch.device(cudaPrefix+str(i))
+        torch.cuda.set_device(i)
+        logging.info(torch.rand(1).to(device=device))
+        break
+    except Exception as e:
+        logging.info(e)
+        continue
 
 world_size = 0
 global_trainDB = None
@@ -171,13 +183,24 @@ def run_client(clientId, model, criterion, iters, learning_rate, argdicts = {}):
 
     for itr in range(iters):
         it_start = time.time()
-        try:
-            (data, target) = next(train_data_itr)
-        except StopIteration:
-            # del train_data_itr
-            # reload data after finishing the epoch
-            train_data_itr = iter(select_dataset(clientId, global_trainDB, batch_size=args.batch_size))
-            (data, target) = next(train_data_itr)
+
+        fetchSuccess = False
+        while not fetchSuccess:
+            try:
+                try:
+                    (data, target) = next(train_data_itr)
+                    fetchSuccess = True
+                except StopIteration:
+                    del train_data_itr
+                    # reload data after finishing the epoch
+                    train_data_itr = iter(select_dataset(clientId, global_trainDB, batch_size=args.batch_size))
+                    (data, target) = next(train_data_itr)
+                    fetchSuccess = True
+            except Exception as e:
+                exc_type, exc_obj, exc_tb = sys.exc_info()
+                fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
+                logging.info("====Error: {}, {}, {}, {}".format(e, exc_type, fname, exc_tb.tb_lineno))
+                time.sleep(0.5)
 
         curBatch = curBatch + 1
 

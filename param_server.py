@@ -53,11 +53,22 @@ os.environ['MASTER_PORT'] = args.ps_port
 os.environ['NCCL_SOCKET_IFNAME'] = 'ib0'
 os.environ['GLOO_SOCKET_IFNAME'] = 'vlan260'
 
+# try to pick the right gpus
+cudaPrefix = 'cuda:'
+for i in range(4):
+    try:
+        device = torch.device(cudaPrefix+str(i))
+        torch.cuda.set_device(i)
+        logging.info(torch.rand(1).to(device=device))
+        break
+    except Exception as e:
+        continue
+
 # os.environ['OMP_NUM_THREADS'] = args.threads
 # os.environ['MKL_NUM_THREADS'] = args.threads
 
 #torch.set_num_threads(int(args.threads))
-torch.cuda.set_device(args.gpu_device)
+#torch.cuda.set_device(args.gpu_device)
 
 def initiate_sampler_query(numOfClients):
     # Initiate the clientSampler 
