@@ -72,7 +72,7 @@ for i in range(4):
 
 def initiate_sampler_query(numOfClients):
     # Initiate the clientSampler 
-    clientSampler = ClientSampler(args.sample_mode, args.score_mode, args.filter_less)
+    clientSampler = ClientSampler(args.sample_mode, args.score_mode, filter=args.filter_less, sample_seed=args.sample_seed)
     collectedClients = 0
     initial_time = time.time()
     clientId = 1
@@ -257,7 +257,7 @@ def run(model, test_data, queue, param_q, stop_signal, clientSampler):
                     data_size_epoch += trained_size[i]
 
                     # fraction of total samples on this specific node 
-                    ratioSample = clientSampler.getSampleRatio(clientId, rank_src)
+                    ratioSample = clientSampler.getSampleRatio(clientId, rank_src, args.is_even_avg)
                     delta_ws = delta_wss[i]
 
                     # apply the update into the global model

@@ -5,7 +5,7 @@ from random import Random
 
 class ClientSampler(object):
 
-    def __init__(self, mode, score, filter=0):
+    def __init__(self, mode, score, sample_seed=233, filter=0):
         self.Clients = {}
         self.clientOnHosts = {}
         self.mode = mode
@@ -13,10 +13,10 @@ class ClientSampler(object):
         self.filter = filter
         random.seed(123)
 
-        self.ucbSampler = UCB()# if self.mode == "bandit" else None
+        self.ucbSampler = UCB(sample_seed=sample_seed)# if self.mode == "bandit" else None
         self.feasibleClients = []
         self.rng = Random()
-        self.rng.seed(233)
+        self.rng.seed(sample_seed)
 
     def registerClient(self, hostId, clientId, dis, size, speed = 1.0):
         uniqueId = self.getUniqueId(hostId, clientId)
@@ -36,9 +36,8 @@ class ClientSampler(object):
 
     def registerScore(self, clientId, reward):
         # currently, we only use distance as reward
-        #if self.mode == "bandit":
-        #self.ucbSampler.registerReward(clientId, reward)
-        pass
+        if self.mode == "bandit":
+            self.ucbSampler.registerReward(clientId, reward)
 
     def getScore(self, hostId, clientId):
         uniqueId = self.getUniqueId(hostId, clientId)
@@ -75,16 +74,22 @@ class ClientSampler(object):
     def getClientLenOnHost(self, hostId):
         return len(self.clientOnHosts[hostId])
 
-    def getSampleRatio(self, clientId, hostId):
+    def getSampleRatio(self, clientId, hostId, even=False):
         totalSampleInTraining = 0.
 
-        for key in self.clientOnHosts.keys():
-            for client in self.clientOnHosts[key]:
-                uniqueId = self.getUniqueId(key, client)
-                totalSampleInTraining += self.Clients[uniqueId].size
+        if not even:
+            for key in self.clientOnHosts.keys():
+                for client in self.clientOnHosts[key]:
+                    uniqueId = self.getUniqueId(key, client)
+                    totalSampleInTraining += self.Clients[uniqueId].size
 
-        #1./len(self.clientOnHosts.keys())
-        return float(self.Clients[self.getUniqueId(hostId, clientId)].size)/float(totalSampleInTraining)
+            #1./len(self.clientOnHosts.keys())
+            return float(self.Clients[self.getUniqueId(hostId, clientId)].size)/float(totalSampleInTraining)
+        else:
+            for key in self.clientOnHosts.keys():
+                totalSampleInTraining += len(self.clientOnHosts[key])
+
+            return 1./totalSampleInTraining
 
     def resampleClients(self, numOfClients):
         if self.mode == "bandit":
@@ -100,4 +105,3 @@ class ClientSampler(object):
 
     def getClientReward(self, clientId):
         return self.ucbSampler.getClientReward(clientId)
-

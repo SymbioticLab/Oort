@@ -1,10 +1,10 @@
 import math
-import numpy as np2
+from random import Random
 from collections import OrderedDict
 
 class UCB(object):
 
-    def __init__(self):
+    def __init__(self, sample_seed):
         self.totalArms = OrderedDict()
         self.totalTries = 0
         self.alpha = 0.8
@@ -12,7 +12,8 @@ class UCB(object):
         self.exploration = 0.2
         self.exploitation = 1.0 - self.exploration
 
-        np2.random.seed(123)
+        self.rng = Random()
+        self.rng.seed(sample_seed)
 
         self.orderedKeys = None
 
@@ -29,7 +30,6 @@ class UCB(object):
         self.totalTries += 1
         # normalize the score of all arms: Avg + Confidence
         scores = []
-        clientIds = []
 
         if self.orderedKeys is None:
             self.orderedKeys = sorted(self.totalArms.keys())
@@ -37,26 +37,22 @@ class UCB(object):
         for key in self.orderedKeys:
             sc = self.totalArms[key][0] + \
                         math.sqrt(0.1*math.log(self.totalTries)/float(self.totalArms[key][1]))
-            scores.append(sc)
-            clientIds.append(key)
 
+            #self.totalArms[key][2] = sc
+            scores.append(sc)
+            
         # static UCB, take the top-k
-        index = (np2.array(scores).argsort()[-int(numOfSamples*self.exploitation):][::-1] + 1).tolist()
+        exploitLen = int(numOfSamples*self.exploitation)
+        index = sorted(range(len(scores)), reverse=True, key=lambda k: scores[k])[:exploitLen]
+        pickedClients = [self.orderedKeys[x] for x in index]
 
         # exploration 
-        while len(index) < numOfSamples:
-            nextId = np2.random.choice(self.orderedKeys)
-            if nextId not in index:
-                index.append(nextId)
+        while len(pickedClients) < numOfSamples:
+            nextId = self.rng.random.choice(self.orderedKeys)
+            if nextId not in pickedClients:
+                pickedClients.append(nextId)
 
-        #scores = np2.array(scores)/float(sum(scores))
-
-        for i, clientId in enumerate(clientIds):
-            self.totalArms[clientId][2] = scores[i]
-
-        #index = np2.random.choice(clientIds, size=numOfSamples, p = scores.ravel(), replace=False)
-
-        return index
+        return pickedClients
 
     def getClientReward(self, armId):
         return self.totalArms[armId]
