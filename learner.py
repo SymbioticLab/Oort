@@ -27,7 +27,7 @@ device = torch.device(args.to_device)
 
 #torch.set_num_threads(int(args.threads))
 
-logDir = "/gpfs/gpfs0/groups/chowdhury/fanlai/models/" + args.model + '/' + args.time_stamp + '/learner/'
+logDir = os.getcwd() + "/../../models/" + args.model + '/' + args.time_stamp + '/learner/'
 logFile = logDir + 'log_'+str(args.this_rank)
 
 def init_logging():

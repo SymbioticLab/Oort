@@ -48,7 +48,7 @@ class UCB(object):
 
         # exploration 
         while len(pickedClients) < numOfSamples:
-            nextId = self.rng.random.choice(self.orderedKeys)
+            nextId = self.rng.choice(self.orderedKeys)
             if nextId not in pickedClients:
                 pickedClients.append(nextId)
 

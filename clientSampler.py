@@ -2,10 +2,11 @@ from core.ucb import UCB
 from core.client import Client
 import random, math
 from random import Random
+import logging
 
 class ClientSampler(object):
 
-    def __init__(self, mode, score, sample_seed=233, filter=0):
+    def __init__(self, mode, score, filter=0, sample_seed=233):
         self.Clients = {}
         self.clientOnHosts = {}
         self.mode = mode
@@ -19,6 +20,7 @@ class ClientSampler(object):
         self.rng.seed(sample_seed)
 
     def registerClient(self, hostId, clientId, dis, size, speed = 1.0):
+
         uniqueId = self.getUniqueId(hostId, clientId)
         self.Clients[uniqueId] = Client(hostId, clientId, dis, size, speed)
 
@@ -58,9 +60,11 @@ class ClientSampler(object):
         while True:
             clientId = str(self.feasibleClients[init_id])
             if self.Clients[clientId].size >= self.filter:
-                return init_id
+                return int(clientId)
 
             init_id = max(0, min(int(math.floor(self.rng.random() * lenPossible)), lenPossible - 1))
+
+        return init_id
 
     def getUniqueId(self, hostId, clientId):
         return str(clientId)

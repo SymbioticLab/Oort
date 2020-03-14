@@ -26,7 +26,7 @@ from utils.openImg import *
 
 device = torch.device(args.to_device)
 
-logDir = "/gpfs/gpfs0/groups/chowdhury/fanlai/models/" + args.model + '/' + args.time_stamp + '/server/'
+logDir = os.getcwd() + "/../../models/"  + args.model + '/' + args.time_stamp + '/server/'
 logFile = logDir + 'log'
 
 def init_logging():
@@ -37,7 +37,7 @@ def init_logging():
 
     with open(logFile, 'w') as fin:
         pass
-        
+
     logging.basicConfig(format='%(asctime)s,%(msecs)d %(levelname)s %(message)s',
                         datefmt='%H:%M:%S',
                         level=logging.DEBUG,
