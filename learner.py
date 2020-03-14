@@ -27,20 +27,12 @@ device = torch.device(args.to_device)
 
 #torch.set_num_threads(int(args.threads))
 
-# dirPath = '/tmp/torch/'
-# if not os.path.isdir(dirPath):
-#     os.mkdir(dirPath)
-
 logDir = "/gpfs/gpfs0/groups/chowdhury/fanlai/models/" + args.model + '/' + args.time_stamp + '/learner/'
 logFile = logDir + 'log_'+str(args.this_rank)
 
-# logFile = dirPath + 'log_'+str(args.this_rank) + '_'  + \
-#           str(datetime.datetime.fromtimestamp(time.time()).strftime('%m%d_%H%M%S')) + \
-#           '_' + str(args.this_rank)
-
 def init_logging():
     global logDir
-    
+
     if not os.path.isdir(logDir):
         os.makedirs(logDir, exist_ok=True)
 
