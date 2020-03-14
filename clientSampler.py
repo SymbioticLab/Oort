@@ -37,10 +37,10 @@ class ClientSampler(object):
         uniqueId = self.getUniqueId(hostId, clientId)
         self.Clients[uniqueId].speed = speed
 
-    def registerScore(self, clientId, reward):
+    def registerScore(self, clientId, reward, time_stamp=0):
         # currently, we only use distance as reward
         if self.mode == "bandit":
-            self.ucbSampler.registerReward(clientId, reward)
+            self.ucbSampler.registerReward(clientId, reward, time_stamp)
 
     def getScore(self, hostId, clientId):
         uniqueId = self.getUniqueId(hostId, clientId)

@@ -1,6 +1,7 @@
 import math
 from random import Random
 from collections import OrderedDict
+import logging
 
 class UCB(object):
 
@@ -15,43 +16,48 @@ class UCB(object):
         self.rng = Random()
         self.rng.seed(sample_seed)
 
-        self.orderedKeys = None
+        #self.orderedKeys = None
 
     def registerArm(self, armId, reward):
         # Initiate the score for arms. [score, # of tries]
         if armId not in self.totalArms:
-            self.totalArms[armId] = [reward, 1, 0]
+             self.totalArms[armId] = [-1, -1, 0]
 
-    def registerReward(self, armId, reward):
-        self.totalArms[armId][0] = reward * self.alpha + self.totalArms[armId][0] * (1.0 - self.alpha)
-        self.totalArms[armId][1] += 1
+    def registerReward(self, armId, reward, time_stamp):
+        # [reward, time stamp]
+        self.totalArms[armId][0] = reward # + self.totalArms[armId][0] * (1.0 - self.alpha)
+        self.totalArms[armId][1] = time_stamp
+        self.totalArms[armId][2] += 1
 
     def getTopK(self, numOfSamples):
         self.totalTries += 1
         # normalize the score of all arms: Avg + Confidence
         scores = []
 
-        if self.orderedKeys is None:
-            self.orderedKeys = sorted(self.totalArms.keys())
+        #if self.orderedKeys is None:
+        orderedKeys = list(self.totalArms.keys())
 
-        for key in self.orderedKeys:
-            sc = self.totalArms[key][0] + \
-                        math.sqrt(0.1*math.log(self.totalTries)/float(self.totalArms[key][1]))
+        for key in orderedKeys:
+            # we have played this arm before
+            sc = -1.0
+            if self.totalArms[key][1] != -1:
+                sc = self.totalArms[key][0] + \
+                            math.sqrt(0.1*math.log(self.totalTries)/float(self.totalArms[key][1]))
 
-            #self.totalArms[key][2] = sc
             scores.append(sc)
             
         # static UCB, take the top-k
         exploitLen = int(numOfSamples*self.exploitation)
         index = sorted(range(len(scores)), reverse=True, key=lambda k: scores[k])[:exploitLen]
-        pickedClients = [self.orderedKeys[x] for x in index]
+        pickedClients = [orderedKeys[x] for x in index]
 
         # exploration 
         while len(pickedClients) < numOfSamples:
-            nextId = self.rng.choice(self.orderedKeys)
+            nextId = self.rng.choice(orderedKeys)
             if nextId not in pickedClients:
                 pickedClients.append(nextId)
 
+        logging.info("====For {} times, UCB workers".format(self.totalTries))
         return pickedClients
 
     def getClientReward(self, armId):

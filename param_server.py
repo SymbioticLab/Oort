@@ -3,6 +3,7 @@
 from core.argParser import args
 import os, shutil
 import random
+import numpy as np
 import sys
 import time
 import datetime
@@ -251,10 +252,10 @@ def run(model, test_data, queue, param_q, stop_signal, clientSampler):
 
                 for i, clientId in enumerate(clientIds):
                     if args.score_mode == "loss":
-                        clientSampler.registerScore(clientId, iteration_loss[i])
+                        clientSampler.registerScore(clientId, iteration_loss[i], time_stamp=epoch_count)
                     else:
                         sc = 1.0 - clientSampler.getScore(rank_src, clientId)
-                        clientSampler.registerScore(clientId, sc)
+                        clientSampler.registerScore(clientId, sc, time_stamp=epoch_count)
 
                     epoch_train_loss += iteration_loss[i]
                     data_size_epoch += trained_size[i]
@@ -375,14 +376,21 @@ def run(model, test_data, queue, param_q, stop_signal, clientSampler):
             print('Time up: {}, Stop Now!'.format(e_time - s_time))
             break
 
+def setup_seed(seed):
+     torch.manual_seed(seed)
+     torch.cuda.manual_seed_all(seed)
+     np.random.seed(seed)
+     random.seed(seed)
+     torch.backends.cudnn.deterministic = True
+
 if __name__ == "__main__":
 
     with open(logFile, 'w') as f:
         pass
     # Control the global random
     manual_seed = args.this_rank
-    random.seed(manual_seed)
-    torch.manual_seed(manual_seed)
+    setup_seed(manual_seed)
+
     model, train_dataset, test_dataset = init_dataset()
 
     test_data = DataLoader(test_dataset, batch_size=args.test_bsz, shuffle=True)

@@ -315,7 +315,15 @@ class DataPartitioner(object):
 
     def use(self, partition, istest):
         _partition = partition
+        resultIndex = []
+
+        #if not istest:
         resultIndex = self.partitions[_partition]
+        # else:
+        #     # we want the worker to test all cases
+        #     for item in self.partitions:
+        #         resultIndex += item
+
         self.rng.shuffle(resultIndex)
 
         logging.info("====Data length for client {} is {}".format(partition, len(resultIndex)))
@@ -343,7 +351,7 @@ def partition_dataset(partitioner, workers, partitionRatio=[], sequential=0, rat
 def select_dataset(rank: int, partition: DataPartitioner, batch_size: int, isTest=False):
     partition = partition.use(rank - 1, isTest)
 
-    #if istest:
-    #    return DataLoader(partition, batch_size=batch_size, shuffle=False, pin_memory=False, num_workers=0, drop_last=False)
+    #if isTest:
+    #    return DataLoader(partition, batch_size=batch_size, shuffle=True, pin_memory=False, num_workers=10, drop_last=False)
     #else:
     return DataLoader(partition, batch_size=batch_size, shuffle=True, pin_memory=False, num_workers=args.num_loaders, drop_last=False)

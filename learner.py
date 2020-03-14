@@ -7,7 +7,7 @@ from collections import OrderedDict
 from ctypes import c_bool
 from multiprocessing import Process, Value
 from multiprocessing.managers import BaseManager
-import random, math
+import random, math, gc
 import multiprocessing, threading
 import numpy as np
 import torch
@@ -24,6 +24,7 @@ from utils.utils_model import MySGD, test_model
 from utils.crosslossprox import CrossEntropyLossProx
 
 device = torch.device(args.to_device)
+torch.manual_seed(0)
 
 #torch.set_num_threads(int(args.threads))
 
@@ -170,6 +171,7 @@ def run_client(clientId, model, criterion, iters, learning_rate, argdicts = {}):
 
     curBatch = 0
     optimizer = MySGD(model.parameters(), lr=learning_rate, momentum=0.9, weight_decay=5e-4)
+    train_data_itr_list = []
 
     if clientId not in global_data_iter:
         client_train_data = select_dataset(clientId, global_trainDB, batch_size=args.batch_size)
@@ -182,6 +184,7 @@ def run_client(clientId, model, criterion, iters, learning_rate, argdicts = {}):
     local_trained = 0
     epoch_train_loss = 0.
     comp_duration = 0.
+    train_data_itr_list.append(train_data_itr)
     
     model.train()
 
@@ -192,13 +195,21 @@ def run_client(clientId, model, criterion, iters, learning_rate, argdicts = {}):
         while not fetchSuccess:
             try:
                 try:
-                    (data, target) = next(train_data_itr)
+                    (data, target) = next(train_data_itr_list[0])
                     fetchSuccess = True
-                except StopIteration:
-                    del train_data_itr
+                except Exception:
+                    try:
+                        train_data_itr_list[0]._shutdown_workers()
+                        gc.collect()
+                        
+                        del train_data_itr_list[0]
+                    except Exception as e:
+                        logging.info("====Error {}".format(e))
+
+                    train_data_itr_list = []
                     # reload data after finishing the epoch
-                    train_data_itr = iter(select_dataset(clientId, global_trainDB, batch_size=args.batch_size))
-                    (data, target) = next(train_data_itr)
+                    train_data_itr_list.append(iter(select_dataset(clientId, global_trainDB, batch_size=args.batch_size)))
+                    (data, target) = next(train_data_itr_list[0])
                     fetchSuccess = True
             except Exception as e:
                 exc_type, exc_obj, exc_tb = sys.exc_info()
@@ -237,10 +248,10 @@ def run_client(clientId, model, criterion, iters, learning_rate, argdicts = {}):
                     round(time.time() - it_start, 4), round(comp_duration, 4)))
 
     # save the state of this client
-    global_data_iter[clientId] = [train_data_itr, curBatch, total_batch_size]
+    global_data_iter[clientId] = [train_data_itr_list[0], curBatch, total_batch_size]
     model_param = [param.data.cpu().numpy() for param in model.parameters()]
 
-    return model_param, loss.data.item(), local_trained, (time.time() - it_start)/float(iters)
+    return model_param, epoch_train_loss/float(iters), local_trained, (time.time() - it_start)/float(iters)
 
 def run(rank, model, train_data, test_data, queue, param_q, stop_flag, client_cfg):
     print("====Worker: Start running")
@@ -248,7 +259,6 @@ def run(rank, model, train_data, test_data, queue, param_q, stop_flag, client_cf
     global nextClientIds, global_trainDB, lastGlobalModel
 
     global_trainDB = train_data
-    random.seed(rank)
     startTime = time.time()
 
     # Fetch the initial parameters from the server side (we called it parameter_server)
@@ -355,9 +365,15 @@ def run(rank, model, train_data, test_data, queue, param_q, stop_flag, client_cf
     queue.put({rank: [None, None, None, True, -1, -1]})
     logging.info("Worker {} has completed epoch {}!".format(args.this_rank, epoch))
 
-if __name__ == "__main__":
+def setup_seed(seed):
+     torch.manual_seed(seed)
+     torch.cuda.manual_seed_all(seed)
+     np.random.seed(seed)
+     random.seed(seed)
+     torch.backends.cudnn.deterministic = True
 
-    torch.manual_seed(args.this_rank)
+if __name__ == "__main__":
+    setup_seed(args.this_rank)
 
     train_bsz = args.batch_size
     test_bsz = args.test_bsz
