@@ -12,6 +12,7 @@ parser.add_argument('--total_worker', type=int, default=0)
 parser.add_argument('--duplicate_data', type=int, default=1)
 parser.add_argument('--data_mapfile', type=str, default=None)
 parser.add_argument('--to_device', type=str, default='cuda')
+parser.add_argument('--time_stamp', type=str, default='logs')
 
 # The configuration of model and dataset
 parser.add_argument('--data_dir', type=str, default='~/cifar10/')
@@ -64,4 +65,3 @@ parser.add_argument('--is_even_avg', type=bool, default=True)
 parser.add_argument('--sample_seed', type=int, default=233)
 
 args = parser.parse_args()
-

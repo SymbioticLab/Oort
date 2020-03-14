@@ -26,12 +26,18 @@ from utils.openImg import *
 
 device = torch.device(args.to_device)
 
-logFile = '/tmp/torch/log_' + str(datetime.datetime.fromtimestamp(time.time()).strftime('%m%d_%H%M%S'))
+logDir = "/gpfs/gpfs0/groups/chowdhury/fanlai/models/" + args.model + '/' + args.time_stamp + '/server/'
+logFile = logDir + 'log'
 
 def init_logging():
-    if not os.path.isdir('/tmp/torch'):
-        os.mkdir('/tmp/torch')
+    global logDir
 
+    if not os.path.isdir(logDir):
+        os.makedirs(logDir, exist_ok=True)
+
+    with open(logFile, 'w') as fin:
+        pass
+        
     logging.basicConfig(format='%(asctime)s,%(msecs)d %(levelname)s %(message)s',
                         datefmt='%H:%M:%S',
                         level=logging.DEBUG,
@@ -62,7 +68,12 @@ for i in range(4):
         logging.info(torch.rand(1).to(device=device))
         break
     except Exception as e:
-        continue
+        # no gpus available
+        if i == 4:
+            logging.info(e)
+            sys.exit(-1)
+        else:
+            continue
 
 # os.environ['OMP_NUM_THREADS'] = args.threads
 # os.environ['MKL_NUM_THREADS'] = args.threads
@@ -170,11 +181,11 @@ def init_dataset():
     return model, train_dataset, test_dataset
 
 def run(model, test_data, queue, param_q, stop_signal, clientSampler):
+    global logDir
+
     logging.info("====PS: get in run()")
 
     f_staleness = open(staleness_file, 'w')
-
-    logDir = "/tmp/" + args.model
     
     # convert gradient tensor to numpy structure
     if args.load_model:
@@ -184,9 +195,6 @@ def run(model, test_data, queue, param_q, stop_signal, clientSampler):
         except Exception as e:
             logging.info("====Error: Failed to load model due to {}\n".format(str(e)))
             pass
-    
-    if not os.path.isdir(logDir):
-        os.mkdir(logDir)
 
     _tmp = OrderedDict(map(lambda item: (item[0], item[1].cpu().numpy()), model.state_dict().items()))
     
@@ -198,11 +206,8 @@ def run(model, test_data, queue, param_q, stop_signal, clientSampler):
     print('Begin!')
 
     epoch_train_loss = 0
-    iteration_in_epoch = 0
     data_size_epoch = 0   # len(train_data), one epoch
     epoch_count = 1
-    staleness_sum_suqare_epoch = 0
-    staleness_sum_epoch = 0
 
     staleness = 0
     learner_staleness = {l: 0 for l in workers}
@@ -215,7 +220,6 @@ def run(model, test_data, queue, param_q, stop_signal, clientSampler):
 
     # In SSP, the fast workers have to wait the slowest worker a given duration
     # The fast worker exceeding the duration will be pushed into the queue to wait
-    stale_stack = []
     global_update = 0
     received_updates = 0
 
@@ -240,7 +244,6 @@ def run(model, test_data, queue, param_q, stop_signal, clientSampler):
                         break
                     continue
 
-                iteration_in_epoch += 1
                 learner_local_step[rank_src] += 1
 
                 handlerStart = time.time()
@@ -271,18 +274,12 @@ def run(model, test_data, queue, param_q, stop_signal, clientSampler):
 
                 handlerDur = time.time() - handlerStart
                 global_update += 1
-                currentMinStep = 9999999999
 
                 # get the current minimum local staleness_sum_epoch
-                for rankStep in learner_local_step.keys():
-                    currentMinStep = min(currentMinStep, learner_local_step[rankStep])
+                currentMinStep = min([learner_local_step[key] for key in learner_local_step.keys()])
 
-                stale = int(learner_local_step[rank_src] - currentMinStep)
-                staleness_sum_epoch += stale
-                staleness_sum_suqare_epoch += stale**2
                 staleness += 1
                 learner_staleness[rank_src] = staleness
-                stale_stack.append(rank_src)
 
                 # if the worker is within the staleness, then continue w/ local cache and do nothing
                 # Otherwise, block it 
@@ -293,7 +290,7 @@ def run(model, test_data, queue, param_q, stop_signal, clientSampler):
                                             " , while globalStep is " + str(currentMinStep) + "\n")
                 
                 # if the local cache is too stale, then update it
-                elif learner_cache_step[rank_src] < learner_local_step[rank_src] - args.stale_threshold or args.force_read:
+                elif learner_cache_step[rank_src] < learner_local_step[rank_src] - args.stale_threshold:
                     pendingWorkers[rank_src] = learner_local_step[rank_src]
                     
                 # release all pending requests, if the staleness does not exceed the staleness threshold in SSP 
@@ -347,7 +344,6 @@ def run(model, test_data, queue, param_q, stop_signal, clientSampler):
                         # remove from the pending workers
                         del pendingWorkers[worker]
 
-                    #dist.broadcast(tensor=torch.tensor(clientIdsToRun, dtype=torch.int).to(device=device), src=0)
                     dist.broadcast(tensor=torch.tensor(clientIdsToRun, dtype=torch.int).to(device=device), src=0)
                     dist.broadcast(tensor=torch.tensor(clientsList, dtype=torch.int).to(device=device), src=0)
 

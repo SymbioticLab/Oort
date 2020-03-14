@@ -11,8 +11,6 @@ import numpy as np
 import logging
 from core.argParser import args
 
-device = torch.device(args.to_device)
-
 class MySGD(optim.SGD):
 
     def __init__(self, params, lr=0.01, momentum=0.0,
@@ -100,7 +98,7 @@ def test_model(rank, model, test_data, criterion=nn.NLLLoss()):
     model.eval()
     for data, target in test_data:
         #data, target = Variable(data.view(-1, 28*28)), Variable(target)
-        data, target = Variable(data).to(device=device), Variable(target).to(device=device)
+        data, target = Variable(data).cuda(), Variable(target).cuda()
         output = model(data)
         test_loss += criterion(output, target).data.item()  # Variable.data
 

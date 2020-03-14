@@ -13,7 +13,7 @@ class ClientSampler(object):
         self.filter = filter
         random.seed(123)
 
-        self.ucbSampler = UCB(sample_seed=sample_seed)# if self.mode == "bandit" else None
+        self.ucbSampler = UCB(sample_seed=sample_seed) if self.mode == "bandit" else None
         self.feasibleClients = []
         self.rng = Random()
         self.rng.seed(sample_seed)
@@ -25,10 +25,11 @@ class ClientSampler(object):
         if size >= self.filter:
             self.feasibleClients.append(clientId)
 
-            if self.score == "loss":
-                self.ucbSampler.registerArm(clientId, 10.0 - dis)
-            else:
-                self.ucbSampler.registerArm(clientId, 1.0 - dis)
+            if self.mode == "bandit":
+                if self.score == "loss":
+                    self.ucbSampler.registerArm(clientId, 10.0 - dis)
+                else:
+                    self.ucbSampler.registerArm(clientId, 1.0 - dis)
 
     def registerSpeed(self, hostId, clientId, speed):
         uniqueId = self.getUniqueId(hostId, clientId)
@@ -99,9 +100,9 @@ class ClientSampler(object):
             return self.feasibleClients[:numOfClients]
 
     def getAllMetrics(self):
-        #if self.mode == "bandit":
-        return self.ucbSampler.getAllMetrics()
-        #return {}
+        if self.mode == "bandit":
+            return self.ucbSampler.getAllMetrics()
+        return {}
 
     def getClientReward(self, clientId):
         return self.ucbSampler.getClientReward(clientId)
