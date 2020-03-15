@@ -57,7 +57,7 @@ class UCB(object):
             if nextId not in pickedClients:
                 pickedClients.append(nextId)
 
-        logging.info("====For {} times, UCB workers".format(self.totalTries))
+        logging.info("====For {} times, UCB works to pick {} from {}".format(self.totalTries, exploitLen, numOfSamples))
         return pickedClients
 
     def getClientReward(self, armId):

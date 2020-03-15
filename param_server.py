@@ -25,7 +25,7 @@ from utils.utils_data import get_data_transform
 from utils.utils_model import test_model
 from utils.openImg import *
 
-device = torch.device(args.to_device)
+#device = torch.device(args.to_device)
 
 logDir = os.getcwd() + "/../../models/"  + args.model + '/' + args.time_stamp + '/server/'
 logFile = logDir + 'log'
@@ -60,12 +60,16 @@ os.environ['MASTER_PORT'] = args.ps_port
 os.environ['NCCL_SOCKET_IFNAME'] = 'ib0'
 os.environ['GLOO_SOCKET_IFNAME'] = 'vlan260'
 
+device = None
+deviceId = None
+
 # try to pick the right gpus
 cudaPrefix = 'cuda:'
 for i in range(4):
     try:
         device = torch.device(cudaPrefix+str(i))
         torch.cuda.set_device(i)
+        deviceId = i
         logging.info(torch.rand(1).to(device=device))
         break
     except Exception as e:
@@ -134,7 +138,6 @@ def init_myprocesses(rank, size, model, test_data, queue, param_q, stop_signal, 
 
 def init_dataset():
     if args.data_set == 'Mnist':
-        model = MnistCNN()
         train_transform, test_transform = get_data_transform('mnist')
 
         train_dataset = datasets.MNIST(args.data_dir, train=True, download=False,
@@ -188,10 +191,12 @@ def run(model, test_data, queue, param_q, stop_signal, clientSampler):
 
     f_staleness = open(staleness_file, 'w')
     
+    modelDir = os.getcwd() + "/../../models/"  + args.model
     # convert gradient tensor to numpy structure
     if args.load_model:
         try:
-            model.load_state_dict(torch.load(logDir+'/'+str(args.model)+'.pth.tar'))
+            model.load_state_dict(torch.load(modelDir+'/'+str(args.model)+'.pth.tar', 
+                                        map_location=lambda storage, loc: storage.cuda(deviceId)))
             logging.info("====Load model successfully\n")
         except Exception as e:
             logging.info("====Error: Failed to load model due to {}\n".format(str(e)))

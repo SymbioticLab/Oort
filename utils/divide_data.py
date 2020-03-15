@@ -9,7 +9,7 @@ import numpy as np
 from pyemd import emd
 from collections import OrderedDict
 import time
-import pickle
+import pickle, random
 from core.argParser import args
 
 class Partition(object):
@@ -351,7 +351,4 @@ def partition_dataset(partitioner, workers, partitionRatio=[], sequential=0, rat
 def select_dataset(rank: int, partition: DataPartitioner, batch_size: int, isTest=False):
     partition = partition.use(rank - 1, isTest)
 
-    #if isTest:
-    #    return DataLoader(partition, batch_size=batch_size, shuffle=True, pin_memory=False, num_workers=10, drop_last=False)
-    #else:
     return DataLoader(partition, batch_size=batch_size, shuffle=True, pin_memory=False, num_workers=args.num_loaders, drop_last=False)

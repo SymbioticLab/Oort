@@ -1,6 +1,6 @@
 from core.ucb import UCB
 from core.client import Client
-import random, math
+import math
 from random import Random
 import logging
 
@@ -12,12 +12,12 @@ class ClientSampler(object):
         self.mode = mode
         self.score = score
         self.filter = filter
-        random.seed(123)
 
         self.ucbSampler = UCB(sample_seed=sample_seed) if self.mode == "bandit" else None
         self.feasibleClients = []
         self.rng = Random()
         self.rng.seed(sample_seed)
+        self.count = 0
 
     def registerClient(self, hostId, clientId, dis, size, speed = 1.0):
 
@@ -97,7 +97,9 @@ class ClientSampler(object):
             return 1./totalSampleInTraining
 
     def resampleClients(self, numOfClients):
-        if self.mode == "bandit":
+        self.count += 1
+
+        if self.mode == "bandit" and self.count > 1:
             return self.ucbSampler.getTopK(numOfClients)
         else:
             self.rng.shuffle(self.feasibleClients)

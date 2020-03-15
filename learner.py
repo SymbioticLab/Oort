@@ -24,8 +24,6 @@ from utils.utils_model import MySGD, test_model
 from utils.crosslossprox import CrossEntropyLossProx
 
 device = torch.device(args.to_device)
-torch.manual_seed(0)
-
 #torch.set_num_threads(int(args.threads))
 
 logDir = os.getcwd() + "/../../models/" + args.model + '/' + args.time_stamp + '/learner/'
@@ -176,7 +174,7 @@ def run_client(clientId, model, criterion, iters, learning_rate, argdicts = {}):
     if clientId not in global_data_iter:
         client_train_data = select_dataset(clientId, global_trainDB, batch_size=args.batch_size)
         train_data_itr = iter(client_train_data)
-        total_batch_size = len(client_train_data)
+        total_batch_size = len(train_data_itr)
         global_data_iter[clientId] = [train_data_itr, curBatch, total_batch_size]
     else:
         [train_data_itr, curBatch, total_batch_size] = global_data_iter[clientId]
@@ -200,8 +198,6 @@ def run_client(clientId, model, criterion, iters, learning_rate, argdicts = {}):
                 except Exception:
                     try:
                         train_data_itr_list[0]._shutdown_workers()
-                        gc.collect()
-                        
                         del train_data_itr_list[0]
                     except Exception as e:
                         logging.info("====Error {}".format(e))
@@ -247,8 +243,13 @@ def run_client(clientId, model, criterion, iters, learning_rate, argdicts = {}):
                     (curBatch % (total_batch_size + 1)), total_batch_size, round(loss.data.item(), 4), 
                     round(time.time() - it_start, 4), round(comp_duration, 4)))
 
-    # save the state of this client
-    global_data_iter[clientId] = [train_data_itr_list[0], curBatch, total_batch_size]
+    # save the state of this client if # of batches > iters, since we want to pass over all samples at least one time
+    if total_batch_size > iters:
+        global_data_iter[clientId] = [train_data_itr_list[0], curBatch, total_batch_size]
+    else:
+        del train_data_itr_list[0]
+        del global_data_iter[clientId]
+
     model_param = [param.data.cpu().numpy() for param in model.parameters()]
 
     return model_param, epoch_train_loss/float(iters), local_trained, (time.time() - it_start)/float(iters)
@@ -296,6 +297,7 @@ def run(rank, model, train_data, test_data, queue, param_q, stop_flag, client_cf
 
             computeStart = time.time()
             for nextClientId in nextClientIds:
+
                 _model_param, _loss, _trained_size, _speed = run_client(clientId=nextClientId, 
                         model=pickle.loads(pickle.dumps(lastGlobalModel)), learning_rate=learning_rate, 
                         criterion=criterion, iters=args.upload_epoch,
@@ -305,6 +307,8 @@ def run(rank, model, train_data, test_data, queue, param_q, stop_flag, client_cf
                 preTrainedLoss.append(_loss)
                 trainedSize.append(_trained_size)
                 trainSpeed.append(_speed)
+
+                gc.collect()
 
             computeEnd = time.time() - computeStart
 
