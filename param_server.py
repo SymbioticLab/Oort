@@ -322,7 +322,7 @@ def run(model, test_data, queue, param_q, stop_signal, clientSampler):
 
                     # resampling the clients if necessary
                     if epoch_count % args.resampling_interval == 0:
-                        sampledClients = sorted(clientSampler.resampleClients(max(args.total_worker, len(workers))))
+                        sampledClients = sorted(clientSampler.resampleClients(max(args.total_worker, len(workers)), cur_time=epoch_count))
                         logging.info("====Try to resample clients, and result is {}".format(sampledClients))
 
                         allocateClientToWorker = {}

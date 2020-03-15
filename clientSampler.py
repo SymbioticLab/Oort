@@ -29,9 +29,9 @@ class ClientSampler(object):
 
             if self.mode == "bandit":
                 if self.score == "loss":
-                    self.ucbSampler.registerArm(clientId, 10.0 - dis)
+                    self.ucbSampler.registerArm(clientId, reward=10.0 - dis, size=size)
                 else:
-                    self.ucbSampler.registerArm(clientId, 1.0 - dis)
+                    self.ucbSampler.registerArm(clientId, reward=1.0 - dis, size=size)
 
     def registerSpeed(self, hostId, clientId, speed):
         uniqueId = self.getUniqueId(hostId, clientId)
@@ -96,11 +96,11 @@ class ClientSampler(object):
 
             return 1./totalSampleInTraining
 
-    def resampleClients(self, numOfClients):
+    def resampleClients(self, numOfClients, cur_time=0):
         self.count += 1
 
         if self.mode == "bandit" and self.count > 1:
-            return self.ucbSampler.getTopK(numOfClients)
+            return self.ucbSampler.getTopK(numOfClients, cur_time=cur_time)
         else:
             self.rng.shuffle(self.feasibleClients)
             return self.feasibleClients[:numOfClients]

@@ -164,6 +164,23 @@ def init_dataset():
 
     return model, train_dataset, test_dataset, client_cfg
 
+def run_forward_pass(model, test_data, criterion=nn.NLLLoss()):
+    test_loss = 0.
+    test_len = 0.
+
+    model.eval()
+
+    for data, target in test_data:
+        data, target = Variable(data).cuda(), Variable(target).cuda()
+        output = model(data)
+        test_loss += criterion(output, target).data.item()
+        test_len += len(target)
+        
+    # loss function averages over batch size
+    test_loss /= float(len(test_data))
+
+    return test_loss
+
 def run_client(clientId, model, criterion, iters, learning_rate, argdicts = {}):
     global global_trainDB, global_data_iter, lastGlobalModel
 
@@ -182,6 +199,9 @@ def run_client(clientId, model, criterion, iters, learning_rate, argdicts = {}):
     local_trained = 0
     epoch_train_loss = 0.
     comp_duration = 0.
+    norm_gradient = 0.
+    count = 0.
+
     train_data_itr_list.append(train_data_itr)
     
     model.train()
@@ -231,10 +251,14 @@ def run_client(clientId, model, criterion, iters, learning_rate, argdicts = {}):
 
         loss.backward()
         delta_w = optimizer.get_delta_w(learning_rate)
-        epoch_train_loss += loss.item()
+
+        if itr < total_batch_size:
+            epoch_train_loss += loss.item()
+            count += 1
         
         for idx, param in enumerate(model.parameters()):
             param.data -= delta_w[idx].to(device=device)
+            #norm_gradient += delta_w[idx].norm(2).to(device=device)
 
         comp_duration = (time.time() - comp_start)
     
@@ -252,7 +276,7 @@ def run_client(clientId, model, criterion, iters, learning_rate, argdicts = {}):
 
     model_param = [param.data.cpu().numpy() for param in model.parameters()]
 
-    return model_param, epoch_train_loss/float(iters), local_trained, (time.time() - it_start)/float(iters)
+    return model_param, epoch_train_loss/float(count), local_trained, (time.time() - it_start)/float(iters)
 
 def run(rank, model, train_data, test_data, queue, param_q, stop_flag, client_cfg):
     print("====Worker: Start running")
@@ -297,6 +321,9 @@ def run(rank, model, train_data, test_data, queue, param_q, stop_flag, client_cf
 
             computeStart = time.time()
             for nextClientId in nextClientIds:
+                if args.forward_pass:
+                    forward_dataset = select_dataset(nextClientId, global_trainDB, batch_size=args.test_bsz)
+                    forward_loss = run_forward_pass(model, forward_dataset, criterion=criterion)
 
                 _model_param, _loss, _trained_size, _speed = run_client(clientId=nextClientId, 
                         model=pickle.loads(pickle.dumps(lastGlobalModel)), learning_rate=learning_rate, 
@@ -304,7 +331,7 @@ def run(rank, model, train_data, test_data, queue, param_q, stop_flag, client_cf
                         argdicts={'iters': epoch})
 
                 trainedModels.append(_model_param)
-                preTrainedLoss.append(_loss)
+                preTrainedLoss.append(_loss if not args.forward_pass else forward_loss)
                 trainedSize.append(_trained_size)
                 trainSpeed.append(_speed)
 
@@ -380,7 +407,6 @@ if __name__ == "__main__":
     setup_seed(args.this_rank)
 
     train_bsz = args.batch_size
-    test_bsz = args.test_bsz
 
     model, train_dataset, test_dataset, client_cfg = init_dataset()
 
@@ -427,7 +453,7 @@ if __name__ == "__main__":
 
     testsetPartitioner = DataPartitioner(data=test_dataset, isTest=True, numOfClass=args.num_class)
     partition_dataset(testsetPartitioner, workers, splitTestRatio)
-    test_data = select_dataset(this_rank, testsetPartitioner, batch_size=test_bsz, isTest=True)
+    test_data = select_dataset(this_rank, testsetPartitioner, batch_size=args.test_bsz, isTest=True)
 
     stop_flag = Value(c_bool, False)
     init_myprocesses(this_rank, world_size, model, entire_train_data, test_data,
