@@ -28,10 +28,10 @@ class ClientSampler(object):
             self.feasibleClients.append(clientId)
 
             if self.mode == "bandit":
-                if self.score == "loss":
-                    self.ucbSampler.registerArm(clientId, reward=10.0 - dis, size=size)
-                else:
-                    self.ucbSampler.registerArm(clientId, reward=1.0 - dis, size=size)
+                #if self.score == "loss":
+                self.ucbSampler.registerArm(clientId, reward=10.0 - dis, size=size)
+                #else:
+                #    self.ucbSampler.registerArm(clientId, reward=1.0 - dis, size=size)
 
     def registerSpeed(self, hostId, clientId, speed):
         uniqueId = self.getUniqueId(hostId, clientId)

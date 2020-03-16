@@ -174,7 +174,7 @@ def init_dataset():
         train_dataset = OPENIMG(args.data_dir, train=True, transform=train_transform)
         test_dataset = OPENIMG(args.data_dir, train=False, transform=test_transform)
 
-        model = tormodels.__dict__[args.model](num_classes=600)
+        model = tormodels.__dict__[args.model](num_classes=596)
 
     else:
         print('DataSet must be {} or {}!'.format('Mnist', 'Cifar'))

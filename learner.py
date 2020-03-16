@@ -144,7 +144,7 @@ def init_dataset():
         train_dataset = OPENIMG(args.data_dir, train=True, transform=train_transform)
         test_dataset = OPENIMG(args.data_dir, train=False, transform=test_transform)
 
-        model = tormodels.__dict__[args.model](num_classes=600)
+        model = tormodels.__dict__[args.model](num_classes=596)
         
     else:
         print('DataSet must be {} or {}!'.format('Mnist', 'Cifar'))
@@ -253,8 +253,8 @@ def run_client(clientId, model, criterion, iters, learning_rate, argdicts = {}):
         delta_w = optimizer.get_delta_w(learning_rate)
 
         if itr < total_batch_size:
-            epoch_train_loss += loss.item()
-            count += 1
+            epoch_train_loss += (loss.data.item() * len(target))
+            count += len(target)
         
         for idx, param in enumerate(model.parameters()):
             param.data -= delta_w[idx].to(device=device)
