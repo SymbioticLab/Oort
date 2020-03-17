@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 
 from core.argParser import args
-import os, shutil
+import os, shutil, pickle
 import random
 import numpy as np
 import sys
@@ -229,7 +229,10 @@ def run(model, test_data, queue, param_q, stop_signal, clientSampler):
     global_update = 0
     received_updates = 0
 
-    logging.info(repr(clientSampler.getClientsInfo()))
+    clientInfoFile = logDir + 'clientInfoFile'
+    # dump the client info
+    with open(clientInfoFile, 'wb')  as fout:
+        pickle.dump(clientSampler.getClientsInfo(), fout)
 
     while True:
         if not queue.empty():
@@ -256,11 +259,7 @@ def run(model, test_data, queue, param_q, stop_signal, clientSampler):
                 delta_wss = tmp_dict[rank_src][0]
 
                 for i, clientId in enumerate(clientIds):
-                    if args.score_mode == "loss":
-                        clientSampler.registerScore(clientId, iteration_loss[i], time_stamp=epoch_count)
-                    else:
-                        sc = 1.0 - clientSampler.getScore(rank_src, clientId)
-                        clientSampler.registerScore(clientId, sc, time_stamp=epoch_count)
+                    norm = 0.
 
                     epoch_train_loss += iteration_loss[i]
                     data_size_epoch += trained_size[i]
@@ -271,10 +270,22 @@ def run(model, test_data, queue, param_q, stop_signal, clientSampler):
 
                     # apply the update into the global model
                     for idx, param in enumerate(model.parameters()):
+                        model_weight = torch.from_numpy(delta_ws[idx]).to(device=device)
                         if received_updates == 0:
-                            param.data = (torch.from_numpy(delta_ws[idx]).to(device=device)) * ratioSample
+                            param.data = model_weight * ratioSample
                         else:
-                            param.data += (torch.from_numpy(delta_ws[idx]).to(device=device)) * ratioSample
+                            param.data += model_weight * ratioSample
+
+                        norm += (model_weight - param.data).norm(2)
+
+                    # register the score
+                    if args.score_mode == "loss":
+                        clientSampler.registerScore(clientId, iteration_loss[i], time_stamp=epoch_count)
+                    elif args.score_mode == "norm":
+                        clientSampler.registerScore(clientId, norm.data.item(), time_stamp=epoch_count)
+                    else:
+                        sc = 1.0 - clientSampler.getScore(rank_src, clientId)
+                        clientSampler.registerScore(clientId, sc, time_stamp=epoch_count)
 
                     received_updates += 1
 
@@ -298,6 +309,7 @@ def run(model, test_data, queue, param_q, stop_signal, clientSampler):
                 # if the local cache is too stale, then update it
                 elif learner_cache_step[rank_src] < learner_local_step[rank_src] - args.stale_threshold:
                     pendingWorkers[rank_src] = learner_local_step[rank_src]
+                    logging.info("Haved received all updates, then move on")
                     
                 # release all pending requests, if the staleness does not exceed the staleness threshold in SSP 
                 handle_dur = time.time() - handle_start
