@@ -12,7 +12,10 @@ class UCB(object):
         self.exploration = 0.9
         self.decay_factor = 0.99
         self.exploration_min = 0.1
-        self.alpha = 0.5
+        self.alpha = 0.3
+
+        self.pacer_delta = 1
+        self.pacer = -self.pacer_delta
 
         self.rng = Random()
         self.rng.seed(sample_seed)
@@ -38,7 +41,7 @@ class UCB(object):
         numOfExploited = 0
 
         orderedKeys = list(self.totalArms.keys())
-
+        allloss = []
 
         moving_reward, staleness = [], []
 
@@ -57,12 +60,14 @@ class UCB(object):
 
         for key in orderedKeys:
             # we have played this arm before
-            sc = -1.0
+            sc = 99999
 
             if self.totalArms[key][1] != -1:
-                numOfExploited += 1
                 sc = (self.totalArms[key][0] - min_reward)/float(range_reward) \
-                        + self.alpha*((cur_time-self.totalArms[key][1]) - min_staleness)/float(range_staleness)
+                        - self.alpha*((cur_time-self.totalArms[key][1]) - min_staleness)/float(range_staleness)
+
+                allloss.append(self.totalArms[key][0])
+                numOfExploited += 1
 
             scores.append(sc)
 
@@ -71,7 +76,11 @@ class UCB(object):
         exploitation = 1.0 - self.exploration
 
         exploitLen = int(numOfSamples*exploitation)
-        index = sorted(range(len(scores)), reverse=True, key=lambda k: scores[k])[:exploitLen]
+        self.pacer += self.pacer_delta
+        pacer_to = min(self.pacer + exploitLen, len(scores))
+        self.pacer = max(0, min(self.pacer, len(scores) - exploitLen))
+
+        index = sorted(range(len(scores)), reverse=False, key=lambda k: scores[k])[self.pacer:pacer_to]
         pickedClients = [orderedKeys[x] for x in index]
 
         # exploration 
@@ -95,7 +104,10 @@ class UCB(object):
         last_exploit = pickedClients[exploitLen-1]
         top_k_score.append([self.totalArms[last_exploit][0], self.totalArms[last_exploit][2], self.totalArms[last_exploit][3], (self.totalArms[last_exploit][0] - min_reward)/float(range_reward), self.alpha*((cur_time-self.totalArms[last_exploit][1]) - min_staleness)/float(range_staleness)])
 
-        logging.info("====At time {}, UCB exploited {}, un-explored {}, top-k score is {}".format(cur_time, numOfExploited, len(self.totalArms) - numOfExploited, top_k_score))
+        logging.info("====At time {}, UCB exploited {}, un-explored {}, pacer {} to {}, top-k score is {}"
+            .format(cur_time, numOfExploited, len(self.totalArms) - numOfExploited, self.pacer, pacer_to, top_k_score))
+        logging.info("====At time {}, all rewards are {}".format(cur_time, allloss))
+
         return pickedClients
 
     def getClientReward(self, armId):

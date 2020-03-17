@@ -252,9 +252,9 @@ def run_client(clientId, model, criterion, iters, learning_rate, argdicts = {}):
         loss.backward()
         delta_w = optimizer.get_delta_w(learning_rate)
 
-        if itr < total_batch_size:
-            epoch_train_loss += (loss.data.item() * len(target))
-            count += len(target)
+        #if itr < total_batch_size:
+        epoch_train_loss += (loss.data.item() * len(target))
+        count += len(target)
         
         for idx, param in enumerate(model.parameters()):
             param.data -= delta_w[idx].to(device=device)
@@ -275,8 +275,9 @@ def run_client(clientId, model, criterion, iters, learning_rate, argdicts = {}):
         del global_data_iter[clientId]
 
     model_param = [param.data.cpu().numpy() for param in model.parameters()]
+    epoch_train_loss /= float(count)
 
-    return model_param, epoch_train_loss/float(count), local_trained, (time.time() - it_start)/float(iters)
+    return model_param, epoch_train_loss, local_trained, (time.time() - it_start)/float(iters)
 
 def run(rank, model, train_data, test_data, queue, param_q, stop_flag, client_cfg):
     print("====Worker: Start running")
