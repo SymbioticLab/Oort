@@ -228,6 +228,7 @@ def run(model, test_data, queue, param_q, stop_signal, clientSampler):
     # The fast worker exceeding the duration will be pushed into the queue to wait
     global_update = 0
     received_updates = 0
+    last_global_model = [param for param in pickle.loads(pickle.dumps(model)).parameters()]
 
     clientInfoFile = logDir + 'clientInfoFile'
     # dump the client info
@@ -258,6 +259,7 @@ def run(model, test_data, queue, param_q, stop_signal, clientSampler):
                 handlerStart = time.time()
                 delta_wss = tmp_dict[rank_src][0]
 
+                logging.info("====Start to merge models")
                 for i, clientId in enumerate(clientIds):
                     norm = 0.
 
@@ -276,7 +278,7 @@ def run(model, test_data, queue, param_q, stop_signal, clientSampler):
                         else:
                             param.data += model_weight * ratioSample
 
-                        norm += (model_weight - param.data).norm(2)
+                        norm += (model_weight - last_global_model[idx]).norm(2)
 
                     # register the score
                     if args.score_mode == "loss":
@@ -288,6 +290,8 @@ def run(model, test_data, queue, param_q, stop_signal, clientSampler):
                         clientSampler.registerScore(clientId, sc, time_stamp=epoch_count)
 
                     received_updates += 1
+
+                logging.info("====Done handling rank {}".format(rank_src))
 
                 handlerDur = time.time() - handlerStart
                 global_update += 1
@@ -309,7 +313,6 @@ def run(model, test_data, queue, param_q, stop_signal, clientSampler):
                 # if the local cache is too stale, then update it
                 elif learner_cache_step[rank_src] < learner_local_step[rank_src] - args.stale_threshold:
                     pendingWorkers[rank_src] = learner_local_step[rank_src]
-                    logging.info("Haved received all updates, then move on")
                     
                 # release all pending requests, if the staleness does not exceed the staleness threshold in SSP 
                 handle_dur = time.time() - handle_start
@@ -334,17 +337,29 @@ def run(model, test_data, queue, param_q, stop_signal, clientSampler):
 
                     # resampling the clients if necessary
                     if epoch_count % args.resampling_interval == 0:
+                        logging.info("====Start to sample ...")
                         sampledClients = sorted(clientSampler.resampleClients(max(args.total_worker, len(workers)), cur_time=epoch_count))
                         logging.info("====Try to resample clients, and result is {}".format(sampledClients))
 
                         allocateClientToWorker = {}
+                        allocateClientDict = {rank:0 for rank in workers}
+
+                        # for those data lakes < # of iters, we use round-bin for load balance
                         for c in sampledClients:
-                            workerId = workers[(c-1)%len(workers)]
+                            clientDataSize = clientSampler.getClientSize(c)
+                            numOfBatches = int(math.ceil(clientDataSize/args.batch_size))
+
+                            if numOfBatches > args.upload_epoch:
+                                workerId = workers[(c-1)%len(workers)]
+                            else:
+                                # pick the one w/ the least load
+                                workerId = sorted(allocateClientDict, key=allocateClientDict.get)[0]
 
                             if workerId not in allocateClientToWorker:
                                 allocateClientToWorker[workerId] = []
 
                             allocateClientToWorker[workerId].append(c)
+                            allocateClientDict[workerId] = allocateClientDict[workerId] + 1
                         
                         for w in allocateClientToWorker.keys():
                             clientSampler.clientOnHost(allocateClientToWorker[w], w)
@@ -372,6 +387,8 @@ def run(model, test_data, queue, param_q, stop_signal, clientSampler):
                     if epoch_count % args.dump_epoch == 0:
                         torch.save(model.state_dict(), logDir+'/'+str(args.model)+'_'+str(currentMinStep)+'.pth.tar')
                         logging.info("====Dump model successfully")
+
+                    last_global_model = [param for param in pickle.loads(pickle.dumps(model)).parameters()]
 
                 # The training stop
                 if(epoch_count >= args.epochs):

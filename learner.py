@@ -184,7 +184,7 @@ def run_forward_pass(model, test_data, criterion=nn.NLLLoss()):
 def run_client(clientId, model, criterion, iters, learning_rate, argdicts = {}):
     global global_trainDB, global_data_iter, lastGlobalModel
 
-    curBatch = 0
+    curBatch = -1
     optimizer = MySGD(model.parameters(), lr=learning_rate, momentum=0.9, weight_decay=5e-4)
     train_data_itr_list = []
 
@@ -197,6 +197,7 @@ def run_client(clientId, model, criterion, iters, learning_rate, argdicts = {}):
         [train_data_itr, curBatch, total_batch_size] = global_data_iter[clientId]
 
     local_trained = 0
+    numOfPreWarmUp = 2
     epoch_train_loss = 0.
     comp_duration = 0.
     norm_gradient = 0.
@@ -222,9 +223,13 @@ def run_client(clientId, model, criterion, iters, learning_rate, argdicts = {}):
                     except Exception as e:
                         logging.info("====Error {}".format(e))
 
-                    train_data_itr_list = []
                     # reload data after finishing the epoch
-                    train_data_itr_list.append(iter(select_dataset(clientId, global_trainDB, batch_size=args.batch_size)))
+                    if len(train_data_itr_list) == 0:
+                        for i in range(numOfPreWarmUp):
+                            train_data_itr_list.append(iter(select_dataset(clientId, global_trainDB, batch_size=args.batch_size)))
+                    else:
+                        train_data_itr_list.append(iter(select_dataset(clientId, global_trainDB, batch_size=args.batch_size)))
+
                     (data, target) = next(train_data_itr_list[0])
                     fetchSuccess = True
             except Exception as e:
@@ -264,7 +269,7 @@ def run_client(clientId, model, criterion, iters, learning_rate, argdicts = {}):
     
         logging.info('For client {}, upload iter {}, epoch {}, Batch {}/{}, Loss:{} | TotalTime {} | Comptime: {} \n'
                     .format(clientId, argdicts['iters'], int(curBatch/total_batch_size),
-                    (curBatch % (total_batch_size + 1)), total_batch_size, round(loss.data.item(), 4), 
+                    (curBatch % total_batch_size), total_batch_size, round(loss.data.item(), 4), 
                     round(time.time() - it_start, 4), round(comp_duration, 4)))
 
     # save the state of this client if # of batches > iters, since we want to pass over all samples at least one time
@@ -272,6 +277,7 @@ def run_client(clientId, model, criterion, iters, learning_rate, argdicts = {}):
         global_data_iter[clientId] = [train_data_itr_list[0], curBatch, total_batch_size]
     else:
         del train_data_itr_list[0]
+        del train_data_itr_list
         del global_data_iter[clientId]
 
     model_param = [param.data.cpu().numpy() for param in model.parameters()]

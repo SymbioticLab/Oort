@@ -13,7 +13,7 @@ class ClientSampler(object):
         self.score = score
         self.filter = filter
 
-        self.ucbSampler = UCB(sample_seed=sample_seed) if self.mode == "bandit" else None
+        self.ucbSampler = UCB(sample_seed=sample_seed, score_mode=score) if self.mode == "bandit" else None
         self.feasibleClients = []
         self.rng = Random()
         self.rng.seed(sample_seed)
@@ -78,6 +78,9 @@ class ClientSampler(object):
 
     def getClientLenOnHost(self, hostId):
         return len(self.clientOnHosts[hostId])
+
+    def getClientSize(self, clientId):
+        return self.Clients[self.getUniqueId(0, clientId)].size
 
     def getSampleRatio(self, clientId, hostId, even=False):
         totalSampleInTraining = 0.
