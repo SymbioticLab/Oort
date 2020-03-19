@@ -261,7 +261,7 @@ def run(model, test_data, queue, param_q, stop_signal, clientSampler):
 
                 logging.info("====Start to merge models")
                 for i, clientId in enumerate(clientIds):
-                    norm = 0.
+                    gradients = None
 
                     epoch_train_loss += iteration_loss[i]
                     data_size_epoch += trained_size[i]
@@ -278,13 +278,16 @@ def run(model, test_data, queue, param_q, stop_signal, clientSampler):
                         else:
                             param.data += model_weight * ratioSample
 
-                        norm += (model_weight - last_global_model[idx]).norm(2)
+                        if gradients == None:
+                            gradients = (model_weight - last_global_model[idx]).flatten()
+                        else:
+                            gradients = torch.cat((gradients, (model_weight - last_global_model[idx]).flatten()))
 
                     # register the score
                     if args.score_mode == "loss":
                         clientSampler.registerScore(clientId, iteration_loss[i], time_stamp=epoch_count)
                     elif args.score_mode == "norm":
-                        clientSampler.registerScore(clientId, norm.data.item(), time_stamp=epoch_count)
+                        clientSampler.registerScore(clientId, gradients.norm(2).data.item(), time_stamp=epoch_count)
                     else:
                         sc = 1.0 - clientSampler.getScore(rank_src, clientId)
                         clientSampler.registerScore(clientId, sc, time_stamp=epoch_count)
