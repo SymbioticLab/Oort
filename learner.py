@@ -314,6 +314,8 @@ def run(rank, model, train_data, test_data, queue, param_q, stop_flag, client_cf
     os.mkdir(logDir)
 
     learning_rate = args.learning_rate
+    uploadEpoch = -1
+    testResults = [0, 0, 0, len(test_data)]
     last_test = time.time()
 
     for epoch in range(1, int(args.epochs) + 1):
@@ -348,7 +350,9 @@ def run(rank, model, train_data, test_data, queue, param_q, stop_flag, client_cf
 
             # upload the weight
             sendStart = time.time()
-            queue.put_nowait({rank: [trainedModels, preTrainedLoss, trainedSize, False, nextClientIds, trainSpeed]})
+            testResults.append(uploadEpoch)
+            queue.put_nowait({rank: [trainedModels, preTrainedLoss, trainedSize, False, nextClientIds, trainSpeed, testResults]})
+            uploadEpoch = -1
             sendDur = time.time() - sendStart
 
             # wait for new models
@@ -376,10 +380,11 @@ def run(rank, model, train_data, test_data, queue, param_q, stop_flag, client_cf
             evalStart = time.time()
             # test the model if necessary
             if epoch % int(args.eval_interval) == 0:
-                test_loss, acc = test_model(rank, model, test_data, criterion=criterion)
-                logging.info("After aggregation epoch {}, CumulTime {}, eval_time {}, test_loss {}, test_accuracy {} \n"
-                            .format(epoch, round(time.time() - startTime, 4), round(time.time() - evalStart, 4), test_loss, acc))
+                test_loss, acc, acc_5, testResults = test_model(rank, model, test_data, criterion=criterion)
+                logging.info("After aggregation epoch {}, CumulTime {}, eval_time {}, test_loss {}, test_accuracy {}, test_5_accuracy {} \n"
+                            .format(epoch, round(time.time() - startTime, 4), round(time.time() - evalStart, 4), test_loss, acc, acc_5))
 
+                uploadEpoch = epoch
                 last_test = time.time()
 
         except Exception as e:

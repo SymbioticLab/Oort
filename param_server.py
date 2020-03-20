@@ -2,7 +2,7 @@
 
 from core.argParser import args
 import os, shutil, pickle
-import random
+import random, math
 import numpy as np
 import sys
 import time
@@ -62,6 +62,7 @@ os.environ['GLOO_SOCKET_IFNAME'] = 'vlan260'
 
 device = None
 deviceId = None
+sampledClientSet = set()
 
 # try to pick the right gpus
 cudaPrefix = 'cuda:'
@@ -119,6 +120,8 @@ def initiate_sampler_query(numOfClients):
 
 
 def init_myprocesses(rank, size, model, test_data, queue, param_q, stop_signal, fn, backend):
+    global sampledClientSet
+
     dist.init_process_group(backend, rank=rank, world_size=size)
 
     # After collecting all data information, then decide the clientId to run
@@ -130,6 +133,9 @@ def init_myprocesses(rank, size, model, test_data, queue, param_q, stop_signal, 
         nextClientIdToRun = [clientSampler.nextClientIdToRun(hostId=wrank)]
         clientSampler.clientOnHost(nextClientIdToRun, wrank)
         clientIdsToRun.append(nextClientIdToRun)
+
+        for client in nextClientIdToRun:
+            sampledClientSet.add(client)
     
     dist.broadcast(tensor=torch.tensor(clientIdsToRun, dtype=torch.int).to(device=device), src=0)
 
@@ -185,7 +191,7 @@ def init_dataset():
     return model, train_dataset, test_dataset
 
 def run(model, test_data, queue, param_q, stop_signal, clientSampler):
-    global logDir
+    global logDir, sampledClientSet
 
     logging.info("====PS: get in run()")
 
@@ -220,6 +226,7 @@ def run(model, test_data, queue, param_q, stop_signal, clientSampler):
     learner_local_step = {l: 0 for l in workers}
     learner_cache_step = {l: 0 for l in workers}
     pendingWorkers = {}
+    test_results = {}
 
     s_time = time.time()
     epoch_time = s_time
@@ -242,7 +249,7 @@ def run(model, test_data, queue, param_q, stop_signal, clientSampler):
                 tmp_dict = queue.get()
                 rank_src = list(tmp_dict.keys())[0]
 
-                [iteration_loss, trained_size, isWorkerEnd, clientIds, speed] = [tmp_dict[rank_src][i] for i in range(1, len(tmp_dict[rank_src]))]
+                [iteration_loss, trained_size, isWorkerEnd, clientIds, speed, testRes] = [tmp_dict[rank_src][i] for i in range(1, len(tmp_dict[rank_src]))]
                 #clientSampler.registerSpeed(rank_src, clientId, speed)
 
                 if isWorkerEnd:
@@ -259,6 +266,24 @@ def run(model, test_data, queue, param_q, stop_signal, clientSampler):
                 handlerStart = time.time()
                 delta_wss = tmp_dict[rank_src][0]
 
+                # aggregate the test results
+                updateEpoch = testRes[-1]
+                if updateEpoch not in test_results:
+                    # [top_1, top_5, loss, total_size, # of collected ranks]
+                    test_results[updateEpoch] = [0., 0., 0., 0., 0]
+
+                if updateEpoch != -1:
+                    for idx, c in enumerate(testRes[:-1]):
+                        test_results[updateEpoch][idx] += c
+
+                    test_results[updateEpoch][-1] += 1
+                    # have collected all ranks
+                    if test_results[updateEpoch][-1] == len(workers):
+                        logging.info("====After aggregation in epoch {}, top_1 {} ({}), top_5 {} ({}), test loss {}"
+                                .format(updateEpoch, round(test_results[updateEpoch][0]/test_results[updateEpoch][3], 4), 
+                                test_results[updateEpoch][0], round(test_results[updateEpoch][1]/test_results[updateEpoch][3], 4), 
+                                test_results[updateEpoch][1], test_results[updateEpoch][2]/test_results[updateEpoch][3]))
+
                 logging.info("====Start to merge models")
                 for i, clientId in enumerate(clientIds):
                     gradients = None
@@ -270,15 +295,18 @@ def run(model, test_data, queue, param_q, stop_signal, clientSampler):
                     ratioSample = clientSampler.getSampleRatio(clientId, rank_src, args.is_even_avg)
                     delta_ws = delta_wss[i]
 
-                    # apply the update into the global model
+                    isSelected = True if clientId in sampledClientSet else False
+                    # apply the update into the global model if the client is involved
                     for idx, param in enumerate(model.parameters()):
                         model_weight = torch.from_numpy(delta_ws[idx]).to(device=device)
-                        if received_updates == 0:
-                            param.data = model_weight * ratioSample
-                        else:
-                            param.data += model_weight * ratioSample
 
-                        if gradients == None:
+                        if isSelected:
+                            if received_updates == 0:
+                                param.data = model_weight * ratioSample
+                            else:
+                                param.data += model_weight * ratioSample
+
+                        if gradients is None:
                             gradients = (model_weight - last_global_model[idx]).flatten()
                         else:
                             gradients = torch.cat((gradients, (model_weight - last_global_model[idx]).flatten()))
@@ -292,7 +320,8 @@ def run(model, test_data, queue, param_q, stop_signal, clientSampler):
                         sc = 1.0 - clientSampler.getScore(rank_src, clientId)
                         clientSampler.registerScore(clientId, sc, time_stamp=epoch_count)
 
-                    received_updates += 1
+                    if isSelected:
+                        received_updates += 1
 
                 logging.info("====Done handling rank {}".format(rank_src))
 
@@ -343,6 +372,11 @@ def run(model, test_data, queue, param_q, stop_signal, clientSampler):
                         logging.info("====Start to sample ...")
                         sampledClients = sorted(clientSampler.resampleClients(max(args.total_worker, len(workers)), cur_time=epoch_count))
                         logging.info("====Try to resample clients, and result is {}".format(sampledClients))
+                        sampledClientSet = set(sampledClients)
+
+                        # simulate the optimal
+                        if args.run_all:
+                            sampledClients = clientSampler.getAllClients()
 
                         allocateClientToWorker = {}
                         allocateClientDict = {rank:0 for rank in workers}

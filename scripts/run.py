@@ -7,7 +7,7 @@ avaiVms = {}
 with open('vms', 'r') as fin:
     lines = fin.readlines()
     for line in lines:
-        if 'gpu-cn0' in line and 'gpu-cn001' not in line and 'gpu-cn002' not in line and 'gpu-cn005' not in line and 'gpu-cn007' not in line and 'gpu-cn015' not in line and 'gpu-cn012' not in line:
+        if 'gpu-cn0' in line and 'gpu-cn001' not in line and 'gpu-cn004' not in line and 'gpu-cn005' not in line and 'gpu-cn007' not in line and 'gpu-cn015' not in line and 'gpu-cn012' not in line and 'gpu-cn011' not in line:
             items = line.strip().split()
             status = items[1]
             threadsGpu = int(items[5])

@@ -118,7 +118,7 @@ def test_model(rank, model, test_data, criterion=nn.NLLLoss()):
     logging.info('Rank {}: Test set: Average loss: {}, Top-1 Accuracy: {}/{} ({}), Top-5 Accuracy: {}'
           .format(rank, test_loss, correct, len(test_data.dataset), acc, acc_5))
 
-    return test_loss, acc
+    return test_loss, acc, acc_5, [correct, top_5, test_loss*float(test_len), test_len]
 
 def accuracy(output, target, topk=(1,)):
     """Computes the accuracy over the k top predictions for the specified values of k"""
@@ -154,3 +154,4 @@ class RandomParams(object):
         part_len = int(math.floor(self.ratio * len(params_indices)))
         result = indexes[0: part_len]
         return [params_indices[i] for i in result]
+

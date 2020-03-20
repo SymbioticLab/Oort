@@ -33,6 +33,9 @@ class ClientSampler(object):
                 #else:
                 #    self.ucbSampler.registerArm(clientId, reward=1.0 - dis, size=size)
 
+    def getAllClients(self):
+        return self.feasibleClients
+
     def registerSpeed(self, hostId, clientId, speed):
         uniqueId = self.getUniqueId(hostId, clientId)
         self.Clients[uniqueId].speed = speed
