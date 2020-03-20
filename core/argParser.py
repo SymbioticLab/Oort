@@ -31,7 +31,7 @@ parser.add_argument('--run_all', type=bool, default=False)
 # The configuration of different hyper-parameters for training
 parser.add_argument('--epochs', type=int, default=2000)
 parser.add_argument('--batch_size', type=int, default=256)
-parser.add_argument('--test_bsz', type=int, default=256)
+parser.add_argument('--test_bsz', type=int, default=384)
 parser.add_argument('--heterogeneity', type=float, default=1.0)
 parser.add_argument('--hetero_allocation', type=str, default='1.0-1.0-1.0-1.0-1.0-1.0')
 parser.add_argument('--backend', type=str, default="nccl")

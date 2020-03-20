@@ -220,6 +220,8 @@ def run(model, test_data, queue, param_q, stop_signal, clientSampler):
     epoch_train_loss = 0
     data_size_epoch = 0   # len(train_data), one epoch
     epoch_count = 1
+    global_virtual_clock = 0.
+    last_global_virtual_clock = global_virtual_clock
 
     staleness = 0
     learner_staleness = {l: 0 for l in workers}
@@ -249,7 +251,8 @@ def run(model, test_data, queue, param_q, stop_signal, clientSampler):
                 tmp_dict = queue.get()
                 rank_src = list(tmp_dict.keys())[0]
 
-                [iteration_loss, trained_size, isWorkerEnd, clientIds, speed, testRes] = [tmp_dict[rank_src][i] for i in range(1, len(tmp_dict[rank_src]))]
+                [iteration_loss, trained_size, isWorkerEnd, clientIds, speed, testRes, virtualClock] = \
+                [tmp_dict[rank_src][i] for i in range(1, len(tmp_dict[rank_src]))]
                 #clientSampler.registerSpeed(rank_src, clientId, speed)
 
                 if isWorkerEnd:
@@ -265,24 +268,6 @@ def run(model, test_data, queue, param_q, stop_signal, clientSampler):
 
                 handlerStart = time.time()
                 delta_wss = tmp_dict[rank_src][0]
-
-                # aggregate the test results
-                updateEpoch = testRes[-1]
-                if updateEpoch not in test_results:
-                    # [top_1, top_5, loss, total_size, # of collected ranks]
-                    test_results[updateEpoch] = [0., 0., 0., 0., 0]
-
-                if updateEpoch != -1:
-                    for idx, c in enumerate(testRes[:-1]):
-                        test_results[updateEpoch][idx] += c
-
-                    test_results[updateEpoch][-1] += 1
-                    # have collected all ranks
-                    if test_results[updateEpoch][-1] == len(workers):
-                        logging.info("====After aggregation in epoch {}, top_1 {} ({}), top_5 {} ({}), test loss {}"
-                                .format(updateEpoch, round(test_results[updateEpoch][0]/test_results[updateEpoch][3], 4), 
-                                test_results[updateEpoch][0], round(test_results[updateEpoch][1]/test_results[updateEpoch][3], 4), 
-                                test_results[updateEpoch][1], test_results[updateEpoch][2]/test_results[updateEpoch][3]))
 
                 logging.info("====Start to merge models")
                 for i, clientId in enumerate(clientIds):
@@ -322,8 +307,28 @@ def run(model, test_data, queue, param_q, stop_signal, clientSampler):
 
                     if isSelected:
                         received_updates += 1
+                        global_virtual_clock = max(global_virtual_clock, last_global_virtual_clock + virtualClock[i])
 
                 logging.info("====Done handling rank {}".format(rank_src))
+
+                # aggregate the test results
+                updateEpoch = testRes[-1]
+                if updateEpoch not in test_results:
+                    # [top_1, top_5, loss, total_size, # of collected ranks]
+                    test_results[updateEpoch] = [0., 0., 0., 0., 0]
+
+                if updateEpoch != -1:
+                    for idx, c in enumerate(testRes[:-1]):
+                        test_results[updateEpoch][idx] += c
+
+                    test_results[updateEpoch][-1] += 1
+                    # have collected all ranks
+                    if test_results[updateEpoch][-1] == len(workers):
+                        logging.info("====After aggregation in epoch: {}, virtual_clock: {}, top_1: {} % ({}), top_5: {} % ({}), test loss: {}"
+                                .format(updateEpoch, global_virtual_clock, round(test_results[updateEpoch][0]/test_results[updateEpoch][3]*100.0, 4), 
+                                test_results[updateEpoch][0], round(test_results[updateEpoch][1]/test_results[updateEpoch][3]*100.0, 4), 
+                                test_results[updateEpoch][1], test_results[updateEpoch][2]/test_results[updateEpoch][3]))
+
 
                 handlerDur = time.time() - handlerStart
                 global_update += 1
@@ -369,7 +374,7 @@ def run(model, test_data, queue, param_q, stop_signal, clientSampler):
 
                     # resampling the clients if necessary
                     if epoch_count % args.resampling_interval == 0:
-                        logging.info("====Start to sample ...")
+                        logging.info("====Start to sample for epoch {}, global virtualClock is {}".format(epoch_count, global_virtual_clock))
                         sampledClients = sorted(clientSampler.resampleClients(max(args.total_worker, len(workers)), cur_time=epoch_count))
                         logging.info("====Try to resample clients, and result is {}".format(sampledClients))
                         sampledClientSet = set(sampledClients)
@@ -426,6 +431,7 @@ def run(model, test_data, queue, param_q, stop_signal, clientSampler):
                         logging.info("====Dump model successfully")
 
                     last_global_model = [param for param in pickle.loads(pickle.dumps(model)).parameters()]
+                    last_global_virtual_clock = global_virtual_clock
 
                 # The training stop
                 if(epoch_count >= args.epochs):

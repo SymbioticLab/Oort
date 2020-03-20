@@ -110,10 +110,10 @@ def test_model(rank, model, test_data, criterion=nn.NLLLoss()):
         
     # loss function averages over batch size
     test_loss /= len(test_data)
-    test_loss = format(test_loss, '.4f')
+    test_loss = round(test_loss, 4)
 
-    acc = format(correct / test_len, '.4%')
-    acc_5 = format(top_5 / test_len, '.4%')
+    acc = round(correct / test_len, 4)
+    acc_5 = round(top_5 / test_len, 4)
 
     logging.info('Rank {}: Test set: Average loss: {}, Top-1 Accuracy: {}/{} ({}), Top-5 Accuracy: {}'
           .format(rank, test_loss, correct, len(test_data.dataset), acc, acc_5))

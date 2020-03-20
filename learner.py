@@ -79,6 +79,7 @@ global_trainDB = None
 lastGlobalModel = None
 nextClientIds = None
 global_data_iter = {}
+global_client_profile = {}
 
 workers = [int(v) for v in str(args.learners).split('-')]
 
@@ -160,7 +161,7 @@ def init_dataset():
             for line in fin.readlines():
                 items = line.strip().split()
                 clientId, compute, commu = int(items[0]), float(items[1]), float(items[2])
-                client_cfg[clientId] = [compute, commu]
+                global_client_profile[clientId] = [compute, commu]
 
     return model, train_dataset, test_dataset, client_cfg
 
@@ -204,7 +205,8 @@ def run_client(clientId, model, criterion, iters, learning_rate, argdicts = {}):
     count = 0.
 
     train_data_itr_list.append(train_data_itr)
-    
+    run_start = time.time()
+
     model.train()
 
     for itr in range(iters):
@@ -282,8 +284,15 @@ def run_client(clientId, model, criterion, iters, learning_rate, argdicts = {}):
 
     model_param = [param.data.cpu().numpy() for param in model.parameters()]
     epoch_train_loss /= float(count)
+    time_spent = time.time() - run_start
 
-    return model_param, epoch_train_loss, local_trained, (time.time() - it_start)/float(iters)
+    # add bias to the virtual clock, computation x (# of trained samples) + communication
+    if clientId in global_client_profile:
+        time_cost = global_client_profile[clientId][0] * count + global_client_profile[clientId][1]
+    else:
+        time_cost = time_spent
+
+    return model_param, epoch_train_loss, local_trained, (time_spent)/float(count), time_cost
 
 def run(rank, model, train_data, test_data, queue, param_q, stop_flag, client_cfg):
     print("====Worker: Start running")
@@ -327,6 +336,7 @@ def run(rank, model, train_data, test_data, queue, param_q, stop_flag, client_cf
             preTrainedLoss = []
             trainedSize = []
             trainSpeed = []
+            virtualClock = []
 
             computeStart = time.time()
             for nextClientId in nextClientIds:
@@ -334,7 +344,7 @@ def run(rank, model, train_data, test_data, queue, param_q, stop_flag, client_cf
                     forward_dataset = select_dataset(nextClientId, global_trainDB, batch_size=args.test_bsz)
                     forward_loss = run_forward_pass(model, forward_dataset, criterion=criterion)
 
-                _model_param, _loss, _trained_size, _speed = run_client(clientId=nextClientId, 
+                _model_param, _loss, _trained_size, _speed, _time = run_client(clientId=nextClientId, 
                         model=pickle.loads(pickle.dumps(lastGlobalModel)), learning_rate=learning_rate, 
                         criterion=criterion, iters=args.upload_epoch,
                         argdicts={'iters': epoch})
@@ -343,6 +353,7 @@ def run(rank, model, train_data, test_data, queue, param_q, stop_flag, client_cf
                 preTrainedLoss.append(_loss if not args.forward_pass else forward_loss)
                 trainedSize.append(_trained_size)
                 trainSpeed.append(_speed)
+                virtualClock.append(_time)
 
                 gc.collect()
 
@@ -351,7 +362,7 @@ def run(rank, model, train_data, test_data, queue, param_q, stop_flag, client_cf
             # upload the weight
             sendStart = time.time()
             testResults.append(uploadEpoch)
-            queue.put_nowait({rank: [trainedModels, preTrainedLoss, trainedSize, False, nextClientIds, trainSpeed, testResults]})
+            queue.put_nowait({rank: [trainedModels, preTrainedLoss, trainedSize, False, nextClientIds, trainSpeed, testResults, virtualClock]})
             uploadEpoch = -1
             sendDur = time.time() - sendStart
 
@@ -459,12 +470,10 @@ if __name__ == "__main__":
     entire_train_data.log_selection()
 
     report_data_info(this_rank, q, entire_train_data)
-
-    testWorkers = workers
     splitTestRatio = []
 
     testsetPartitioner = DataPartitioner(data=test_dataset, isTest=True, numOfClass=args.num_class)
-    partition_dataset(testsetPartitioner, workers, splitTestRatio)
+    partition_dataset(testsetPartitioner, [i for i in range(world_size-1)], splitTestRatio)
     test_data = select_dataset(this_rank, testsetPartitioner, batch_size=args.test_bsz, isTest=True)
 
     stop_flag = Value(c_bool, False)
