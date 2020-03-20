@@ -77,7 +77,10 @@ for i in range(4):
         # no gpus available
         if i == 4:
             logging.info(e)
-            sys.exit(-1)
+            deviceId = None
+            logging.info('Turn to CPU device ...')
+            device = 'cpu'
+            #sys.exit(-1)
         else:
             continue
 
@@ -201,8 +204,12 @@ def run(model, test_data, queue, param_q, stop_signal, clientSampler):
     # convert gradient tensor to numpy structure
     if args.load_model:
         try:
-            model.load_state_dict(torch.load(modelDir+'/'+str(args.model)+'.pth.tar', 
+            if deviceId is not None:
+                model.load_state_dict(torch.load(modelDir+'/'+str(args.model)+'.pth.tar', 
                                         map_location=lambda storage, loc: storage.cuda(deviceId)))
+            else:
+                model.load_state_dict(torch.load(modelDir+'/'+str(args.model)+'.pth.tar', 
+                                        map_location=lambda storage, loc: storage))
             logging.info("====Load model successfully\n")
         except Exception as e:
             logging.info("====Error: Failed to load model due to {}\n".format(str(e)))

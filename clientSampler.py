@@ -106,10 +106,7 @@ class ClientSampler(object):
         self.count += 1
 
         if self.mode == "bandit" and self.count > 1:
-            if self.score == "norm":
-                return self.ucbSampler.getTopKByNorm(numOfClients, cur_time=cur_time)
-            else:
-                return self.ucbSampler.getTopK(numOfClients, cur_time=cur_time)
+            return self.ucbSampler.getTopK(numOfClients, cur_time=cur_time)
         else:
             self.rng.shuffle(self.feasibleClients)
             return self.feasibleClients[:numOfClients]

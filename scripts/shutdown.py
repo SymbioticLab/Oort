@@ -1,5 +1,6 @@
-import os
+import os, sys
 
+assert(len(sys.argv) == 1)
 os.system('bjobs > jobinfo')
 tries = 3
 
