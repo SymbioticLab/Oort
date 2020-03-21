@@ -136,9 +136,6 @@ def init_myprocesses(rank, size, model, test_data, queue, param_q, stop_signal, 
         nextClientIdToRun = [clientSampler.nextClientIdToRun(hostId=wrank)]
         clientSampler.clientOnHost(nextClientIdToRun, wrank)
         clientIdsToRun.append(nextClientIdToRun)
-
-        for client in nextClientIdToRun:
-            sampledClientSet.add(client)
     
     dist.broadcast(tensor=torch.tensor(clientIdsToRun, dtype=torch.int).to(device=device), src=0)
 
