@@ -448,7 +448,7 @@ class _DataLoaderIter(object):
             self.rcvd_idx = 0
             self.reorder_dict = {}
             self.done_event = multiprocessing.Event()
-            self.preorder_degree = 3
+            self.preorder_degree = 2
 
             self.index_queues = []
             self.workers = []
@@ -497,7 +497,7 @@ class _DataLoaderIter(object):
     def __len__(self):
         return len(self.batch_sampler)
 
-    def _try_get_batch(self, timeout=_utils.MP_STATUS_CHECK_INTERVAL):
+    def _try_get_batch(self, timeout=5):
         # Tries to fetch data from `data_queue` for a given timeout. This can
         # also be used as inner loop of fetching without timeout, with the
         # sender status as the loop condition.

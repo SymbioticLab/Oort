@@ -242,6 +242,7 @@ def run(model, test_data, queue, param_q, stop_signal, clientSampler):
     global_update = 0
     received_updates = 0
     last_global_model = [param for param in pickle.loads(pickle.dumps(model)).parameters()]
+    clientsLastEpoch = []
 
     clientInfoFile = logDir + 'clientInfoFile'
     # dump the client info
@@ -272,6 +273,7 @@ def run(model, test_data, queue, param_q, stop_signal, clientSampler):
 
                 handlerStart = time.time()
                 delta_wss = tmp_dict[rank_src][0]
+                clientsLastEpoch += clientIds
 
                 logging.info("====Start to merge models")
                 for i, clientId in enumerate(clientIds):
@@ -306,8 +308,8 @@ def run(model, test_data, queue, param_q, stop_signal, clientSampler):
                     elif args.score_mode == "norm":
                         clientSampler.registerScore(clientId, gradients.norm(2).data.item(), time_stamp=epoch_count)
                     else:
-                        sc = 1.0 - clientSampler.getScore(rank_src, clientId)
-                        clientSampler.registerScore(clientId, sc, time_stamp=epoch_count)
+                        #sc = 1.0 - clientSampler.getScore(rank_src, clientId)
+                        clientSampler.registerScore(clientId, iteration_loss[i], time_stamp=epoch_count)
 
                     if isSelected:
                         received_updates += 1
@@ -371,6 +373,10 @@ def run(model, test_data, queue, param_q, stop_signal, clientSampler):
                     received_updates = 0
                     epoch_count += 1
 
+                    logging.info("====For epoch {}, sampled rewards are: \n {} \n=========="
+                                .format(epoch_count, {x:clientSampler.getScore(0, x) for x in sorted(clientsLastEpoch)}))
+
+                    clientsLastEpoch = []
                     send_start = time.time()
 
                     for idx, param in enumerate(model.parameters()):

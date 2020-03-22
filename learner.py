@@ -198,22 +198,24 @@ def run_client(clientId, model, criterion, iters, learning_rate, argdicts = {}):
         [train_data_itr, curBatch, total_batch_size] = global_data_iter[clientId]
 
     local_trained = 0
-    numOfPreWarmUp = 2
+    numOfPreWarmUp = 1
     epoch_train_loss = 0.
     comp_duration = 0.
     norm_gradient = 0.
-    count = 0.
+    count = 0
 
     train_data_itr_list.append(train_data_itr)
     run_start = time.time()
 
+    numOfFailures = 0
+    numOfTries = 5
     model.train()
 
     for itr in range(iters):
         it_start = time.time()
 
         fetchSuccess = False
-        while not fetchSuccess:
+        while not fetchSuccess and numOfFailures < numOfTries:
             try:
                 try:
                     (data, target) = next(train_data_itr_list[0])
@@ -235,11 +237,16 @@ def run_client(clientId, model, criterion, iters, learning_rate, argdicts = {}):
                     (data, target) = next(train_data_itr_list[0])
                     fetchSuccess = True
             except Exception as e:
+                numOfFailures += 1
                 exc_type, exc_obj, exc_tb = sys.exc_info()
                 fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
                 logging.info("====Error: {}, {}, {}, {}".format(e, exc_type, fname, exc_tb.tb_lineno))
                 time.sleep(0.5)
 
+        if numOfFailures >= numOfTries:
+            break
+
+        numOfFailures = 0
         curBatch = curBatch + 1
 
         data, target = Variable(data).to(device=device), Variable(target).to(device=device)
@@ -275,15 +282,16 @@ def run_client(clientId, model, criterion, iters, learning_rate, argdicts = {}):
                     round(time.time() - it_start, 4), round(comp_duration, 4)))
 
     # save the state of this client if # of batches > iters, since we want to pass over all samples at least one time
-    if total_batch_size > iters:
+    if total_batch_size > iters and len(train_data_itr_list) > 0:
         global_data_iter[clientId] = [train_data_itr_list[0], curBatch, total_batch_size]
     else:
-        del train_data_itr_list[0]
+        for loader in train_data_itr_list:
+            loader._shutdown_workers()
         del train_data_itr_list
         del global_data_iter[clientId]
 
     model_param = [param.data.cpu().numpy() for param in model.parameters()]
-    epoch_train_loss /= float(count)
+    
     time_spent = time.time() - run_start
 
     # add bias to the virtual clock, computation x (# of trained samples) + communication
@@ -292,7 +300,14 @@ def run_client(clientId, model, criterion, iters, learning_rate, argdicts = {}):
     else:
         time_cost = time_spent
 
-    return model_param, epoch_train_loss, local_trained, (time_spent)/float(count), time_cost
+    speed = None
+    if count > 0:
+        speed = time_spent/float(count) 
+        epoch_train_loss /= float(count)
+    else:
+        logging.info("====Failed to run client {}".format(clientId))
+
+    return model_param, epoch_train_loss, local_trained, speed, time_cost
 
 def run(rank, model, train_data, test_data, queue, param_q, stop_flag, client_cfg):
     print("====Worker: Start running")
@@ -337,6 +352,7 @@ def run(rank, model, train_data, test_data, queue, param_q, stop_flag, client_cf
             trainedSize = []
             trainSpeed = []
             virtualClock = []
+            ranClients = []
 
             computeStart = time.time()
             for nextClientId in nextClientIds:
@@ -349,11 +365,15 @@ def run(rank, model, train_data, test_data, queue, param_q, stop_flag, client_cf
                         criterion=criterion, iters=args.upload_epoch,
                         argdicts={'iters': epoch})
 
+                if _speed is None:
+                    continue
+
                 trainedModels.append(_model_param)
                 preTrainedLoss.append(_loss if not args.forward_pass else forward_loss)
                 trainedSize.append(_trained_size)
                 trainSpeed.append(_speed)
                 virtualClock.append(_time)
+                ranClients.append(nextClientId)
 
                 gc.collect()
 
@@ -362,7 +382,7 @@ def run(rank, model, train_data, test_data, queue, param_q, stop_flag, client_cf
             # upload the weight
             sendStart = time.time()
             testResults.append(uploadEpoch)
-            queue.put_nowait({rank: [trainedModels, preTrainedLoss, trainedSize, False, nextClientIds, trainSpeed, testResults, virtualClock]})
+            queue.put_nowait({rank: [trainedModels, preTrainedLoss, trainedSize, False, ranClients, trainSpeed, testResults, virtualClock]})
             uploadEpoch = -1
             sendDur = time.time() - sendStart
 

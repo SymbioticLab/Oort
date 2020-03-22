@@ -350,5 +350,7 @@ def partition_dataset(partitioner, workers, partitionRatio=[], sequential=0, rat
 
 def select_dataset(rank: int, partition: DataPartitioner, batch_size: int, isTest=False):
     partition = partition.use(rank - 1, isTest)
+    timeOut = 0 if isTest else 10
 
-    return DataLoader(partition, batch_size=batch_size, shuffle=True, pin_memory=False, num_workers=args.num_loaders, drop_last=False)
+    return DataLoader(partition, batch_size=batch_size, shuffle=True, pin_memory=False, num_workers=args.num_loaders, drop_last=False, timeout=timeOut)
+
