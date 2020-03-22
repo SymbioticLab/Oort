@@ -35,10 +35,10 @@ def init_logging():
     if not os.path.isdir(logDir):
         os.makedirs(logDir, exist_ok=True)
 
-    files = [logFile, '/tmp/sampleDistribution']
-    for file in files:
-        with open(file, "w") as fout:
-            pass
+    # files = [logFile, '/tmp/sampleDistribution']
+    # for file in files:
+    #     with open(file, "w") as fout:
+    #         pass
 
 init_logging()
 
@@ -172,7 +172,7 @@ def run_forward_pass(model, test_data, criterion=nn.NLLLoss()):
     model.eval()
 
     for data, target in test_data:
-        data, target = Variable(data).cuda(), Variable(target).cuda()
+        data, target = Variable(data).to(device=device), Variable(target).to(device=device)
         output = model(data)
         test_loss += criterion(output, target).data.item()
         test_len += len(target)
@@ -332,10 +332,10 @@ def run(rank, model, train_data, test_data, queue, param_q, stop_flag, client_cf
     print('Begin!')
     logging.info('\n' + repr(args) + '\n')
 
-    logDir = "/tmp/" + args.model + '_' + str(args.this_rank)
-    if os.path.isdir(logDir):
-        shutil.rmtree(logDir)
-    os.mkdir(logDir)
+    # logDir = "/tmp/" + args.model + '_' + str(args.this_rank)
+    # if os.path.isdir(logDir):
+    #     shutil.rmtree(logDir)
+    # os.mkdir(logDir)
 
     learning_rate = args.learning_rate
     uploadEpoch = -1

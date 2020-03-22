@@ -14,7 +14,7 @@ class UCB(object):
         self.exploration_min = 0.1
         self.alpha = 0.3
 
-        self.pacer_delta = 0.5 if score_mode == "loss" else 0
+        self.pacer_delta = 0#0.5 if score_mode == "loss" else 0
         self.pacer = -self.pacer_delta
 
         self.rng = Random()
@@ -55,12 +55,12 @@ class UCB(object):
         for key in orderedKeys:
             # we have played this arm before
             if self.totalArms[key][1] != -1:
-                if self.score_mode == "loss":
-                    sc = (self.totalArms[key][0] - min_reward)/float(range_reward) \
-                        - self.alpha*((cur_time-self.totalArms[key][1]) - min_staleness)/float(range_staleness)
-                else:
-                    sc = (self.totalArms[key][0] - min_reward)/float(range_reward) \
-                        + self.alpha*((cur_time-self.totalArms[key][1]) - min_staleness)/float(range_staleness)
+                #if self.score_mode == "loss":
+                sc = (self.totalArms[key][0] - min_reward)/float(range_reward) \
+                    + self.alpha*((cur_time-self.totalArms[key][1]) - min_staleness)/float(range_staleness)
+                #else:
+                    # sc = (self.totalArms[key][0] - min_reward)/float(range_reward) \
+                    #     + self.alpha*((cur_time-self.totalArms[key][1]) - min_staleness)/float(range_staleness)
 
                 if self.totalArms[key][1] == cur_time - 1:
                     allloss[key] = self.totalArms[key][0]
@@ -77,7 +77,7 @@ class UCB(object):
         pacer_from = int(self.pacer)
         pacer_to = min(pacer_from + exploitLen, len(scores))
 
-        isReverse = False if self.score_mode == "loss" else True
+        isReverse = True# if self.score_mode == "loss" else True
         pickedClients = sorted(scores, key=scores.get, reverse=isReverse)[pacer_from:pacer_to]
 
         # exploration 

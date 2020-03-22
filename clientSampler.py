@@ -45,7 +45,7 @@ class ClientSampler(object):
         if self.mode == "bandit":
             self.ucbSampler.registerReward(clientId, reward, time_stamp)
         #else:
-        self.Clients[self.getUniqueId(0, hostId)].registerReward(reward)
+        self.Clients[self.getUniqueId(0, clientId)].registerReward(reward)
 
     def getScore(self, hostId, clientId):
         uniqueId = self.getUniqueId(hostId, clientId)
@@ -75,6 +75,9 @@ class ClientSampler(object):
         return str(clientId)
         #return (str(hostId) + '_' + str(clientId))
 
+    def clientSampler(self, clientId):
+        return self.Clients[self.getUniqueId(0, clientId)].size
+        
     def clientOnHost(self, clientIds, hostId):
         self.clientOnHosts[hostId] = clientIds
 
