@@ -5,19 +5,26 @@ os.system("rm *.o")
 os.system("rm *.e")
 
 avaiVms = {}
+blacklist = set()
+
+with open('blacklist', 'r') as fin:
+    for v in fin.readlines():
+        blacklist.add(v.strip())
 
 threadQuota = 10
 
 with open('vms', 'r') as fin:
     lines = fin.readlines()
     for line in lines:
-        if 'gpu-cn0' in line and 'gpu-cn011' not in line and 'gpu-cn008' not in line and 'gpu-cn001' not in line and 'gpu-cn012' not in line and 'gpu-cn005' not in line and 'gpu-cn006' not in line and 'gpu-cn004' not in line: #and 'gpu-cn012' not in line and 'gpu-cn011' not in line:
+        if 'gpu-cn0' in line:
+            # and 'gpu-cn011' not in line and 'gpu-cn008' not in line and 'gpu-cn001' not in line and 'gpu-cn012' not in line and 'gpu-cn005' not in line and 'gpu-cn006' not in line and 'gpu-cn004' not in line: #and 'gpu-cn012' not in line and 'gpu-cn011' not in line:
             items = line.strip().split()
-            status = items[1]
-            threadsGpu = int(items[5])
+            if items[0] not in blacklist:
+                status = items[1]
+                threadsGpu = int(items[5])
 
-            if status == "ok" and (40-threadsGpu) >= threadQuota:
-                avaiVms[items[0]] = 40 - threadsGpu
+                if status == "ok" and (40-threadsGpu) >= threadQuota:
+                    avaiVms[items[0]] = 40 - threadsGpu
 
 # remove all log files, and scripts first
 files = [f for f in os.listdir('.') if os.path.isfile(f)]

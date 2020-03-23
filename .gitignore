@@ -9,6 +9,7 @@ server*.lsf
 *pys
 *.o
 *.e
+pymp*
 learn*.lsf
 server*.lsf
 vms

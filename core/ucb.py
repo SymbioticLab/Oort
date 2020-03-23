@@ -118,13 +118,13 @@ class UCB(object):
 
     def get_norm(self, aList, thres=0):
         aList = sorted(aList)
-        _95th = aList[int(len(aList)*0.95)]
-        _5th = aList[int(len(aList)*0.05)]
+        # _95th = aList[int(len(aList)*0.95)]
+        # _5th = aList[int(len(aList)*0.05)]
 
-        return _95th, _5th, max((_95th - _5th), thres)
-        # _max = max(aList)
-        # _min = min(aList)
-        # _range = max(_max - _min, thres)
+        # return _95th, _5th, max((_95th - _5th), thres)
+        _max = max(aList)
+        _min = min(aList)
+        _range = max(_max - _min, thres)
 
-        # return _max, _min, _range
+        return _max, _min, _range
 
