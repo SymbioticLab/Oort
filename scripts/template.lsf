@@ -9,6 +9,9 @@
 
 #rm /tmp/torch/*
 
+rm -rf /tmp/pymp-*
+rm -rf /tmp/mobilenet*
+rm -rf /tmp/vgg*
 source /gpfs/gpfs0/groups/chowdhury/fanlai/pytorch_install.sh
 source activate mypytorch
 

@@ -52,7 +52,6 @@ init_logging()
 entire_train_data = None
 sample_size_dic = {}
 
-trainloss_file = '/tmp/trainloss' + args.model + '.txt'
 staleness_file = '/tmp/staleness' + args.model + ".txt"
 
 os.environ['MASTER_ADDR'] = args.ps_ip
@@ -80,7 +79,6 @@ for i in range(4):
             deviceId = None
             logging.info('Turn to CPU device ...')
             device = 'cpu'
-            #sys.exit(-1)
         else:
             continue
 
@@ -92,7 +90,13 @@ for i in range(4):
 
 def initiate_sampler_query(numOfClients):
     # Initiate the clientSampler 
-    clientSampler = ClientSampler(args.sample_mode, args.score_mode, filter=args.filter_less, sample_seed=args.sample_seed)
+    if args.sampler_path is None:
+        clientSampler = ClientSampler(args.sample_mode, args.score_mode, filter=args.filter_less, sample_seed=args.sample_seed)
+    else:
+        # load sampler
+        with open(args.sampler_path, 'rb') as loader:
+            clientSampler = pickle.load(loader)
+
     collectedClients = 0
     initial_time = time.time()
     clientId = 1
@@ -105,7 +109,7 @@ def initiate_sampler_query(numOfClients):
             tmp_dict = queue.get()
 
             # we only need to go over once
-            if not passed:
+            if not passed and args.sampler_path is None:
                 rank_src = list(tmp_dict.keys())[0]
                 distanceVec = tmp_dict[rank_src][0]
                 sizeVec = tmp_dict[rank_src][1]
@@ -198,15 +202,14 @@ def run(model, test_data, queue, param_q, stop_signal, clientSampler):
     f_staleness = open(staleness_file, 'w')
     
     modelDir = os.getcwd() + "/../../models/"  + args.model
+    modelPath = modelDir+'/'+str(args.model)+'.pth.tar' if args.model_path is None else args.model_path
     # convert gradient tensor to numpy structure
     if args.load_model:
         try:
             if deviceId is not None:
-                model.load_state_dict(torch.load(modelDir+'/'+str(args.model)+'.pth.tar', 
-                                        map_location=lambda storage, loc: storage.cuda(deviceId)))
+                model.load_state_dict(torch.load(modelPath, map_location=lambda storage, loc: storage.cuda(deviceId)))
             else:
-                model.load_state_dict(torch.load(modelDir+'/'+str(args.model)+'.pth.tar', 
-                                        map_location=lambda storage, loc: storage))
+                model.load_state_dict(torch.load(modelPath, map_location=lambda storage, loc: storage))
             logging.info("====Load model successfully\n")
         except Exception as e:
             logging.info("====Error: Failed to load model due to {}\n".format(str(e)))
@@ -246,7 +249,7 @@ def run(model, test_data, queue, param_q, stop_signal, clientSampler):
 
     clientInfoFile = logDir + 'clientInfoFile'
     # dump the client info
-    with open(clientInfoFile, 'wb')  as fout:
+    with open(clientInfoFile, 'wb') as fout:
         pickle.dump(clientSampler.getClientsInfo(), fout)
 
     while True:
@@ -438,7 +441,12 @@ def run(model, test_data, queue, param_q, stop_signal, clientSampler):
                     # dump the model into file for backup
                     if epoch_count % args.dump_epoch == 0:
                         torch.save(model.state_dict(), logDir+'/'+str(args.model)+'_'+str(currentMinStep)+'.pth.tar')
-                        logging.info("====Dump model successfully")
+
+                        # dump sampler
+                        with open(logDir + '/sampler_' + str(currentMinStep), 'wb') as fout:
+                            pickle.dump(clientSampler, fout)
+
+                        logging.info("====Dump model and sampler successfully")
 
                     last_global_model = [param for param in pickle.loads(pickle.dumps(model)).parameters()]
                     last_global_virtual_clock = global_virtual_clock

@@ -203,7 +203,7 @@ def read_from_sum(name, threshold=99999999):
 
     return nres
 
-def read_client_samples(name, threshold=99999999, skip=0, sumT = 0):
+def read_client_samples(name, threshold=99999999, skip=0, sumT = 0, nclass=9999999):
     res = []
     totalClients = 0
 
@@ -212,6 +212,7 @@ def read_client_samples(name, threshold=99999999, skip=0, sumT = 0):
         threshold = min(threshold, len(lines))
         for l in lines[skip:threshold]:
             clientSamples = [int(x) for x in l.strip().split()]
+            clientSamples = clientSamples[:min(nclass, len(clientSamples))]
 
             if sum(clientSamples) > sumT:
                 res.append(clientSamples)
@@ -243,7 +244,7 @@ def pickSubset(clientSampleList, numOfSample):
 
 def openImgFull():
     # 507
-    clientSampleList, allSamples, totalClients = read_client_samples("openImg_size.txt", skip=2, sumT = 50)
+    clientSampleList, allSamples, totalClients = read_client_samples("openImgFull_size.txt", skip=2, sumT = 50)
 
     dis = []
     sampleRs = []
@@ -258,11 +259,11 @@ def openImgFull():
     #plot_line([distances], [sampleRatios], [''], "Ratio of Clients Sampled", "Divergence to Overall", "diffallImg.pdf")
 
 
-def openImg():
+def openImg(nclass=99999999):
     # 507
-    clientSampleList, allSamples, totalClients = read_client_samples("openImg_size.txt", 5000)
+    clientSampleList, allSamples, totalClients = read_client_samples("openImg_size.txt", sumT=0, nclass=nclass)
 
-    dis = []
+    dis = [allSamples]
     sampleRs = []
     for i in range(numOfTries):
         print('...current openImg trial ' + str(i))
@@ -288,10 +289,10 @@ def quickDraw():
     #distances, sampleRatios = draw_ss(clientSampleList, allSamples, totalClients)
     return dis, sampleRs
 
-def blog():
-    clientSampleList, allSamples, totalClients = readFromSerialized("blog_data_dist.txt")
+def blog(nclass=99999999):
+    clientSampleList, allSamples, totalClients = readFromSerialized("blog_data_dist.txt", sumT=0, nclass=nclass)
 
-    dis = []
+    dis = [allSamples]
     sampleRs = []
     for i in range(numOfTries):
         print('...current blog trial ' + str(i))
@@ -306,7 +307,7 @@ def blog():
 def email():
     clientSampleList, allSamples, totalClients = readFromSerialized("email_data_dist.txt")
 
-    dis = []
+    dis = [allSamples]
     sampleRs = []
     for i in range(numOfTries):
         print('...current email trial ' + str(i))
@@ -318,7 +319,7 @@ def email():
     return dis, sampleRs
     #plot_line([distances], [sampleRatios], [''], "Ratio of Clients Sampled", "Divergence to Overall", "diffallEmail.pdf")
 
-def readFromSerialized(file, threshold=99999999):
+def readFromSerialized(file, threshold=99999999, sumT=0, nclass=99999):
     infile = open(file, "rb")
     dist = pickle.load(infile)
 
@@ -328,7 +329,8 @@ def readFromSerialized(file, threshold=99999999):
     dist = sorted(dist, key=lambda k: sum(k), reverse=True)
 
     for i in range(len(dist)):
-        if sum(dist[i]) > 0:
+        dist[i] = dist[i][:min(nclass, len(dist[i]))]
+        if sum(dist[i]) > sumT:
             for index, c in enumerate(dist[i]):
                 overall[index] += c
         else:
@@ -354,9 +356,11 @@ def draw_rs(clientSampleList, allSamples, totalClients, figCaption="diffall.pdf"
 
     random.shuffle(clientSampleList)
 
-    numOfSamples = [0.01] + [i * 0.02 for i in range(1, 7)] + [0.15, 0.2, 0.25, 0.3, 0.35, 0.4]
+    #numOfSamples = [0.01] + [i * 0.02 for i in range(1, 7)] + [0.15, 0.2, 0.25, 0.3, 0.35, 0.4]
 
     #numOfSamples = [i for i in range(int(totalClients*0.01), int(totalClients * 0.4), int(totalClients*0.02))]
+
+    numOfSamples = [10, 50] + [100 * i for i in range(1, 10)] + [1000*i for i in range(1, 6)]
 
     # normalize lists
     distances = []
@@ -364,8 +368,9 @@ def draw_rs(clientSampleList, allSamples, totalClients, figCaption="diffall.pdf"
 
     for numOfSample in numOfSamples:
         random.shuffle(clientSampleList)
-        nsubsetSamples = normalizeList(pickSubset(clientSampleList, int(math.ceil(numOfSample * totalClients))))
-        distances.append(measureDistance(nsubsetSamples, nallSamples))
+        distances.append(pickSubset(clientSampleList, numOfSample))
+        #nsubsetSamples = normalizeList(pickSubset(clientSampleList, int(math.ceil(numOfSample * totalClients))))
+        #distances.append(measureDistance(nsubsetSamples, nallSamples))
 
     return distances, numOfSamples #array(numOfSamples)/float(totalClients)
 
@@ -392,16 +397,22 @@ ss = []
 #     print('...current quickDraw trial ' + str(i))
 
 
-dE, sE = email()
-dB, sB = blog()
-dO, sO = openImg()
-dQ, sQ = quickDraw()
-dOF, sOF = openImgFull()
+dE, sE = blog(500)
+dE2, sE2 = blog(5000)
+#dB, sB = blog()
+dO, sO = openImg(500)
+dO2, sO2 = openImg(5000)
 
-ds.append([dE, dB, dO, dQ, dOF])
-ss.append([sE, sB, sO, sQ, sOF])
+ds.append([dE, dE2, dO, dO2])
+ss.append([sE, sE2, sO, sO2])
 
-with open("MultiRsFull", 'wb') as fout:
+#dQ, sQ = quickDraw()
+#dOF, sOF = openImgFull()
+
+# ds.append([dE, dB, dO, dQ, dOF])
+# ss.append([sE, sB, sO, sQ, sOF])
+
+with open("MultiRsFull_Abs", 'wb') as fout:
     pickle.dump(ds, fout)
     pickle.dump(ss, fout)
 
