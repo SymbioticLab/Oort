@@ -20,10 +20,20 @@ from torch.utils.data import DataLoader
 from torchvision import datasets, transforms
 import torchvision.models as tormodels
 
+from transformers import (
+    WEIGHTS_NAME,
+    AdamW,
+    AlbertConfig,
+    AlbertForMaskedLM,
+    AlbertTokenizer,
+    get_linear_schedule_with_warmup,
+)
+
 from utils.models import *
 from utils.utils_data import get_data_transform
 from utils.utils_model import test_model
 from utils.openImg import *
+from scirpts.run_language_modeling import *
 
 #device = torch.device(args.to_device)
 
@@ -186,8 +196,16 @@ def init_dataset():
 
         model = tormodels.__dict__[args.model](num_classes=596)
 
+    elif args.data_set == 'blog':
+        tokenizer = AlbertTokenizer.from_pretrained('albert-base-v2')
+        
+        train_dataset = load_and_cache_examples(args, tokenizer, evaluate=False) 
+        test_dataset = load_and_cache_examples(args, tokenizer, evaluate=True)
+
+        model = AlbertForMaskedLM.from_pretrained('albert-base-v2')
+
     else:
-        print('DataSet must be {} or {}!'.format('Mnist', 'Cifar'))
+        print('DataSet must be {} or {}!'.format('Mnist', 'Cifar', 'openImg', 'blog'))
         sys.exit(-1)
 
     model = model.to(device=device)
