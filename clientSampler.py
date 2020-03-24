@@ -3,6 +3,7 @@ from core.client import Client
 import math
 from random import Random
 import logging
+from core.argParser import args
 
 class ClientSampler(object):
 
@@ -11,7 +12,8 @@ class ClientSampler(object):
         self.clientOnHosts = {}
         self.mode = mode
         self.score = score
-        self.filter = filter
+        self.filter_less = args.filter_less
+        self.filter_more = args.filter_more
 
         self.ucbSampler = UCB(sample_seed=sample_seed, score_mode=score) if self.mode == "bandit" else None
         self.feasibleClients = []
@@ -24,7 +26,7 @@ class ClientSampler(object):
         uniqueId = self.getUniqueId(hostId, clientId)
         self.Clients[uniqueId] = Client(hostId, clientId, dis, size, speed)
 
-        if size >= self.filter:
+        if size >= self.filter_less and size <= self.filter_more:
             self.feasibleClients.append(clientId)
 
             if self.mode == "bandit":
@@ -64,7 +66,8 @@ class ClientSampler(object):
 
         while True:
             clientId = str(self.feasibleClients[init_id])
-            if self.Clients[clientId].size >= self.filter:
+            csize = self.Clients[clientId].size
+            if csize >= self.filter_less and csize <= self.filter_more:
                 return int(clientId)
 
             init_id = max(0, min(int(math.floor(self.rng.random() * lenPossible)), lenPossible - 1))
@@ -77,7 +80,7 @@ class ClientSampler(object):
 
     def clientSampler(self, clientId):
         return self.Clients[self.getUniqueId(0, clientId)].size
-        
+
     def clientOnHost(self, clientIds, hostId):
         self.clientOnHosts[hostId] = clientIds
 

@@ -211,6 +211,8 @@ def run_client(clientId, model, criterion, iters, learning_rate, argdicts = {}):
     numOfTries = 5
     model.train()
 
+    # TODO: if indeed enforce FedAvg, we will run fixed number of epochs, instead of iterations
+
     for itr in range(iters):
         it_start = time.time()
 
@@ -300,14 +302,16 @@ def run_client(clientId, model, criterion, iters, learning_rate, argdicts = {}):
     else:
         time_cost = time_spent
 
-    speed = None
+    speed = 0
+    isSuccess = True
     if count > 0:
         speed = time_spent/float(count) 
         epoch_train_loss /= float(count)
     else:
+        isSuccess = False
         logging.info("====Failed to run client {}".format(clientId))
 
-    return model_param, epoch_train_loss, local_trained, speed, time_cost
+    return model_param, epoch_train_loss, local_trained, str(speed) + '_' + str(count), time_cost, isSuccess
 
 def run(rank, model, train_data, test_data, queue, param_q, stop_flag, client_cfg):
     print("====Worker: Start running")
@@ -360,12 +364,12 @@ def run(rank, model, train_data, test_data, queue, param_q, stop_flag, client_cf
                     forward_dataset = select_dataset(nextClientId, global_trainDB, batch_size=args.test_bsz)
                     forward_loss = run_forward_pass(model, forward_dataset, criterion=criterion)
 
-                _model_param, _loss, _trained_size, _speed, _time = run_client(clientId=nextClientId, 
+                _model_param, _loss, _trained_size, _speed, _time, _isSuccess = run_client(clientId=nextClientId, 
                         model=pickle.loads(pickle.dumps(lastGlobalModel)), learning_rate=learning_rate, 
                         criterion=criterion, iters=args.upload_epoch,
                         argdicts={'iters': epoch})
 
-                if _speed is None:
+                if _isSuccess is False:
                     continue
 
                 trainedModels.append(_model_param)

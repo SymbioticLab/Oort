@@ -205,7 +205,7 @@ def init_dataset():
         model = AlbertForMaskedLM.from_pretrained('albert-base-v2')
 
     else:
-        print('DataSet must be {} or {}!'.format('Mnist', 'Cifar', 'openImg', 'blog'))
+        print('DataSet must be {}!'.format(['Mnist', 'Cifar', 'openImg', 'blog']))
         sys.exit(-1)
 
     model = model.to(device=device)
@@ -299,6 +299,7 @@ def run(model, test_data, queue, param_q, stop_signal, clientSampler):
                 logging.info("====Start to merge models")
                 for i, clientId in enumerate(clientIds):
                     gradients = None
+                    ranSamples = float(speed[i].split('_')[1])
 
                     epoch_train_loss += iteration_loss[i]
                     data_size_epoch += trained_size[i]
@@ -325,11 +326,10 @@ def run(model, test_data, queue, param_q, stop_signal, clientSampler):
 
                     # register the score
                     if args.score_mode == "loss":
-                        clientSampler.registerScore(clientId, math.sqrt(iteration_loss[i] * clientSampler.getClientSize(clientId)), time_stamp=epoch_count)
+                        clientSampler.registerScore(clientId, iteration_loss[i], time_stamp=epoch_count)
                     elif args.score_mode == "norm":
-                        clientSampler.registerScore(clientId, math.sqrt(gradients.norm(2).data.item() * clientSampler.getClientSize(clientId)), time_stamp=epoch_count)
+                        clientSampler.registerScore(clientId, math.sqrt(gradients.norm(2).data.item()) * ranSamples, time_stamp=epoch_count)
                     else:
-                        #sc = 1.0 - clientSampler.getScore(rank_src, clientId)
                         clientSampler.registerScore(clientId, iteration_loss[i], time_stamp=epoch_count)
 
                     if isSelected:

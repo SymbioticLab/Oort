@@ -25,6 +25,7 @@ parser.add_argument('--sample_mode', type=str, default='random')
 parser.add_argument('--score_mode', type=str, default='dis')
 parser.add_argument('--proxy_avg', type=bool, default=False)
 parser.add_argument('--filter_less', type=int, default=0)
+parser.add_argument('--filter_more', type=int, default=99999999)
 parser.add_argument('--forward_pass', type=bool, default=False)
 parser.add_argument('--run_all', type=bool, default=False)
 parser.add_argument('--sampler_path', type=str, default=None)
@@ -209,3 +210,4 @@ parser.add_argument("--server_port", type=str, default="", help="For distant deb
 
 
 args = parser.parse_args()
+

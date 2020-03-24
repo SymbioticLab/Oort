@@ -10,6 +10,8 @@ server*.lsf
 *.o
 *.e
 blog_data_dist.txt
+logs
+openImg_size.txt
 openImgFull_size.txt
 pymp*
 learn*.lsf

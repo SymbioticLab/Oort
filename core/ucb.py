@@ -2,6 +2,7 @@ import math
 from random import Random
 from collections import OrderedDict
 import logging
+import numpy as np2
 
 class UCB(object):
 
@@ -21,6 +22,7 @@ class UCB(object):
         self.rng.seed(sample_seed)
         self.unexplored = set()
         self.score_mode = score_mode
+        np2.random.seed(sample_seed)
 
     def registerArm(self, armId, size, reward):
         # Initiate the score for arms. [score, time_stamp, # of trials, size of client]
@@ -40,6 +42,8 @@ class UCB(object):
         # normalize the score of all arms: Avg + Confidence
         scores = {}
         numOfExploited = 0
+        pacer_from = 0
+        pacer_to = 0
         orderedKeys = list(self.totalArms.keys())
 
         moving_reward, staleness, allloss = [], [], {}
@@ -55,30 +59,30 @@ class UCB(object):
         for key in orderedKeys:
             # we have played this arm before
             if self.totalArms[key][1] != -1:
-                #if self.score_mode == "loss":
                 sc = (self.totalArms[key][0] - min_reward)/float(range_reward) \
                     + self.alpha*((cur_time-self.totalArms[key][1]) - min_staleness)/float(range_staleness)
-                #else:
-                    # sc = (self.totalArms[key][0] - min_reward)/float(range_reward) \
-                    #     + self.alpha*((cur_time-self.totalArms[key][1]) - min_staleness)/float(range_staleness)
 
                 if self.totalArms[key][1] == cur_time - 1:
                     allloss[key] = self.totalArms[key][0]
                 numOfExploited += 1
                 scores[key] = sc
 
-        # static UCB, take the top-k
+        clientLakes = list(scores.keys())
         self.exploration = max(self.exploration*self.decay_factor, self.exploration_min)
-        exploitLen = int(numOfSamples*(1.0 - self.exploration))
+        exploitLen = min(int(numOfSamples*(1.0 - self.exploration)), len(clientLakes))
 
-        self.pacer += self.pacer_delta
-        self.pacer = max(0, min(self.pacer, len(scores) - exploitLen))
+        # static UCB, take the top-k
 
-        pacer_from = int(self.pacer)
-        pacer_to = min(pacer_from + exploitLen, len(scores))
+        # self.pacer += self.pacer_delta
+        # self.pacer = max(0, min(self.pacer, len(scores) - exploitLen))
 
-        isReverse = True# if self.score_mode == "loss" else True
-        pickedClients = sorted(scores, key=scores.get, reverse=isReverse)[pacer_from:pacer_to]
+        # pacer_from = int(self.pacer)
+        # pacer_to = min(pacer_from + exploitLen, len(scores))
+        # pickedClients = sorted(scores, key=scores.get, reverse=True)[pacer_from:pacer_to]
+
+        # dynamic UCB, pick by probablity
+        totalSc = float(sum([scores[key] for key in clientLakes]))
+        pickedClients = list(np2.random.choice(clientLakes, exploitLen, p=[scores[key]/totalSc for key in clientLakes], replace=False))
 
         # exploration 
         if len(self.unexplored) > 0:
@@ -99,7 +103,7 @@ class UCB(object):
             _score = (self.totalArms[clientId][0] - min_reward)/float(range_reward)
             _staleness = self.alpha*((cur_time-self.totalArms[clientId][1]) - min_staleness)/float(range_staleness)
             top_k_score.append(self.totalArms[clientId] + [_score, _staleness])
-        
+
         last_exploit = pickedClients[exploitLen-1]
         top_k_score.append(self.totalArms[last_exploit] + \
             [(self.totalArms[last_exploit][0] - min_reward)/float(range_reward), self.alpha*((cur_time-self.totalArms[last_exploit][1]) - min_staleness)/float(range_staleness)])
@@ -123,7 +127,7 @@ class UCB(object):
 
         # return _95th, _5th, max((_95th - _5th), thres)
         _max = max(aList)
-        _min = min(aList)
+        _min = min(aList)*0.999
         _range = max(_max - _min, thres)
 
         return _max, _min, _range

@@ -226,27 +226,6 @@ def read_client_samples(name, threshold=99999999, skip=0, sumT = 0, nclass=99999
 
     return res, overall, totalClients
 
-def read_openImg(file, skip=0, sumT = 0, nclass=9999999):
-    with open(file, 'rb') as fin:
-        clientClass = pickle.load(fin)
-
-    res = []
-    totalClients = 0
-    nclass = clientClass.shape[1]
-
-    overall = [0 for x in range(nclass)]
-    nclass = min(nclass, len(clientClass[0]))
-
-    for clientVec in clientClass:
-        if sum(clientVec) > sumT:
-            res.append(clientVec[:nclass])
-            totalClients += 1
-
-            for c, item in enumerate(res[-1]):
-                overall[c] += item
-
-    return res, overall, totalClients
-
 def normalizeList(dataDis):
     tempDataSize = sum(dataDis)
     return dit.ScalarDistribution(np.arange(len(dataDis)), [c / float(tempDataSize) for c in dataDis])
@@ -282,11 +261,10 @@ def openImgFull():
 
 def openImg(nclass=99999999):
     # 507
-    clientSampleList, allSamples, totalClients = read_openImg("openImg_size.txt", sumT=16, nclass=nclass)
+    clientSampleList, allSamples, totalClients = read_client_samples("openImg_size.txt", sumT=0, nclass=nclass)
 
     dis = [allSamples]
-    sampleRs = [totalClients]
-
+    sampleRs = []
     for i in range(numOfTries):
         print('...current openImg trial ' + str(i))
         distances, sampleRatios = draw_rs(clientSampleList, allSamples, totalClients)
@@ -315,7 +293,7 @@ def blog(nclass=99999999):
     clientSampleList, allSamples, totalClients = readFromSerialized("blog_data_dist.txt", sumT=0, nclass=nclass)
 
     dis = [allSamples]
-    sampleRs = [totalClients]
+    sampleRs = []
     for i in range(numOfTries):
         print('...current blog trial ' + str(i))
         distances, sampleRatios = draw_rs(clientSampleList, allSamples, totalClients)
@@ -419,14 +397,14 @@ ss = []
 #     print('...current quickDraw trial ' + str(i))
 
 
-# dE, sE = blog(500)
-# dE2, sE2 = blog(5000)
+dE, sE = blog(500)
+dE2, sE2 = blog(5000)
 #dB, sB = blog()
-dO, sO = openImg(100)
-dO2, sO2 = openImg(1000)
+dO, sO = openImg(500)
+dO2, sO2 = openImg(5000)
 
-ds.append([dO, dO2])
-ss.append([sO, sO2])
+ds.append([dE, dE2, dO, dO2])
+ss.append([sE, sE2, sO, sO2])
 
 #dQ, sQ = quickDraw()
 #dOF, sOF = openImgFull()
@@ -434,7 +412,7 @@ ss.append([sO, sO2])
 # ds.append([dE, dB, dO, dQ, dOF])
 # ss.append([sE, sB, sO, sQ, sOF])
 
-with open("MultiRsOpenImg_Abs", 'wb') as fout:
+with open("MultiRsFull_Abs", 'wb') as fout:
     pickle.dump(ds, fout)
     pickle.dump(ss, fout)
 
