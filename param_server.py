@@ -33,7 +33,7 @@ from utils.models import *
 from utils.utils_data import get_data_transform
 from utils.utils_model import test_model
 from utils.openImg import *
-from scirpts.run_language_modeling import *
+from utils.nlp import *
 
 #device = torch.device(args.to_device)
 

@@ -72,7 +72,7 @@ parser.add_argument('--sample_seed', type=int, default=233)
 # for albert
 
 parser.add_argument(
-    "--train_data_file", default=None, type=str, required=True, help="The input training data file (a text file)."
+    "--train_data_file", default='', type=str, required=True, help="The input training data file (a text file)."
 )
 parser.add_argument(
     "--output_dir",
@@ -81,13 +81,13 @@ parser.add_argument(
     help="The output directory where the model predictions and checkpoints will be written.",
 )
 parser.add_argument(
-    "--model_type", type=str, required=True, help="The model architecture to be trained or fine-tuned.",
+    "--model_type", type=str, default='', required=True, help="The model architecture to be trained or fine-tuned.",
 )
 
 # Other parameters
 parser.add_argument(
     "--eval_data_file",
-    default=None,
+    default='',
     type=str,
     help="An optional input evaluation data file to evaluate the perplexity on (a text file).",
 )

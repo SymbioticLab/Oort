@@ -312,7 +312,7 @@ def quickDraw():
     return dis, sampleRs
 
 def blog(nclass=99999999):
-    clientSampleList, allSamples, totalClients = readFromSerialized("blog_data_dist.txt", sumT=0, nclass=nclass)
+    clientSampleList, allSamples, totalClients = readFromSerialized("blog_data_dist.txt", sumT=50, nclass=nclass)
 
     dis = [allSamples]
     sampleRs = [totalClients]
@@ -347,19 +347,24 @@ def readFromSerialized(file, threshold=99999999, sumT=0, nclass=99999):
 
     threshold = min(threshold, len(dist))
     overall = [0 for x in range(len(dist[0]))]
+    totalClients = 0
+    res = []
 
-    dist = sorted(dist, key=lambda k: sum(k), reverse=True)
+    #dist = sorted(dist, key=lambda k: sum(k), reverse=True)
 
     for i in range(len(dist)):
-        dist[i] = dist[i][:min(nclass, len(dist[i]))]
-        if sum(dist[i]) > sumT:
-            for index, c in enumerate(dist[i]):
+        temp = list(dist[i])
+        temp = temp[:min(nclass, len(dist[i]))]
+        if sum(temp) > sumT:
+            res.append(temp)
+            totalClients += 1
+            for index, c in enumerate(temp):
                 overall[index] += c
         else:
-            threshold = i
+            #threshold = i
             break
 
-    return dist[:threshold], overall, threshold
+    return res, overall, totalClients
 
 def draw_ss(clientSampleList, allSamples, totalClients, figCaption="diffall.pdf"):
     # normalize lists
@@ -382,7 +387,13 @@ def draw_rs(clientSampleList, allSamples, totalClients, figCaption="diffall.pdf"
 
     #numOfSamples = [i for i in range(int(totalClients*0.01), int(totalClients * 0.4), int(totalClients*0.02))]
 
-    numOfSamples = [10, 50] + [100 * i for i in range(1, 10)] + [1000*i for i in range(1, 6)]
+    _numOfSamples = [10, 50] + [100 * i for i in range(1, 10)] + [1000*i for i in range(1, 6)]
+
+    numOfSamples = []
+
+    for item in _numOfSamples:
+        if item < totalClients:
+            numOfSamples.append(item)
 
     # normalize lists
     distances = []
@@ -419,14 +430,17 @@ ss = []
 #     print('...current quickDraw trial ' + str(i))
 
 
-# dE, sE = blog(500)
-# dE2, sE2 = blog(5000)
+dE, sE = blog(1000)
+dE2, sE2 = blog(10000)
 #dB, sB = blog()
-dO, sO = openImg(100)
-dO2, sO2 = openImg(1000)
+#dO, sO = openImg(100)
+#dO2, sO2 = openImg(1000)
 
-ds.append([dO, dO2])
-ss.append([sO, sO2])
+# ds.append([dO, dO2])
+# ss.append([sO, sO2])
+
+ds.append([dE, dE2])
+ss.append([sE, sE2])
 
 #dQ, sQ = quickDraw()
 #dOF, sOF = openImgFull()
@@ -434,7 +448,7 @@ ss.append([sO, sO2])
 # ds.append([dE, dB, dO, dQ, dOF])
 # ss.append([sE, sB, sO, sQ, sOF])
 
-with open("MultiRsOpenImg_Abs", 'wb') as fout:
+with open("MultiRsBlog_Abs", 'wb') as fout:
     pickle.dump(ds, fout)
     pickle.dump(ss, fout)
 

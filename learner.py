@@ -22,6 +22,7 @@ from utils.models import *
 from utils.utils_data import get_data_transform
 from utils.utils_model import MySGD, test_model
 from utils.crosslossprox import CrossEntropyLossProx
+from utils.nlp import *
 
 device = torch.device(args.to_device)
 #torch.set_num_threads(int(args.threads))
