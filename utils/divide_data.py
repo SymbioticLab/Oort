@@ -313,16 +313,16 @@ class DataPartitioner(object):
 
         pass
 
-    def use(self, partition, istest):
+    def use(self, partition, istest, is_rank):
         _partition = partition
         resultIndex = []
 
-        #if not istest:
-        resultIndex = self.partitions[_partition]
-        # else:
-        #     # we want the worker to test all cases
-        #     for item in self.partitions:
-        #         resultIndex += item
+        if is_rank == -1:
+            resultIndex = self.partitions[_partition]
+        else:
+            for i in range(len(self.partitions)):
+                if i % args.total_worker == is_rank:
+                    resultIndex += self.partitions[i]
 
         self.rng.shuffle(resultIndex)
 
@@ -348,9 +348,8 @@ def partition_dataset(partitioner, workers, partitionRatio=[], sequential=0, rat
     partitioner.partitionDataByDefault(sizes=partition_sizes, sequential=sequential, ratioOfClassWorker=ratioOfClassWorker,filter_class=filter_class, args=arg)
     #logging.info("====Partitioning data takes {} s\n".format(time.time() - stime()))
 
-def select_dataset(rank: int, partition: DataPartitioner, batch_size: int, isTest=False):
-    partition = partition.use(rank - 1, isTest)
+def select_dataset(rank: int, partition: DataPartitioner, batch_size: int, isTest=False, is_rank=0):
+    partition = partition.use(rank - 1, isTest, is_rank-1)
     timeOut = 0 if isTest else 10
 
     return DataLoader(partition, batch_size=batch_size, shuffle=True, pin_memory=False, num_workers=args.num_loaders, drop_last=False, timeout=timeOut)
-

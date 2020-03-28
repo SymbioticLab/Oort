@@ -295,6 +295,7 @@ def run(model, test_data, queue, param_q, stop_signal, clientSampler):
                 handlerStart = time.time()
                 delta_wss = tmp_dict[rank_src][0]
                 clientsLastEpoch += clientIds
+                ratioSample = 0
 
                 logging.info("====Start to merge models")
                 for i, clientId in enumerate(clientIds):
@@ -328,15 +329,15 @@ def run(model, test_data, queue, param_q, stop_signal, clientSampler):
                     if args.score_mode == "loss":
                         clientSampler.registerScore(clientId, iteration_loss[i], time_stamp=epoch_count)
                     elif args.score_mode == "norm":
-                        clientSampler.registerScore(clientId, math.sqrt(gradients.norm(2).data.item()) * ranSamples, time_stamp=epoch_count)
+                        clientSampler.registerScore(clientId, gradients.norm(2).data.item() * ranSamples, time_stamp=epoch_count)
                     else:
-                        clientSampler.registerScore(clientId, iteration_loss[i], time_stamp=epoch_count)
+                        clientSampler.registerScore(clientId, (1.0 - clientSampler.getClient(clientId).distance), time_stamp=epoch_count)
 
                     if isSelected:
                         received_updates += 1
                         global_virtual_clock = max(global_virtual_clock, last_global_virtual_clock + virtualClock[i])
 
-                logging.info("====Done handling rank {}".format(rank_src))
+                logging.info("====Done handling rank {}, with ratio {}".format(rank_src, ratioSample))
 
                 # aggregate the test results
                 updateEpoch = testRes[-1]

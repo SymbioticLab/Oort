@@ -350,7 +350,7 @@ def run(rank, model, train_data, test_data, queue, param_q, stop_flag, client_cf
     for epoch in range(1, int(args.epochs) + 1):
         try:
             if epoch % args.decay_epoch == 0:
-                learning_rate = max(1e-5, learning_rate * args.decay_factor)
+                learning_rate = max(1e-4, learning_rate * args.decay_factor)
 
             trainedModels = []
             preTrainedLoss = []
@@ -416,7 +416,12 @@ def run(rank, model, train_data, test_data, queue, param_q, stop_flag, client_cf
             evalStart = time.time()
             # test the model if necessary
             if epoch % int(args.eval_interval) == 0:
-                test_loss, acc, acc_5, testResults = test_model(rank, model, test_data, criterion=criterion)
+                # forward pass of the training data
+                if args.test_train_data:
+                    rank_train_data = select_dataset(this_rank, global_trainDB, batch_size=args.test_bsz, is_rank=rank)
+                    test_loss, acc, acc_5, testResults = test_model(rank, model, rank_train_data, criterion=criterion)
+                else:
+                    test_loss, acc, acc_5, testResults = test_model(rank, model, test_data, criterion=criterion)
                 logging.info("After aggregation epoch {}, CumulTime {}, eval_time {}, test_loss {}, test_accuracy {}, test_5_accuracy {} \n"
                             .format(epoch, round(time.time() - startTime, 4), round(time.time() - evalStart, 4), test_loss, acc, acc_5))
 

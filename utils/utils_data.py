@@ -79,8 +79,8 @@ def get_data_transform(data: str):
         ])
     elif data == 'openImg':
         train_transform = transforms.Compose([
-            transforms.RandomResizedCrop(64),
-	    #transforms.Resize((64,64)), 
+            #transforms.RandomResizedCrop(64),
+	    transforms.Resize((96,96)), 
             transforms.RandomHorizontalFlip(),
             transforms.ToTensor(),
             #transforms.Resize(224),   # input arguments: length&width of a figure
@@ -92,7 +92,7 @@ def get_data_transform(data: str):
         ])
 
         test_transform = transforms.Compose([
-            transforms.Resize((64,64)), 
+            transforms.Resize((96,96)), 
             #transforms.RandomHorizontalFlip(),
             transforms.ToTensor(),
             #transforms.Resize(224),

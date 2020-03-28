@@ -13,7 +13,7 @@ class UCB(object):
         self.exploration = 0.9
         self.decay_factor = 0.99
         self.exploration_min = 0.1
-        self.alpha = 0.3
+        self.alpha = 0.2
 
         self.pacer_delta = 0#0.5 if score_mode == "loss" else 0
         self.pacer = -self.pacer_delta
@@ -91,6 +91,10 @@ class UCB(object):
             exploreLen = min(len(_unexplored), numOfSamples - len(pickedClients))
 
             pickedClients = pickedClients + _unexplored[:exploreLen]
+        else:
+            # no clients left for exploration
+            self.exploration_min = 0.
+            self.exploration = 0.
 
         while len(pickedClients) < numOfSamples:
             nextId = self.rng.choice(orderedKeys)

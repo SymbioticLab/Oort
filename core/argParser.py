@@ -56,7 +56,7 @@ parser.add_argument('--input_dim', type=int, default=0)
 parser.add_argument('--output_dim', type=int, default=0)
 parser.add_argument('--load_model', type=bool, default=False)
 parser.add_argument('--dump_epoch', type=int, default=100)
-parser.add_argument('--decay_factor', type=float, default=0.9)
+parser.add_argument('--decay_factor', type=float, default=0.95)
 parser.add_argument('--decay_epoch', type=float, default=500)
 parser.add_argument('--threads', type=str, default=str(torch.get_num_threads()))
 parser.add_argument('--num_loaders', type=int, default=2)
@@ -68,20 +68,20 @@ parser.add_argument('--timeout', type=float, default=9999999)
 parser.add_argument('--full_gradient_interval', type=int, default=20)
 parser.add_argument('--is_even_avg', type=bool, default=True)
 parser.add_argument('--sample_seed', type=int, default=233)
+parser.add_argument('--test_train_data', type=bool, default=False)
 
 # for albert
 
 parser.add_argument(
-    "--train_data_file", default='', type=str, required=True, help="The input training data file (a text file)."
+    "--train_data_file", default='', type=str, help="The input training data file (a text file)."
 )
 parser.add_argument(
     "--output_dir",
     type=str,
-    required=True,
     help="The output directory where the model predictions and checkpoints will be written.",
 )
 parser.add_argument(
-    "--model_type", type=str, default='', required=True, help="The model architecture to be trained or fine-tuned.",
+    "--model_type", type=str, default='', help="The model architecture to be trained or fine-tuned.",
 )
 
 # Other parameters
@@ -210,4 +210,3 @@ parser.add_argument("--server_port", type=str, default="", help="For distant deb
 
 
 args = parser.parse_args()
-

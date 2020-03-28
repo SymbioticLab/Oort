@@ -282,7 +282,7 @@ def openImgFull():
 
 def openImg(nclass=99999999):
     # 507
-    clientSampleList, allSamples, totalClients = read_openImg("openImg_size.txt", sumT=16, nclass=nclass)
+    clientSampleList, allSamples, totalClients = read_openImg("openImg_size.txt", sumT=0, nclass=nclass)
 
     dis = [allSamples]
     sampleRs = [totalClients]
@@ -430,11 +430,11 @@ ss = []
 #     print('...current quickDraw trial ' + str(i))
 
 
-dE, sE = blog(1000)
-dE2, sE2 = blog(10000)
+# dE, sE = blog(1000)
+# dE2, sE2 = blog(10000)
 #dB, sB = blog()
-#dO, sO = openImg(100)
-#dO2, sO2 = openImg(1000)
+dE, sE = openImg(300)
+dE2, sE2 = openImg(596)
 
 # ds.append([dO, dO2])
 # ss.append([sO, sO2])
@@ -448,7 +448,7 @@ ss.append([sE, sE2])
 # ds.append([dE, dB, dO, dQ, dOF])
 # ss.append([sE, sB, sO, sQ, sOF])
 
-with open("MultiRsBlog_Abs", 'wb') as fout:
+with open("MultiRsOpenImg_Abs_full", 'wb') as fout:
     pickle.dump(ds, fout)
     pickle.dump(ss, fout)
 
