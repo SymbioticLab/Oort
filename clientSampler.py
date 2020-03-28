@@ -67,7 +67,7 @@ class ClientSampler(object):
         return clientInfo
 
     def nextClientIdToRun(self, hostId):
-        init_id = hostId
+        init_id = hostId - 1
         lenPossible = len(self.feasibleClients)
 
         while True:
