@@ -121,6 +121,9 @@ class TextDataset(Dataset):
             with open(cached_features_file, "wb") as handle:
                 pickle.dump(self.examples, handle, protocol=pickle.HIGHEST_PROTOCOL)
 
+        self.data = self.examples
+        self.targets = [0 for i in range(len(self.data))]
+
     def __len__(self):
         return len(self.examples)
 
@@ -140,13 +143,14 @@ class LineByLineTextDataset(Dataset):
             lines = [line for line in f.read().splitlines() if (len(line) > 0 and not line.isspace())]
 
         self.examples = tokenizer.batch_encode_plus(lines, add_special_tokens=True, max_length=block_size)["input_ids"]
+        self.data = self.examples
+        self.targets = [0 for i in range(len(self.data))]
 
     def __len__(self):
         return len(self.examples)
 
     def __getitem__(self, i):
-        return torch.tensor(self.examples[i], dtype=torch.long)
-
+        return torch.tensor(self.examples[i], dtype=torch.long), None
 
 def load_and_cache_examples(args, tokenizer, evaluate=False):
     file_path = args.eval_data_file if evaluate else args.train_data_file
@@ -445,7 +449,6 @@ def train(args, train_dataset, model: PreTrainedModel, tokenizer: PreTrainedToke
         tb_writer.close()
 
     return global_step, tr_loss / global_step
-
 
 def evaluate(args, model: PreTrainedModel, tokenizer: PreTrainedTokenizer, prefix="") -> Dict:
     # Loop to handle MNLI double evaluation (matched, mis-matched)
@@ -821,7 +824,3 @@ def main():
             results.update(result)
 
     return results
-
-
-if __name__ == "__main__":
-    main()

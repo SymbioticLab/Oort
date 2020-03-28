@@ -98,6 +98,10 @@ for i in range(4):
 #torch.set_num_threads(int(args.threads))
 #torch.cuda.set_device(args.gpu_device)
 
+
+# initiate for nlp
+tokenizer = AlbertTokenizer.from_pretrained('albert-base-v2') if args.task =='nlp' else None
+
 def initiate_sampler_query(numOfClients):
     # Initiate the clientSampler 
     if args.sampler_path is None:
@@ -157,6 +161,8 @@ def init_myprocesses(rank, size, model, test_data, queue, param_q, stop_signal, 
     fn(model, test_data, queue, param_q, stop_signal, clientSampler)
 
 def init_dataset():
+    global tokenizer
+
     if args.data_set == 'Mnist':
         train_transform, test_transform = get_data_transform('mnist')
 
@@ -197,8 +203,6 @@ def init_dataset():
         model = tormodels.__dict__[args.model](num_classes=596)
 
     elif args.data_set == 'blog':
-        tokenizer = AlbertTokenizer.from_pretrained('albert-base-v2')
-        
         train_dataset = load_and_cache_examples(args, tokenizer, evaluate=False) 
         test_dataset = load_and_cache_examples(args, tokenizer, evaluate=True)
 

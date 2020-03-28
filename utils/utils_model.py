@@ -87,7 +87,7 @@ class MySGD(optim.SGD):
         return delta_ws
 
 
-def test_model(rank, model, test_data, criterion=nn.NLLLoss()):
+def test_model(rank, model, test_data, criterion=nn.NLLLoss(), tokenizer=None):
     test_loss = 0
     correct = 0
     top_5 = 0
@@ -97,14 +97,23 @@ def test_model(rank, model, test_data, criterion=nn.NLLLoss()):
 
     model.eval()
     for data, target in test_data:
-        #data, target = Variable(data.view(-1, 28*28)), Variable(target)
-        data, target = Variable(data).cuda(), Variable(target).cuda()
-        output = model(data)
-        test_loss += criterion(output, target).data.item()  # Variable.data
+        
+        if args.task != 'nlp':
+            data, target = Variable(data).cuda(), Variable(target).cuda()
 
-        acc = accuracy(output, target, topk=(1, 5))
-        correct += acc[0].item()
-        top_5 += acc[1].item()
+            output = model(data)
+            test_loss += criterion(output, target).data.item()  # Variable.data
+            acc = accuracy(output, target, topk=(1, 5))
+
+            correct += acc[0].item()
+            top_5 += acc[1].item()
+
+        else:
+            data, target = mask_tokens(data, tokenizer, args) if args.mlm else (data, data)
+            data, target = Variable(data).cuda(), Variable(target).cuda()
+            
+            output = model(data, masked_lm_labels=target) if args.mlm else model(data, labels=target)
+            test_loss += output[0].item()
 
         test_len += len(target)
         

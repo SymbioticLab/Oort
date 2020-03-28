@@ -84,6 +84,9 @@ global_client_profile = {}
 
 workers = [int(v) for v in str(args.learners).split('-')]
 
+# initiate for nlp
+tokenizer = AlbertTokenizer.from_pretrained('albert-base-v2') if args.task =='nlp' else None
+
 logging.info("===== Experiment start =====")
 
 
@@ -107,6 +110,7 @@ def init_myprocesses(rank, size, model,
     fn(rank, model, train_dataset, test_dataset, q, param_q, stop_flag, client_cfg)
 
 def init_dataset():
+    global tokenizer
 
     if args.data_set == 'Mnist':
         model = MnistCNN()
@@ -147,9 +151,16 @@ def init_dataset():
         test_dataset = OPENIMG(args.data_dir, train=False, transform=test_transform)
 
         model = tormodels.__dict__[args.model](num_classes=596)
-        
+
+    elif args.data_set == 'blog':
+        train_dataset = load_and_cache_examples(args, tokenizer, evaluate=False) 
+        test_dataset = load_and_cache_examples(args, tokenizer, evaluate=True)
+
+        # TODO: load a model and train it from scratch
+        model = AlbertForMaskedLM.from_pretrained('albert-base-v2')
+
     else:
-        print('DataSet must be {} or {}!'.format('Mnist', 'Cifar'))
+        print('DataSet must be {}!'.format(['Mnist', 'Cifar']))
         sys.exit(-1)
 
     model = model.to(device=device)
@@ -183,15 +194,29 @@ def run_forward_pass(model, test_data, criterion=nn.NLLLoss()):
 
     return test_loss
 
+
+def collate(examples):
+    global tokenizer
+
+    if tokenizer._pad_token is None:
+        return pad_sequence(examples, batch_first=True)
+    return pad_sequence(examples, batch_first=True, padding_value=tokenizer.pad_token_id)
+
 def run_client(clientId, model, criterion, iters, learning_rate, argdicts = {}):
-    global global_trainDB, global_data_iter, lastGlobalModel
+    global global_trainDB, global_data_iter, lastGlobalModel, tokenizer
 
     curBatch = -1
     optimizer = MySGD(model.parameters(), lr=learning_rate, momentum=0.9, weight_decay=5e-4)
+
     train_data_itr_list = []
 
     if clientId not in global_data_iter:
-        client_train_data = select_dataset(clientId, global_trainDB, batch_size=args.batch_size)
+        client_train_data = select_dataset(
+                                clientId, global_trainDB, 
+                                batch_size=args.batch_size, 
+                                collate_fn=collate if args.task=='nlp' else None
+                            )
+
         train_data_itr = iter(client_train_data)
         total_batch_size = len(train_data_itr)
         global_data_iter[clientId] = [train_data_itr, curBatch, total_batch_size]
@@ -211,7 +236,6 @@ def run_client(clientId, model, criterion, iters, learning_rate, argdicts = {}):
     numOfFailures = 0
     numOfTries = 5
     model.train()
-
     # TODO: if indeed enforce FedAvg, we will run fixed number of epochs, instead of iterations
 
     for itr in range(iters):
@@ -221,7 +245,12 @@ def run_client(clientId, model, criterion, iters, learning_rate, argdicts = {}):
         while not fetchSuccess and numOfFailures < numOfTries:
             try:
                 try:
-                    (data, target) = next(train_data_itr_list[0])
+                    if args.task == 'nlp':
+                        # target is None in this case
+                        (data, _) = next(train_data_itr_list[0])
+                        data, target = mask_tokens(data, tokenizer, args) if args.mlm else (data, data)
+                    else:
+                        (data, target) = next(train_data_itr_list[0])
                     fetchSuccess = True
                 except Exception:
                     try:
@@ -231,13 +260,22 @@ def run_client(clientId, model, criterion, iters, learning_rate, argdicts = {}):
                         logging.info("====Error {}".format(e))
 
                     # reload data after finishing the epoch
-                    if len(train_data_itr_list) == 0:
-                        for i in range(numOfPreWarmUp):
-                            train_data_itr_list.append(iter(select_dataset(clientId, global_trainDB, batch_size=args.batch_size)))
-                    else:
-                        train_data_itr_list.append(iter(select_dataset(clientId, global_trainDB, batch_size=args.batch_size)))
+                    numToWarmUp = numOfPreWarmUp - len(train_data_itr_list)
 
-                    (data, target) = next(train_data_itr_list[0])
+                    for i in range(numToWarmUp):
+                        tempData = select_dataset(
+                            clientId, global_trainDB, 
+                            batch_size=args.batch_size, 
+                            collate_fn=collate if args.task=='nlp' else None
+                        )
+                        train_data_itr_list.append(iter(tempData))
+
+                    if args.task == 'nlp':
+                        (data, _) = next(train_data_itr_list[0])
+                        data, target = mask_tokens(data, tokenizer, args) if args.mlm else (data, data)
+                    else:
+                        (data, target) = next(train_data_itr_list[0])
+
                     fetchSuccess = True
             except Exception as e:
                 numOfFailures += 1
@@ -258,13 +296,18 @@ def run_client(clientId, model, criterion, iters, learning_rate, argdicts = {}):
         optimizer.zero_grad()
 
         comp_start = time.time()
-        output = model(data)
 
-        if args.proxy_avg:
-            loss = criterion(output, target, global_weight=lastGlobalModel.parameters(), 
-                            individual_weight=model.parameters(), mu=0.01)
+        if args.task == 'nlp':
+            outputs = model(data, masked_lm_labels=target) if args.mlm else model(data, labels=target)
+            loss = outputs[0]
         else:
-            loss = criterion(output, target)
+            output = model(data)
+
+            if args.proxy_avg:
+                loss = criterion(output, target, global_weight=lastGlobalModel.parameters(), 
+                                individual_weight=model.parameters(), mu=0.01)
+            else:
+                loss = criterion(output, target)
 
         loss.backward()
         delta_w = optimizer.get_delta_w(learning_rate)
@@ -418,10 +461,13 @@ def run(rank, model, train_data, test_data, queue, param_q, stop_flag, client_cf
             if epoch % int(args.eval_interval) == 0:
                 # forward pass of the training data
                 if args.test_train_data:
-                    rank_train_data = select_dataset(this_rank, global_trainDB, batch_size=args.test_bsz, is_rank=rank)
-                    test_loss, acc, acc_5, testResults = test_model(rank, model, rank_train_data, criterion=criterion)
+                    rank_train_data = select_dataset(
+                                        this_rank, global_trainDB, batch_size=args.test_bsz, is_rank=rank,
+                                        collate_fn=collate if args.task=='nlp' else None
+                                      )
+                    test_loss, acc, acc_5, testResults = test_model(rank, model, rank_train_data, criterion=criterion, tokenizer=tokenizer)
                 else:
-                    test_loss, acc, acc_5, testResults = test_model(rank, model, test_data, criterion=criterion)
+                    test_loss, acc, acc_5, testResults = test_model(rank, model, test_data, criterion=criterion, tokenizer=tokenizer)
                 logging.info("After aggregation epoch {}, CumulTime {}, eval_time {}, test_loss {}, test_accuracy {}, test_5_accuracy {} \n"
                             .format(epoch, round(time.time() - startTime, 4), round(time.time() - evalStart, 4), test_loss, acc, acc_5))
 
@@ -504,7 +550,7 @@ if __name__ == "__main__":
 
     testsetPartitioner = DataPartitioner(data=test_dataset, isTest=True, numOfClass=args.num_class)
     partition_dataset(testsetPartitioner, [i for i in range(world_size-1)], splitTestRatio)
-    test_data = select_dataset(this_rank, testsetPartitioner, batch_size=args.test_bsz, isTest=True)
+    test_data = select_dataset(this_rank, testsetPartitioner, batch_size=args.test_bsz, isTest=True, collate_fn=collate if args.task=='nlp' else None)
 
     stop_flag = Value(c_bool, False)
     init_myprocesses(this_rank, world_size, model, entire_train_data, test_data,

@@ -51,7 +51,7 @@ jobPrefix = 'learner' + timeStamp
 # get the join of parameters
 params = ' '.join(sys.argv[2:]) + learner + ' --time_stamp=' + _time_stamp + ' '
 
-rawCmd = '\npython ~/DMFL/learner.py --ps_ip=10.255.11.92 --model=mobilenet_v2 --epochs=20000 --upload_epoch=20  --dump_epoch=100 --learning_rate=0.1 --decay_epoch=50 --model_avg=True --batch_size=32 '
+rawCmd = '\npython ~/DMFL/learner.py --ps_ip=10.255.11.92 --model=mobilenet_v2 --epochs=20000 --upload_epoch=20  --dump_epoch=100 --learning_rate=0.45 --decay_epoch=25 --model_avg=True --batch_size=32 '
 
 if 'gpu-cn002' in avaiVms:
     avaiVms['gpu-cn002'] -= threadQuota

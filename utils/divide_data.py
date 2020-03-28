@@ -48,6 +48,7 @@ class DataPartitioner(object):
         self.indexToLabel = {}
         self.totalSamples = 0
         self.data_len = len(self.data)
+        self.task = args.task
 
         if splitConfFile is None:
             # categarize the samples
@@ -125,7 +126,38 @@ class DataPartitioner(object):
             tempDistr =np.array([c / float(tempDataSize) for c in tempClassPerWorker[worker]])
             self.workerDistance.append(emd(dataDistr, tempDistr, dist_matrix))
 
-    def partitionTrace(self, dataToClient):
+    def partitionTraceCV(self, dataToClient):
+        clientToData = {}
+        clientNumSamples = {}
+        numOfLabels = self.numOfLabels
+
+        # data share the same index with labels
+        for index, sample in enumerate(self.data.data):
+            sample = sample.split('__')[0]
+            clientId = dataToClient[sample]
+            labelId = self.labels[index]
+
+            if clientId not in clientToData:
+                clientToData[clientId] = []
+                clientNumSamples[clientId] = [0] * numOfLabels
+
+            clientToData[clientId].append(index)
+            clientNumSamples[clientId][labelId] += 1
+
+        numOfClients = len(clientToData.keys())
+        self.classPerWorker = np.zeros([numOfClients, numOfLabels])
+
+        for clientId in range(numOfClients):
+            self.classPerWorker[clientId] = clientNumSamples[clientId]
+            self.rng.shuffle(clientToData[clientId])
+            self.partitions.append(clientToData[clientId])
+
+        overallNumSamples = np.asarray(self.classPerWorker.sum(axis=0)).reshape(-1)
+        totalNumOfSamples = self.classPerWorker.sum()
+
+        self.get_JSD(overallNumSamples/float(totalNumOfSamples), self.classPerWorker, [0] * numOfClients)
+
+    def partitionTraceNLP(self, dataToClient):
         clientToData = {}
         clientNumSamples = {}
         numOfLabels = self.numOfLabels
@@ -165,7 +197,10 @@ class DataPartitioner(object):
                 dataToClient = pickle.load(db)
 
             # use the real trace, thus no need to partition
-            self.partitionTrace(dataToClient=dataToClient)
+            if self.task != 'nlp':
+                self.partitionTraceCV(dataToClient=dataToClient)
+            else:
+                self.partitionTraceNLP(dataToClient=dataToClient)
         else:
             self.partitionData(sizes=sizes, sequential=sequential, ratioOfClassWorker=ratioOfClassWorker, filter_class=filter_class, args=args)
 
@@ -348,8 +383,12 @@ def partition_dataset(partitioner, workers, partitionRatio=[], sequential=0, rat
     partitioner.partitionDataByDefault(sizes=partition_sizes, sequential=sequential, ratioOfClassWorker=ratioOfClassWorker,filter_class=filter_class, args=arg)
     #logging.info("====Partitioning data takes {} s\n".format(time.time() - stime()))
 
-def select_dataset(rank: int, partition: DataPartitioner, batch_size: int, isTest=False, is_rank=0):
+def select_dataset(rank: int, partition: DataPartitioner, batch_size: int, isTest=False, is_rank=0, collate_fn=None):
     partition = partition.use(rank - 1, isTest, is_rank-1)
     timeOut = 0 if isTest else 10
 
-    return DataLoader(partition, batch_size=batch_size, shuffle=True, pin_memory=False, num_workers=args.num_loaders, drop_last=False, timeout=timeOut)
+    if collate_fn is None:
+        return DataLoader(partition, batch_size=batch_size, shuffle=True, pin_memory=False, num_workers=args.num_loaders, drop_last=False, timeout=timeOut)
+    else:
+        return DataLoader(partition, batch_size=batch_size, shuffle=True, pin_memory=False, num_workers=args.num_loaders, drop_last=False, timeout=timeOut, collate_fn=collate_fn)
+
