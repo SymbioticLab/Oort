@@ -7,7 +7,7 @@ from collections import OrderedDict
 from ctypes import c_bool
 from multiprocessing import Process, Value
 from multiprocessing.managers import BaseManager
-import random, math, gc
+import random, math, gc, copy
 import multiprocessing, threading
 import numpy as np
 import torch
@@ -61,11 +61,13 @@ os.environ['GLOO_SOCKET_IFNAME'] = 'vlan260'
 
 # try to pick the right gpus
 cudaPrefix = 'cuda:'
+deviceId = None
 for i in range(4):
     try:
         device = torch.device(cudaPrefix+str(i))
         torch.cuda.set_device(i)
         logging.info(torch.rand(1).to(device=device))
+        deviceId = i
         break
     except Exception as e:
         # no gpus available
@@ -157,7 +159,7 @@ def init_dataset():
         test_dataset = load_and_cache_examples(args, tokenizer, evaluate=True)
 
         # TODO: load a model and train it from scratch
-        model = AlbertForMaskedLM.from_pretrained('/gpfs/gpfs0/groups/chowdhury/fanlai/dataset/nlp/albert-base-v2-config.json')
+        model = AlbertForMaskedLM.from_pretrained('/gpfs/gpfs0/groups/chowdhury/fanlai/dataset/nlp/')
 
     else:
         print('DataSet must be {}!'.format(['Mnist', 'Cifar']))
@@ -177,11 +179,12 @@ def init_dataset():
 
     return model, train_dataset, test_dataset, client_cfg
 
-def run_forward_pass(model, test_data, criterion=nn.NLLLoss()):
+def run_forward_pass(model, test_data):
     test_loss = 0.
     test_len = 0.
 
     model.eval()
+    criterion = CrossEntropyLossProx().to(device=device) if args.proxy_avg else torch.nn.CrossEntropyLoss().to(device=device)
 
     for data, target in test_data:
         data, target = Variable(data).to(device=device), Variable(target).to(device=device)
@@ -202,11 +205,13 @@ def collate(examples):
         return pad_sequence(examples, batch_first=True)
     return pad_sequence(examples, batch_first=True, padding_value=tokenizer.pad_token_id)
 
-def run_client(clientId, model, criterion, iters, learning_rate, argdicts = {}):
+def run_client(clientId, model, iters, learning_rate, argdicts = {}):
     global global_trainDB, global_data_iter, lastGlobalModel, tokenizer
 
     curBatch = -1
+
     optimizer = MySGD(model.parameters(), lr=learning_rate, momentum=0.9, weight_decay=5e-4)
+    criterion = CrossEntropyLossProx().to(device=device) if args.proxy_avg else torch.nn.CrossEntropyLoss().to(device=device)
 
     train_data_itr_list = []
 
@@ -236,6 +241,7 @@ def run_client(clientId, model, criterion, iters, learning_rate, argdicts = {}):
     numOfFailures = 0
     numOfTries = 5
     model.train()
+    model = model.to(device=device)
     # TODO: if indeed enforce FedAvg, we will run fixed number of epochs, instead of iterations
 
     for itr in range(iters):
@@ -375,15 +381,12 @@ def run(rank, model, train_data, test_data, queue, param_q, stop_flag, client_cf
             break
 
     lastGlobalModel = model
+    #lastGlobalWeight = copy.deepcopy(model.state_dict())
+
     criterion = CrossEntropyLossProx().to(device=device) if args.proxy_avg else torch.nn.CrossEntropyLoss().to(device=device)
 
     print('Begin!')
     logging.info('\n' + repr(args) + '\n')
-
-    # logDir = "/tmp/" + args.model + '_' + str(args.this_rank)
-    # if os.path.isdir(logDir):
-    #     shutil.rmtree(logDir)
-    # os.mkdir(logDir)
 
     learning_rate = args.learning_rate
     uploadEpoch = -1
@@ -406,12 +409,19 @@ def run(rank, model, train_data, test_data, queue, param_q, stop_flag, client_cf
             for nextClientId in nextClientIds:
                 if args.forward_pass:
                     forward_dataset = select_dataset(nextClientId, global_trainDB, batch_size=args.test_bsz)
-                    forward_loss = run_forward_pass(model, forward_dataset, criterion=criterion)
+                    forward_loss = run_forward_pass(model, forward_dataset)
 
-                _model_param, _loss, _trained_size, _speed, _time, _isSuccess = run_client(clientId=nextClientId, 
-                        model=pickle.loads(pickle.dumps(lastGlobalModel)), learning_rate=learning_rate, 
-                        criterion=criterion, iters=args.upload_epoch,
-                        argdicts={'iters': epoch})
+                # load model
+                # model_copy = copy.deepcopy(lastGlobalModel)
+                # model_copy.load_state_dict(lastGlobalWeight)
+
+                _model_param, _loss, _trained_size, _speed, _time, _isSuccess = run_client(
+                            clientId=nextClientId, 
+                            model=pickle.loads(pickle.dumps(model)), 
+                            learning_rate=learning_rate, 
+                            iters=args.upload_epoch,
+                            argdicts={'iters': epoch}
+                        )
 
                 if _isSuccess is False:
                     continue
@@ -455,6 +465,7 @@ def run(rank, model, train_data, test_data, queue, param_q, stop_flag, client_cf
             receDur = time.time() - receStart
             # If we simulate multiple workers, we have to do deep copy
             lastGlobalModel = model
+            #lastGlobalWeight = copy.deepcopy(model.state_dict())
 
             evalStart = time.time()
             # test the model if necessary

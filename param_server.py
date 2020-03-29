@@ -151,9 +151,10 @@ def init_myprocesses(rank, size, model, test_data, queue, param_q, stop_signal, 
     
     clientIdsToRun = []
     for wrank in workerRanks:
-        nextClientIdToRun = [clientSampler.nextClientIdToRun(hostId=wrank)]
-        clientSampler.clientOnHost(nextClientIdToRun, wrank)
-        clientIdsToRun.append(nextClientIdToRun)
+        nextClientIdToRun = clientSampler.nextClientIdToRun(hostId=wrank)
+        clientSampler.clientOnHost([nextClientIdToRun], wrank)
+        clientIdsToRun.append([nextClientIdToRun])
+        sampledClientSet.add(nextClientIdToRun)
     
     dist.broadcast(tensor=torch.tensor(clientIdsToRun, dtype=torch.int).to(device=device), src=0)
 
@@ -206,7 +207,7 @@ def init_dataset():
         train_dataset = load_and_cache_examples(args, tokenizer, evaluate=False) 
         test_dataset = load_and_cache_examples(args, tokenizer, evaluate=True)
 
-        model = AlbertForMaskedLM.from_pretrained('/gpfs/gpfs0/groups/chowdhury/fanlai/dataset/nlp/albert-base-v2-config.json')
+        model = AlbertForMaskedLM.from_pretrained('/gpfs/gpfs0/groups/chowdhury/fanlai/dataset/nlp/')
 
     else:
         print('DataSet must be {}!'.format(['Mnist', 'Cifar', 'openImg', 'blog']))
