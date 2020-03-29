@@ -229,21 +229,19 @@ def run(model, test_data, queue, param_q, stop_signal, clientSampler):
     # convert gradient tensor to numpy structure
     if args.load_model:
         try:
-            if deviceId is not None:
-                model.load_state_dict(torch.load(modelPath, map_location=lambda storage, loc: storage.cuda(deviceId)))
-            else:
-                model.load_state_dict(torch.load(modelPath, map_location=lambda storage, loc: storage))
+            with open(modelPath, 'rb') as fin:
+                model = pickle.load(fin)
+                model = model.to(device=device)
+
             logging.info("====Load model successfully\n")
         except Exception as e:
             logging.info("====Error: Failed to load model due to {}\n".format(str(e)))
             pass
 
-    _tmp = OrderedDict(map(lambda item: (item[0], item[1].cpu().numpy()), model.state_dict().items()))
+    for idx, param in enumerate(model.parameters()):
+        dist.broadcast(tensor=(param.data.to(device=device)), src=0)
     
     workers = [int(v) for v in str(args.learners).split('-')]
-
-    for _ in workers:
-        param_q.put(_tmp)
 
     print('Begin!')
 
@@ -464,7 +462,8 @@ def run(model, test_data, queue, param_q, stop_signal, clientSampler):
 
                     # dump the model into file for backup
                     if epoch_count % args.dump_epoch == 0:
-                        torch.save(model.state_dict(), logDir+'/'+str(args.model)+'_'+str(currentMinStep)+'.pth.tar')
+                        with open(logDir+'/'+str(args.model)+'_'+str(currentMinStep)+'.pth.tar', 'wb') as fout:
+                            pickle.dump(model, fout)
 
                         # dump sampler
                         with open(logDir + '/sampler_' + str(currentMinStep), 'wb') as fout:

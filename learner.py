@@ -79,7 +79,7 @@ for i in range(4):
 
 world_size = 0
 global_trainDB = None
-lastGlobalModel = None
+last_model_tensors = []
 nextClientIds = None
 global_data_iter = {}
 global_client_profile = {}
@@ -205,12 +205,12 @@ def collate(examples):
         return pad_sequence(examples, batch_first=True)
     return pad_sequence(examples, batch_first=True, padding_value=tokenizer.pad_token_id)
 
-def run_client(clientId, model, iters, learning_rate, argdicts = {}):
-    global global_trainDB, global_data_iter, lastGlobalModel, tokenizer
+def run_client(clientId, cmodel, iters, learning_rate, argdicts = {}):
+    global global_trainDB, global_data_iter, last_model_tensors, tokenizer
 
     curBatch = -1
 
-    optimizer = MySGD(model.parameters(), lr=learning_rate, momentum=0.9, weight_decay=5e-4)
+    optimizer = MySGD(cmodel.parameters(), lr=learning_rate, momentum=0.9, weight_decay=5e-4)
     criterion = CrossEntropyLossProx().to(device=device) if args.proxy_avg else torch.nn.CrossEntropyLoss().to(device=device)
 
     train_data_itr_list = []
@@ -240,7 +240,7 @@ def run_client(clientId, model, iters, learning_rate, argdicts = {}):
 
     numOfFailures = 0
     numOfTries = 5
-    model.train()
+    cmodel.train()
     # TODO: if indeed enforce FedAvg, we will run fixed number of epochs, instead of iterations
 
     for itr in range(iters):
@@ -303,14 +303,14 @@ def run_client(clientId, model, iters, learning_rate, argdicts = {}):
         comp_start = time.time()
 
         if args.task == 'nlp':
-            outputs = model(data, masked_lm_labels=target) if args.mlm else model(data, labels=target)
+            outputs = cmodel(data, masked_lm_labels=target) if args.mlm else cmodel(data, labels=target)
             loss = outputs[0]
         else:
-            output = model(data)
+            output = cmodel(data)
 
             if args.proxy_avg:
-                loss = criterion(output, target, global_weight=lastGlobalModel.parameters(), 
-                                individual_weight=model.parameters(), mu=0.01)
+                loss = criterion(output, target, global_weight=last_model_tensors, 
+                                individual_weight=cmodel.parameters(), mu=0.01)
             else:
                 loss = criterion(output, target)
 
@@ -321,7 +321,7 @@ def run_client(clientId, model, iters, learning_rate, argdicts = {}):
         epoch_train_loss += (loss.data.item() * len(target))
         count += len(target)
         
-        for idx, param in enumerate(model.parameters()):
+        for idx, param in enumerate(cmodel.parameters()):
             param.data -= delta_w[idx].to(device=device)
             #norm_gradient += delta_w[idx].norm(2).to(device=device)
 
@@ -341,7 +341,7 @@ def run_client(clientId, model, iters, learning_rate, argdicts = {}):
         del train_data_itr_list
         del global_data_iter[clientId]
 
-    model_param = [param.data.cpu().numpy() for param in model.parameters()]
+    model_param = [param.data.cpu().numpy() for param in cmodel.parameters()]
     
     time_spent = time.time() - run_start
 
@@ -365,31 +365,34 @@ def run_client(clientId, model, iters, learning_rate, argdicts = {}):
 def run(rank, model, train_data, test_data, queue, param_q, stop_flag, client_cfg):
     print("====Worker: Start running")
 
-    global nextClientIds, global_trainDB, lastGlobalModel
+    global nextClientIds, global_trainDB, last_model_tensors
+    criterion = CrossEntropyLossProx().to(device=device) if args.proxy_avg else torch.nn.CrossEntropyLoss().to(device=device)
 
     global_trainDB = train_data
     startTime = time.time()
 
     # Fetch the initial parameters from the server side (we called it parameter_server)
-    while True:
-        if not param_q.empty():
-            param_dict = param_q.get()
-            tmp = OrderedDict(map(lambda item: (item[0], torch.from_numpy(item[1])),
-                                  param_dict.items()))
-            model.load_state_dict(tmp)
-            break
-
-    lastGlobalModel = model
-
-    criterion = CrossEntropyLossProx().to(device=device) if args.proxy_avg else torch.nn.CrossEntropyLoss().to(device=device)
+    last_model_tensors = []
+    for idx, param in enumerate(model.parameters()):
+        tmp_tensor = torch.zeros_like(param.data)
+        dist.broadcast(tensor=tmp_tensor, src=0)
+        param.data = tmp_tensor
+        last_model_tensors.append(copy.deepcopy(tmp_tensor))
 
     print('Begin!')
     logging.info('\n' + repr(args) + '\n')
 
     learning_rate = args.learning_rate
-    uploadEpoch = -1
-    testResults = [0, 0, 0, len(test_data)]
+
+    #testResults = [0, 0, 0, len(test_data)]
+
+    # first run a forward pass
+    test_loss, acc, acc_5, testResults = test_model(rank, model, test_data, criterion=criterion, tokenizer=tokenizer)
+    uploadEpoch = 0
+
     last_test = time.time()
+
+    tempModelPath = logDir+'/model_'+str(args.this_rank)+'.pth.tar'
 
     for epoch in range(1, int(args.epochs) + 1):
         try:
@@ -404,14 +407,27 @@ def run(rank, model, train_data, test_data, queue, param_q, stop_flag, client_cf
             ranClients = []
 
             computeStart = time.time()
+
+            # dump a copy of model
+            with open(tempModelPath, 'wb') as fout:
+                pickle.dump(model, fout)
+
             for nextClientId in nextClientIds:
+                # roll back to the global model for simulation
+                with open(tempModelPath, 'rb') as fin:
+                    model = pickle.load(fin)
+                    model = model.to(device=device)
+
                 if args.forward_pass:
                     forward_dataset = select_dataset(nextClientId, global_trainDB, batch_size=args.test_bsz)
                     forward_loss = run_forward_pass(model, forward_dataset)
+                # test_loss, acc, acc_5, testResults = test_model(rank, model, test_data, criterion=criterion, tokenizer=tokenizer)
+                # logging.info("====Pre Model test for client {}, epoch {}, result is {}, {}, {} "
+                #             .format(nextClientId, epoch, test_loss, acc, acc_5))
 
                 _model_param, _loss, _trained_size, _speed, _time, _isSuccess = run_client(
                             clientId=nextClientId, 
-                            model=pickle.loads(pickle.dumps(model)),
+                            cmodel=model, 
                             learning_rate=learning_rate, 
                             iters=args.upload_epoch,
                             argdicts={'iters': epoch}
@@ -441,8 +457,12 @@ def run(rank, model, train_data, test_data, queue, param_q, stop_flag, client_cf
             # wait for new models
             receStart = time.time()
 
+            last_model_tensors = []
             for idx, param in enumerate(model.parameters()):
-                dist.broadcast(tensor=param.data, src=0)
+                tmp_tensor = torch.zeros_like(param.data)
+                dist.broadcast(tensor=tmp_tensor, src=0)
+                param.data = tmp_tensor
+                last_model_tensors.append(copy.deepcopy(tmp_tensor))
 
             # receive current minimum step, and the clientIdLen for next training
             step_tensor = torch.zeros([world_size], dtype=torch.int).to(device=device)
@@ -457,8 +477,6 @@ def run(rank, model, train_data, test_data, queue, param_q, stop_flag, client_cf
             nextClientIds = [clients_tensor[x].item() for x in range(startIdx, endIdx)]
 
             receDur = time.time() - receStart
-            # If we simulate multiple workers, we have to do deep copy
-            lastGlobalModel = model
 
             evalStart = time.time()
             # test the model if necessary
@@ -472,6 +490,7 @@ def run(rank, model, train_data, test_data, queue, param_q, stop_flag, client_cf
                     test_loss, acc, acc_5, testResults = test_model(rank, model, rank_train_data, criterion=criterion, tokenizer=tokenizer)
                 else:
                     test_loss, acc, acc_5, testResults = test_model(rank, model, test_data, criterion=criterion, tokenizer=tokenizer)
+    
                 logging.info("After aggregation epoch {}, CumulTime {}, eval_time {}, test_loss {}, test_accuracy {}, test_5_accuracy {} \n"
                             .format(epoch, round(time.time() - startTime, 4), round(time.time() - evalStart, 4), test_loss, acc, acc_5))
 
