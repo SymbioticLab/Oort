@@ -342,7 +342,7 @@ def run(model, test_data, queue, param_q, stop_signal, clientSampler):
                         received_updates += 1
                         global_virtual_clock = max(global_virtual_clock, last_global_virtual_clock + virtualClock[i])
 
-                logging.info("====Done handling rank {}, with ratio {}".format(rank_src, ratioSample))
+                logging.info("====Done handling rank {}, with ratio {}, now collected {} clients".format(rank_src, ratioSample, received_updates))
 
                 # aggregate the test results
                 updateEpoch = testRes[-1]

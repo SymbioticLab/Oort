@@ -241,7 +241,6 @@ def run_client(clientId, model, iters, learning_rate, argdicts = {}):
     numOfFailures = 0
     numOfTries = 5
     model.train()
-    model = model.to(device=device)
     # TODO: if indeed enforce FedAvg, we will run fixed number of epochs, instead of iterations
 
     for itr in range(iters):
@@ -381,7 +380,6 @@ def run(rank, model, train_data, test_data, queue, param_q, stop_flag, client_cf
             break
 
     lastGlobalModel = model
-    #lastGlobalWeight = copy.deepcopy(model.state_dict())
 
     criterion = CrossEntropyLossProx().to(device=device) if args.proxy_avg else torch.nn.CrossEntropyLoss().to(device=device)
 
@@ -411,13 +409,9 @@ def run(rank, model, train_data, test_data, queue, param_q, stop_flag, client_cf
                     forward_dataset = select_dataset(nextClientId, global_trainDB, batch_size=args.test_bsz)
                     forward_loss = run_forward_pass(model, forward_dataset)
 
-                # load model
-                # model_copy = copy.deepcopy(lastGlobalModel)
-                # model_copy.load_state_dict(lastGlobalWeight)
-
                 _model_param, _loss, _trained_size, _speed, _time, _isSuccess = run_client(
                             clientId=nextClientId, 
-                            model=pickle.loads(pickle.dumps(model)), 
+                            model=pickle.loads(pickle.dumps(model)),
                             learning_rate=learning_rate, 
                             iters=args.upload_epoch,
                             argdicts={'iters': epoch}
@@ -465,7 +459,6 @@ def run(rank, model, train_data, test_data, queue, param_q, stop_flag, client_cf
             receDur = time.time() - receStart
             # If we simulate multiple workers, we have to do deep copy
             lastGlobalModel = model
-            #lastGlobalWeight = copy.deepcopy(model.state_dict())
 
             evalStart = time.time()
             # test the model if necessary
