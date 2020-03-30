@@ -179,24 +179,61 @@ def init_dataset():
 
     return model, train_dataset, test_dataset, client_cfg
 
+# ================== Scorer =================== #
 def run_forward_pass(model, test_data):
     test_loss = 0.
     test_len = 0.
+    totalLoss = None
 
     model.eval()
     criterion = CrossEntropyLossProx().to(device=device) if args.proxy_avg else torch.nn.CrossEntropyLoss().to(device=device)
+   
+    gradientSamples = []
 
     for data, target in test_data:
         data, target = Variable(data).to(device=device), Variable(target).to(device=device)
         output = model(data)
-        test_loss += criterion(output, target).data.item()
+
+        curLoss = criterion(output, target)
+        test_loss += curLoss.data.item()
         test_len += len(target)
-        
+
     # loss function averages over batch size
     test_loss /= float(len(test_data))
 
     return test_loss
 
+def run_backward_pass(model, test_data):
+    test_loss = 0.
+    test_len = 0.
+    totalLoss = None
+    gradient_norm = 0
+
+    model.eval()
+    criterion = CrossEntropyLossProx().to(device=device) if args.proxy_avg else torch.nn.CrossEntropyLoss().to(device=device)
+    optimizer = MySGD(model.parameters(), lr=learning_rate, momentum=0.9, weight_decay=5e-4)
+
+    gradientSamples = []
+
+    for data, target in test_data:
+        data, target = Variable(data).to(device=device), Variable(target).to(device=device)
+        output = model(data)
+
+        curLoss = criterion(output, target)
+        test_loss += curLoss.data.item()
+        test_len += len(target)
+
+        optimizer.zero_grad()
+        curLoss.backward()
+
+        # sum the gradient norm of samples
+        for p in list(filter(lambda p: p.grad is not None, model.parameters())):
+            gradient_norm += p.grad.data.norm(2).item()
+
+    # loss function averages over batch size
+    gradient_norm /= float(len(test_data))
+
+    return gradient_norm
 
 def collate(examples):
     global tokenizer
@@ -384,8 +421,6 @@ def run(rank, model, train_data, test_data, queue, param_q, stop_flag, client_cf
 
     learning_rate = args.learning_rate
 
-    #testResults = [0, 0, 0, len(test_data)]
-
     # first run a forward pass
     test_loss, acc, acc_5, testResults = test_model(rank, model, test_data, criterion=criterion, tokenizer=tokenizer)
     uploadEpoch = 0
@@ -418,12 +453,17 @@ def run(rank, model, train_data, test_data, queue, param_q, stop_flag, client_cf
                     model = pickle.load(fin)
                     model = model.to(device=device)
 
+                score = -1
                 if args.forward_pass:
                     forward_dataset = select_dataset(nextClientId, global_trainDB, batch_size=args.test_bsz)
                     forward_loss = run_forward_pass(model, forward_dataset)
-                # test_loss, acc, acc_5, testResults = test_model(rank, model, test_data, criterion=criterion, tokenizer=tokenizer)
-                # logging.info("====Pre Model test for client {}, epoch {}, result is {}, {}, {} "
-                #             .format(nextClientId, epoch, test_loss, acc, acc_5))
+                    score = forward_loss
+
+                if args.score_mode == 'norm':
+                    # need to get the individual norm of samples
+                    backward_dataset = select_dataset(nextClientId, global_trainDB, batch_size=1)
+                    gradient_norm = run_backward_pass(model, backward_dataset)
+                    score = gradient_norm
 
                 _model_param, _loss, _trained_size, _speed, _time, _isSuccess = run_client(
                             clientId=nextClientId, 
@@ -437,7 +477,7 @@ def run(rank, model, train_data, test_data, queue, param_q, stop_flag, client_cf
                     continue
 
                 trainedModels.append(_model_param)
-                preTrainedLoss.append(_loss if not args.forward_pass else forward_loss)
+                preTrainedLoss.append(_loss if score == -1 else score)
                 trainedSize.append(_trained_size)
                 trainSpeed.append(_speed)
                 virtualClock.append(_time)

@@ -330,9 +330,19 @@ def run(model, test_data, queue, param_q, stop_signal, clientSampler):
 
                     # register the score
                     if args.score_mode == "loss":
-                        clientSampler.registerScore(clientId, iteration_loss[i], time_stamp=epoch_count)
+                        clientSampler.registerScore(clientId, 
+                                                    math.sqrt(iteration_loss[i]) * min(clientSampler.getClient(clientId).size, 
+                                                    args.upload_epoch*args.batch_size), time_stamp=epoch_count
+                                      )
+                    elif args.score_mode == "norm_model":
+                        clientSampler.registerScore(clientId, 
+                                                    math.sqrt(gradients.norm(2).data.item()) * min(clientSampler.getClient(clientId).size, 
+                                                    args.upload_epoch*args.batch_size), time_stamp=epoch_count
+                                      )
                     elif args.score_mode == "norm":
-                        clientSampler.registerScore(clientId, gradients.norm(2).data.item() * ranSamples, time_stamp=epoch_count)
+                        clientSampler.registerScore(clientId, 
+                                                    math.sqrt(iteration_loss[i]) * min(clientSampler.getClient(clientId).size, 
+                                                    args.upload_epoch*args.batch_size), time_stamp=epoch_count)
                     else:
                         clientSampler.registerScore(clientId, (1.0 - clientSampler.getClient(clientId).distance), time_stamp=epoch_count)
 

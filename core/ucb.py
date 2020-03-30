@@ -136,3 +136,4 @@ class UCB(object):
 
         return _max, _min, _range
 
+
