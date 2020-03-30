@@ -34,6 +34,7 @@ from utils.utils_data import get_data_transform
 from utils.utils_model import test_model
 from utils.openImg import *
 from utils.nlp import *
+from utils.inception import *
 
 #device = torch.device(args.to_device)
 
@@ -212,6 +213,9 @@ def init_dataset():
     else:
         print('DataSet must be {}!'.format(['Mnist', 'Cifar', 'openImg', 'blog']))
         sys.exit(-1)
+
+    if args.model == 'inception':
+        model = Inception3(num_classes=args.num_class)
 
     model = model.to(device=device)
 
