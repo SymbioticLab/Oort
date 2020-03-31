@@ -202,10 +202,10 @@ def init_dataset():
         train_dataset = OPENIMG(args.data_dir, train=True, transform=train_transform)
         test_dataset = OPENIMG(args.data_dir, train=False, transform=test_transform)
         
-        if args.model == 'inception_v3':
-            model = tormodels.__dict__[args.model](num_classes=596, aux_logits=False)
-        else:
-            model = tormodels.__dict__[args.model](num_classes=596)
+        # if args.model == 'inception_v3':
+        #     model = tormodels.__dict__[args.model](num_classes=596, aux_logits=False)
+        # else:
+        model = tormodels.__dict__[args.model](num_classes=596)
 
     elif args.data_set == 'blog':
         train_dataset = load_and_cache_examples(args, tokenizer, evaluate=False) 

@@ -153,10 +153,10 @@ def init_dataset():
         train_dataset = OPENIMG(args.data_dir, train=True, transform=train_transform)
         test_dataset = OPENIMG(args.data_dir, train=False, transform=test_transform)
 
-        if args.model == 'inception_v3':
-            model = tormodels.__dict__[args.model](num_classes=596, aux_logits=False)
-        else:
-            model = tormodels.__dict__[args.model](num_classes=596)
+        # if args.model == 'inception_v3':
+        #     model = tormodels.__dict__[args.model](num_classes=596, aux_logits=False)
+        # else:
+        model = tormodels.__dict__[args.model](num_classes=596)
 
     elif args.data_set == 'blog':
         train_dataset = load_and_cache_examples(args, tokenizer, evaluate=False) 
@@ -196,10 +196,18 @@ def run_forward_pass(model, test_data):
 
     for data, target in test_data:
         data, target = Variable(data).to(device=device), Variable(target).to(device=device)
-        output = model(data)
+ 
+        if args.model != 'inception_v3':
+            output = model(data)
+            loss = criterion(output, target)
+        else:
+            output, aux_outputs = model(data)
+            loss1 = criterion(output, target)
+            loss2 = criterion(aux_outputs, target)
+            loss = loss1 + 0.4*loss2
 
-        curLoss = criterion(output, target)
-        test_loss += curLoss.data.item()
+        #loss = criterion(output, target)
+        test_loss += loss.data.item()
         test_len += len(target)
 
     # loss function averages over batch size
@@ -221,14 +229,22 @@ def run_backward_pass(model, test_data):
 
     for data, target in test_data:
         data, target = Variable(data).to(device=device), Variable(target).to(device=device)
-        output = model(data)
+        #output = model(data)
 
-        curLoss = criterion(output, target)
-        test_loss += curLoss.data.item()
+        if args.model != 'inception_v3':
+            output = model(data)
+            loss = criterion(output, target)
+        else:
+            output, aux_outputs = model(data)
+            loss1 = criterion(output, target)
+            loss2 = criterion(aux_outputs, target)
+            loss = loss1 + 0.4*loss2
+
+        test_loss += loss.data.item()
         test_len += len(target)
 
         optimizer.zero_grad()
-        curLoss.backward()
+        loss.backward()
 
         # sum the gradient norm of samples
         for p in list(filter(lambda p: p.grad is not None, model.parameters())):
@@ -352,14 +368,19 @@ def run_client(clientId, cmodel, iters, learning_rate, argdicts = {}):
             outputs = cmodel(data, masked_lm_labels=target) if args.mlm else cmodel(data, labels=target)
             loss = outputs[0]
         else:
-            output = cmodel(data)
-
-            if args.proxy_avg:
-                loss = criterion(output, target, global_weight=last_model_tensors, 
-                                individual_weight=cmodel.parameters(), mu=0.01)
-            else:
+            if args.model != 'inception_v3':
+                output = cmodel(data)
                 loss = criterion(output, target)
-
+            else:
+                output, aux_outputs = cmodel(data)
+                loss1 = criterion(output, target)
+                loss2 = criterion(aux_outputs, target)
+                loss = loss1 + 0.4*loss2
+            # if args.proxy_avg:
+            #     loss = criterion(output, target, global_weight=last_model_tensors, 
+            #                     individual_weight=cmodel.parameters(), mu=0.01)
+            #else:
+                
         loss.backward()
         delta_w = optimizer.get_delta_w(learning_rate)
 

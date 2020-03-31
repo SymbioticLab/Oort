@@ -101,8 +101,16 @@ def test_model(rank, model, test_data, criterion=nn.NLLLoss(), tokenizer=None):
         if args.task != 'nlp':
             data, target = Variable(data).cuda(), Variable(target).cuda()
 
-            output = model(data)
-            test_loss += criterion(output, target).data.item()  # Variable.data
+            if args.model != 'inception_v3':
+                output = model(data)
+                loss = criterion(output, target)
+            else:
+                output, aux_outputs = model(data)
+                loss1 = criterion(output, target)
+                loss2 = criterion(aux_outputs, target)
+                loss = loss1 + 0.4*loss2
+
+            test_loss += loss.data.item()  # Variable.data
             acc = accuracy(output, target, topk=(1, 5))
 
             correct += acc[0].item()
@@ -163,4 +171,3 @@ class RandomParams(object):
         part_len = int(math.floor(self.ratio * len(params_indices)))
         result = indexes[0: part_len]
         return [params_indices[i] for i in result]
-
