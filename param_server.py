@@ -201,8 +201,11 @@ def init_dataset():
         train_transform, test_transform = get_data_transform('openImg')
         train_dataset = OPENIMG(args.data_dir, train=True, transform=train_transform)
         test_dataset = OPENIMG(args.data_dir, train=False, transform=test_transform)
-
-        model = tormodels.__dict__[args.model](num_classes=596)
+        
+        if args.model == 'inception_v3':
+            model = tormodels.__dict__[args.model](num_classes=596, aux_logits=False)
+        else:
+            model = tormodels.__dict__[args.model](num_classes=596)
 
     elif args.data_set == 'blog':
         train_dataset = load_and_cache_examples(args, tokenizer, evaluate=False) 
@@ -213,9 +216,6 @@ def init_dataset():
     else:
         print('DataSet must be {}!'.format(['Mnist', 'Cifar', 'openImg', 'blog']))
         sys.exit(-1)
-
-    if args.model == 'inception':
-        model = Inception3(num_classes=args.num_class)
 
     model = model.to(device=device)
 

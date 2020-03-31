@@ -3,7 +3,7 @@ import warnings
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from torch.jit.annotations import Optional
+#from torch.jit.annotations import Optional
 from torch import Tensor
 
 
@@ -16,7 +16,7 @@ model_urls = {
 }
 
 InceptionOutputs = namedtuple('InceptionOutputs', ['logits', 'aux_logits'])
-InceptionOutputs.__annotations__ = {'logits': torch.Tensor, 'aux_logits': Optional[torch.Tensor]}
+#InceptionOutputs.__annotations__ = {'logits': torch.Tensor, 'aux_logits': Optional[torch.Tensor]}
 
 # Script annotations failed with _GoogleNetOutputs = namedtuple ...
 # _InceptionOutputs set here for backwards compat
@@ -69,7 +69,7 @@ class Inception3(nn.Module):
         self.transform_input = transform_input
         self.Conv2d_1a_3x3 = conv_block(3, 32, kernel_size=kernel_size, stride=2)
         self.Conv2d_2a_3x3 = conv_block(32, 32, kernel_size=kernel_size)
-        self.Conv2d_2b_3x3 = conv_block(32, 64, kernel_size=kernel_size, padding=1)
+        self.Conv2d_2b_3x3 = conv_block(32, 64, kernel_size=kernel_size)
         self.Conv2d_3b_1x1 = conv_block(64, 80, kernel_size=kernel_size)
         self.Conv2d_4a_3x3 = conv_block(80, 192, kernel_size=kernel_size)
         self.Mixed_5b = inception_a(192, pool_features=32)
@@ -163,7 +163,7 @@ class Inception3(nn.Module):
         # N x 1000 (num_classes)
         return x, aux
 
-    @torch.jit.unused
+    #@torch.jit.unused
     def eager_outputs(self, x, aux):
         # type: (Tensor, Optional[Tensor]) -> InceptionOutputs
         if self.training and self.aux_logits:
@@ -175,12 +175,12 @@ class Inception3(nn.Module):
         x = self._transform_input(x)
         x, aux = self._forward(x)
         aux_defined = self.training and self.aux_logits
-        if torch.jit.is_scripting():
-            if not aux_defined:
-                warnings.warn("Scripted Inception3 always returns Inception3 Tuple")
-            return InceptionOutputs(x, aux)
-        else:
-            return self.eager_outputs(x, aux)
+        # if torch.jit.is_scripting():
+        #     if not aux_defined:
+        #         warnings.warn("Scripted Inception3 always returns Inception3 Tuple")
+        #     return InceptionOutputs(x, aux)
+        # else:
+        return x #self.eager_outputs(x, aux)
 
 
 class InceptionA(nn.Module):
@@ -192,11 +192,11 @@ class InceptionA(nn.Module):
         self.branch1x1 = conv_block(in_channels, 64, kernel_size=kernel_size)
 
         self.branch5x5_1 = conv_block(in_channels, 48, kernel_size=kernel_size)
-        self.branch5x5_2 = conv_block(48, 64, kernel_size=kernel_size, padding=2)
+        self.branch5x5_2 = conv_block(48, 64, kernel_size=kernel_size)
 
         self.branch3x3dbl_1 = conv_block(in_channels, 64, kernel_size=kernel_size)
-        self.branch3x3dbl_2 = conv_block(64, 96, kernel_size=kernel_size, padding=1)
-        self.branch3x3dbl_3 = conv_block(96, 96, kernel_size=kernel_size, padding=1)
+        self.branch3x3dbl_2 = conv_block(64, 96, kernel_size=kernel_size)
+        self.branch3x3dbl_3 = conv_block(96, 96, kernel_size=kernel_size)
 
         self.branch_pool = conv_block(in_channels, pool_features, kernel_size=kernel_size)
 
@@ -210,7 +210,7 @@ class InceptionA(nn.Module):
         branch3x3dbl = self.branch3x3dbl_2(branch3x3dbl)
         branch3x3dbl = self.branch3x3dbl_3(branch3x3dbl)
 
-        branch_pool = F.avg_pool2d(x, kernel_size=kernel_size, stride=1, padding=1)
+        branch_pool = F.avg_pool2d(x, kernel_size=kernel_size, stride=1)
         branch_pool = self.branch_pool(branch_pool)
 
         outputs = [branch1x1, branch5x5, branch3x3dbl, branch_pool]
@@ -230,7 +230,7 @@ class InceptionB(nn.Module):
         self.branch3x3 = conv_block(in_channels, 384, kernel_size=kernel_size, stride=2)
 
         self.branch3x3dbl_1 = conv_block(in_channels, 64, kernel_size=kernel_size)
-        self.branch3x3dbl_2 = conv_block(64, 96, kernel_size=kernel_size, padding=1)
+        self.branch3x3dbl_2 = conv_block(64, 96, kernel_size=kernel_size)
         self.branch3x3dbl_3 = conv_block(96, 96, kernel_size=kernel_size, stride=2)
 
     def _forward(self, x):
@@ -260,14 +260,14 @@ class InceptionC(nn.Module):
 
         c7 = channels_7x7
         self.branch7x7_1 = conv_block(in_channels, c7, kernel_size=kernel_size)
-        self.branch7x7_2 = conv_block(c7, c7, kernel_size=(kernel_size, kernel_size), padding=(0, 3))
-        self.branch7x7_3 = conv_block(c7, 192, kernel_size=(kernel_size, kernel_size), padding=(3, 0))
+        self.branch7x7_2 = conv_block(c7, c7, kernel_size=(kernel_size, kernel_size))
+        self.branch7x7_3 = conv_block(c7, 192, kernel_size=(kernel_size, kernel_size))
 
         self.branch7x7dbl_1 = conv_block(in_channels, c7, kernel_size=kernel_size)
-        self.branch7x7dbl_2 = conv_block(c7, c7, kernel_size=(kernel_size, kernel_size), padding=(3, 0))
-        self.branch7x7dbl_3 = conv_block(c7, c7, kernel_size=(kernel_size, kernel_size), padding=(0, 3))
-        self.branch7x7dbl_4 = conv_block(c7, c7, kernel_size=(kernel_size, kernel_size), padding=(3, 0))
-        self.branch7x7dbl_5 = conv_block(c7, 192, kernel_size=(kernel_size, kernel_size), padding=(0, 3))
+        self.branch7x7dbl_2 = conv_block(c7, c7, kernel_size=(kernel_size, kernel_size))
+        self.branch7x7dbl_3 = conv_block(c7, c7, kernel_size=(kernel_size, kernel_size))
+        self.branch7x7dbl_4 = conv_block(c7, c7, kernel_size=(kernel_size, kernel_size))
+        self.branch7x7dbl_5 = conv_block(c7, 192, kernel_size=(kernel_size, kernel_size))
 
         self.branch_pool = conv_block(in_channels, 192, kernel_size=kernel_size)
 
@@ -284,7 +284,7 @@ class InceptionC(nn.Module):
         branch7x7dbl = self.branch7x7dbl_4(branch7x7dbl)
         branch7x7dbl = self.branch7x7dbl_5(branch7x7dbl)
 
-        branch_pool = F.avg_pool2d(x, kernel_size=kernel_size, stride=1, padding=1)
+        branch_pool = F.avg_pool2d(x, kernel_size=kernel_size, stride=1)
         branch_pool = self.branch_pool(branch_pool)
 
         outputs = [branch1x1, branch7x7, branch7x7dbl, branch_pool]
@@ -305,8 +305,8 @@ class InceptionD(nn.Module):
         self.branch3x3_2 = conv_block(192, 320, kernel_size=kernel_size, stride=2)
 
         self.branch7x7x3_1 = conv_block(in_channels, 192, kernel_size=1)
-        self.branch7x7x3_2 = conv_block(192, 192, kernel_size=(kernel_size, kernel_size), padding=(0, 3))
-        self.branch7x7x3_3 = conv_block(192, 192, kernel_size=(kernel_size, kernel_size), padding=(3, 0))
+        self.branch7x7x3_2 = conv_block(192, 192, kernel_size=(kernel_size, kernel_size))
+        self.branch7x7x3_3 = conv_block(192, 192, kernel_size=(kernel_size, kernel_size))
         self.branch7x7x3_4 = conv_block(192, 192, kernel_size=kernel_size, stride=2)
 
     def _forward(self, x):
@@ -336,13 +336,13 @@ class InceptionE(nn.Module):
         self.branch1x1 = conv_block(in_channels, 320, kernel_size=kernel_size)
 
         self.branch3x3_1 = conv_block(in_channels, 384, kernel_size=kernel_size)
-        self.branch3x3_2a = conv_block(384, 384, kernel_size=(kernel_size, kernel_size), padding=(0, 1))
-        self.branch3x3_2b = conv_block(384, 384, kernel_size=(kernel_size, kernel_size), padding=(1, 0))
+        self.branch3x3_2a = conv_block(384, 384, kernel_size=(kernel_size, kernel_size))
+        self.branch3x3_2b = conv_block(384, 384, kernel_size=(kernel_size, kernel_size))
 
         self.branch3x3dbl_1 = conv_block(in_channels, 448, kernel_size=kernel_size)
-        self.branch3x3dbl_2 = conv_block(448, 384, kernel_size=kernel_size, padding=1)
-        self.branch3x3dbl_3a = conv_block(384, 384, kernel_size=(kernel_size, kernel_size), padding=(0, 1))
-        self.branch3x3dbl_3b = conv_block(384, 384, kernel_size=(kernel_size, kernel_size), padding=(1, 0))
+        self.branch3x3dbl_2 = conv_block(448, 384, kernel_size=kernel_size)
+        self.branch3x3dbl_3a = conv_block(384, 384, kernel_size=(kernel_size, kernel_size))
+        self.branch3x3dbl_3b = conv_block(384, 384, kernel_size=(kernel_size, kernel_size))
 
         self.branch_pool = conv_block(in_channels, 192, kernel_size=kernel_size)
 
@@ -364,7 +364,7 @@ class InceptionE(nn.Module):
         ]
         branch3x3dbl = torch.cat(branch3x3dbl, 1)
 
-        branch_pool = F.avg_pool2d(x, kernel_size=kernel_size, stride=1, padding=1)
+        branch_pool = F.avg_pool2d(x, kernel_size=kernel_size, stride=1)
         branch_pool = self.branch_pool(branch_pool)
 
         outputs = [branch1x1, branch3x3, branch3x3dbl, branch_pool]
