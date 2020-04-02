@@ -189,8 +189,12 @@ def run_forward_pass(model, test_data):
     test_len = 0.
     totalLoss = None
 
+    # we want avg{Loss^2}
+
     model.eval()
-    criterion = CrossEntropyLossProx().to(device=device) if args.proxy_avg else torch.nn.CrossEntropyLoss().to(device=device)
+    #criterion = CrossEntropyLossProx().to(device=device) if args.proxy_avg else torch.nn.CrossEntropyLoss().to(device=device)
+
+    criterion = CrossEntropyLossProx(reduction='none').to(device=device) if args.proxy_avg else torch.nn.CrossEntropyLoss(reduction='none').to(device=device)
    
     gradientSamples = []
 
@@ -198,15 +202,20 @@ def run_forward_pass(model, test_data):
         data, target = Variable(data).to(device=device), Variable(target).to(device=device)
  
         output = model(data)
+
         loss = criterion(output, target)
-        
-        test_loss += loss.data.item()
+
+        for l in loss.tolist():
+            test_loss += l**2
+        # loss = criterion(output, target)
+        # test_loss += loss.data.item()
+
         test_len += len(target)
 
     # loss function averages over batch size
-    test_loss /= float(len(test_data))
+    #test_loss /= float(len(test_data))
 
-    return test_loss
+    return (test_loss/float(test_len))
 
 def run_backward_pass(model, test_data):
     test_loss = 0.
@@ -248,12 +257,12 @@ def run_backward_pass(model, test_data):
 
     return gradient_norm
 
-def collate(examples):
+def collate(examples: List[torch.Tensor]):
     global tokenizer
 
     if tokenizer._pad_token is None:
-        return pad_sequence(examples, batch_first=True)
-    return pad_sequence(examples, batch_first=True, padding_value=tokenizer.pad_token_id)
+        return (pad_sequence(examples, batch_first=True), None)
+    return (pad_sequence(examples, batch_first=True, padding_value=tokenizer.pad_token_id), None)
 
 def run_client(clientId, cmodel, iters, learning_rate, argdicts = {}):
     global global_trainDB, global_data_iter, last_model_tensors, tokenizer
@@ -269,7 +278,7 @@ def run_client(clientId, cmodel, iters, learning_rate, argdicts = {}):
         client_train_data = select_dataset(
                                 clientId, global_trainDB, 
                                 batch_size=args.batch_size, 
-                                collate_fn=collate if args.task=='nlp' else None
+                                collate_fn=collate if args.task =='nlp' else None
                             )
 
         train_data_itr = iter(client_train_data)
@@ -306,6 +315,7 @@ def run_client(clientId, cmodel, iters, learning_rate, argdicts = {}):
                         data, target = mask_tokens(data, tokenizer, args) if args.mlm else (data, data)
                     else:
                         (data, target) = next(train_data_itr_list[0])
+
                     fetchSuccess = True
                 except Exception:
                     try:
@@ -321,7 +331,7 @@ def run_client(clientId, cmodel, iters, learning_rate, argdicts = {}):
                         tempData = select_dataset(
                             clientId, global_trainDB, 
                             batch_size=args.batch_size, 
-                            collate_fn=collate if args.task=='nlp' else None
+                            collate_fn=collate if args.task =='nlp' else None
                         )
                         train_data_itr_list.append(iter(tempData))
 
@@ -332,6 +342,7 @@ def run_client(clientId, cmodel, iters, learning_rate, argdicts = {}):
                         (data, target) = next(train_data_itr_list[0])
 
                     fetchSuccess = True
+
             except Exception as e:
                 numOfFailures += 1
                 exc_type, exc_obj, exc_tb = sys.exc_info()
@@ -343,7 +354,7 @@ def run_client(clientId, cmodel, iters, learning_rate, argdicts = {}):
             break
 
         # avoid errors in BN
-        if len(target) <= 5:
+        if len(target) <= 1:
             itr -= 1
             continue
 
@@ -373,7 +384,7 @@ def run_client(clientId, cmodel, iters, learning_rate, argdicts = {}):
             #     loss = criterion(output, target, global_weight=last_model_tensors, 
             #                     individual_weight=cmodel.parameters(), mu=0.01)
             #else:
-                
+
         loss.backward()
         delta_w = optimizer.get_delta_w(learning_rate)
 
@@ -456,7 +467,7 @@ def run(rank, model, train_data, test_data, queue, param_q, stop_flag, client_cf
         try:
             if epoch % args.decay_epoch == 0:
                 learning_rate = max(1e-4, learning_rate * args.decay_factor)
-
+                
             trainedModels = []
             preTrainedLoss = []
             trainedSize = []

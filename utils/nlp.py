@@ -98,7 +98,7 @@ class TextDataset(Dataset):
             directory, args.model_type + "_cached_lm_" + str(block_size) + "_" + filename
         )
 
-        if False:#os.path.exists(cached_features_file) and not args.overwrite_cache:
+        if os.path.exists(cached_features_file) and not args.overwrite_cache:
             logger.info("Loading features from cached file %s", cached_features_file)
             with open(cached_features_file, "rb") as handle:
                 self.examples = pickle.load(handle)
@@ -150,7 +150,7 @@ class LineByLineTextDataset(Dataset):
         return len(self.examples)
 
     def __getitem__(self, i):
-        return torch.tensor(self.examples[i], dtype=torch.long), None
+        return torch.tensor(self.examples[i], dtype=torch.long)
 
 def load_and_cache_examples(args, tokenizer, evaluate=False):
     file_path = args.eval_data_file if evaluate else args.train_data_file

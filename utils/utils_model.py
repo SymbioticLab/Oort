@@ -10,6 +10,7 @@ from torch.autograd import Variable
 import numpy as np
 import logging
 from core.argParser import args
+from utils.nlp import mask_tokens
 
 class MySGD(optim.SGD):
 
@@ -165,3 +166,4 @@ class RandomParams(object):
         part_len = int(math.floor(self.ratio * len(params_indices)))
         result = indexes[0: part_len]
         return [params_indices[i] for i in result]
+
