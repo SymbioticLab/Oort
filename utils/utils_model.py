@@ -71,7 +71,8 @@ class MySGD(optim.SGD):
                 if momentum != 0:
                     param_state = self.state[p]
                     if 'momentum_buffer' not in param_state:
-                        buf = param_state['momentum_buffer'] = d_p.clone().detach()
+                        buf = param_state['momentum_buffer'] = torch.zeros_like(p.data)
+                        buf.mul_(momentum).add_(d_p)
                     else:
                         buf = param_state['momentum_buffer']
                         buf.mul_(momentum).add_(1 - dampening, d_p)
@@ -86,7 +87,6 @@ class MySGD(optim.SGD):
                     delta_ws.append(nestedLr * d_p)
 
         return delta_ws
-
 
 def test_model(rank, model, test_data, criterion=nn.NLLLoss(), tokenizer=None):
     test_loss = 0
@@ -166,4 +166,3 @@ class RandomParams(object):
         part_len = int(math.floor(self.ratio * len(params_indices)))
         result = indexes[0: part_len]
         return [params_indices[i] for i in result]
-

@@ -31,6 +31,7 @@ parser.add_argument('--forward_pass', type=bool, default=False)
 parser.add_argument('--run_all', type=bool, default=False)
 parser.add_argument('--sampler_path', type=str, default=None)
 parser.add_argument('--model_path', type=str, default=None)
+parser.add_argument('--conf_path', type=str, default='~/dataset/')
 
 # The configuration of different hyper-parameters for training
 parser.add_argument('--epochs', type=int, default=2000)

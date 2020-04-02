@@ -211,7 +211,7 @@ def init_dataset():
         train_dataset = load_and_cache_examples(args, tokenizer, evaluate=False) 
         test_dataset = load_and_cache_examples(args, tokenizer, evaluate=True)
 
-        model = AlbertForMaskedLM.from_pretrained('/gpfs/gpfs0/groups/chowdhury/fanlai/dataset/nlp/')
+        model = AlbertForMaskedLM.from_pretrained(args.conf_path)
 
     else:
         print('DataSet must be {}!'.format(['Mnist', 'Cifar', 'openImg', 'blog']))
@@ -531,7 +531,7 @@ if __name__ == "__main__":
     model, train_dataset, test_dataset = init_dataset()
 
     logging.info("====Len of train_dataset: {}, Len of test_dataset: {}".format(len(train_dataset), len(test_dataset)))
-    
+
     test_data = DataLoader(test_dataset, batch_size=args.test_bsz, shuffle=True)
 
     print("====PS: finish loading test_data")

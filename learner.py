@@ -163,7 +163,7 @@ def init_dataset():
         test_dataset = load_and_cache_examples(args, tokenizer, evaluate=True)
 
         # TODO: load a model and train it from scratch
-        model = AlbertForMaskedLM.from_pretrained('/gpfs/gpfs0/groups/chowdhury/fanlai/dataset/nlp/')
+        model = AlbertForMaskedLM.from_pretrained(args.conf_path)
 
     else:
         print('DataSet must be {}!'.format(['Mnist', 'Cifar']))
@@ -269,7 +269,20 @@ def run_client(clientId, cmodel, iters, learning_rate, argdicts = {}):
 
     curBatch = -1
 
-    optimizer = MySGD(cmodel.parameters(), lr=learning_rate, momentum=0.9, weight_decay=5e-4)
+    if args.task != 'nlp':
+        optimizer = MySGD(cmodel.parameters(), lr=learning_rate, momentum=0.9, weight_decay=5e-4)
+    else:
+        # Prepare optimizer and schedule (linear warmup and decay)
+        no_decay = ["bias", "LayerNorm.weight"]
+        optimizer_grouped_parameters = [
+            {
+                "params": [p for n, p in cmodel.named_parameters() if not any(nd in n for nd in no_decay)],
+                "weight_decay": 5e-4,
+            },
+            {"params": [p for n, p in cmodel.named_parameters() if any(nd in n for nd in no_decay)], "weight_decay": 0.0},
+        ]
+        optimizer = AdamW(optimizer_grouped_parameters, lr=learning_rate, eps=args.adam_epsilon)
+
     criterion = CrossEntropyLossProx().to(device=device) if args.proxy_avg else torch.nn.CrossEntropyLoss().to(device=device)
 
     train_data_itr_list = []
@@ -386,15 +399,17 @@ def run_client(clientId, cmodel, iters, learning_rate, argdicts = {}):
             #else:
 
         loss.backward()
-        delta_w = optimizer.get_delta_w(learning_rate)
 
         #if itr < total_batch_size:
         epoch_train_loss += (loss.data.item() * len(target))
         count += len(target)
-        
-        for idx, param in enumerate(cmodel.parameters()):
-            param.data -= delta_w[idx].to(device=device)
-            #norm_gradient += delta_w[idx].norm(2).to(device=device)
+
+        if args.task != 'nlp':
+            delta_w = optimizer.get_delta_w(learning_rate)
+            for idx, param in enumerate(cmodel.parameters()):
+                param.data -= delta_w[idx].to(device=device)
+        else:
+            optimizer.step()
 
         comp_duration = (time.time() - comp_start)
     
@@ -455,9 +470,10 @@ def run(rank, model, train_data, test_data, queue, param_q, stop_flag, client_cf
 
     learning_rate = args.learning_rate
 
+    testResults = [0, 0, 0, 0]
     # first run a forward pass
-    test_loss, acc, acc_5, testResults = test_model(rank, model, test_data, criterion=criterion, tokenizer=tokenizer)
-    uploadEpoch = 0
+    # test_loss, acc, acc_5, testResults = test_model(rank, model, test_data, criterion=criterion, tokenizer=tokenizer)
+    uploadEpoch = -1
 
     last_test = time.time()
 
@@ -467,7 +483,7 @@ def run(rank, model, train_data, test_data, queue, param_q, stop_flag, client_cf
         try:
             if epoch % args.decay_epoch == 0:
                 learning_rate = max(1e-4, learning_rate * args.decay_factor)
-                
+
             trainedModels = []
             preTrainedLoss = []
             trainedSize = []
@@ -487,12 +503,6 @@ def run(rank, model, train_data, test_data, queue, param_q, stop_flag, client_cf
                     model = pickle.load(fin)
                     model = model.to(device=device)
 
-                score = -1
-                if args.forward_pass:
-                    forward_dataset = select_dataset(nextClientId, global_trainDB, batch_size=args.test_bsz)
-                    forward_loss = run_forward_pass(model, forward_dataset)
-                    score = forward_loss
-
                 if args.score_mode == 'norm':
                     # need to get the individual norm of samples
                     backward_dataset = select_dataset(nextClientId, global_trainDB, batch_size=1)
@@ -509,6 +519,12 @@ def run(rank, model, train_data, test_data, queue, param_q, stop_flag, client_cf
 
                 if _isSuccess is False:
                     continue
+
+                score = -1
+                if args.forward_pass:
+                    forward_dataset = select_dataset(nextClientId, global_trainDB, batch_size=args.test_bsz)
+                    forward_loss = run_forward_pass(model, forward_dataset)
+                    score = forward_loss
 
                 trainedModels.append(_model_param)
                 preTrainedLoss.append(_loss if score == -1 else score)
