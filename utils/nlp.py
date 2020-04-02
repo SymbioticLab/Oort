@@ -88,15 +88,21 @@ MODEL_CLASSES = {
 
 
 class TextDataset(Dataset):
-    def __init__(self, tokenizer: PreTrainedTokenizer, args, file_path: str, block_size=512):
-        assert os.path.isfile(file_path)
+    def __init__(self, tokenizer: PreTrainedTokenizer, args, file_path: str, block_size=512, is_folder=False):
 
         block_size = block_size - (tokenizer.max_len - tokenizer.max_len_single_sentence)
 
-        directory, filename = os.path.split(file_path)
-        cached_features_file = os.path.join(
-            directory, args.model_type + "_cached_lm_" + str(block_size) + "_" + filename
-        )
+        if is_folder == False:
+            assert os.path.isfile(file_path)
+            directory, filename = os.path.split(file_path)
+            cached_features_file = os.path.join(
+                    directory, args.model_type + "_cached_lm_" + str(block_size) + "_" + filename
+                )   
+        else:
+            directory = file_path
+            cached_features_file = os.path.join(
+                    directory, args.model_type + "_cached_lm_" + str(block_size)
+                )
 
         if os.path.exists(cached_features_file) and not args.overwrite_cache:
             logger.info("Loading features from cached file %s", cached_features_file)
@@ -106,13 +112,22 @@ class TextDataset(Dataset):
             logger.info("Creating features from dataset file at %s", directory)
 
             self.examples = []
-            with open(file_path, encoding="utf-8") as f:
-                text = f.read()
+            self.slice_index = []
 
-            tokenized_text = tokenizer.convert_tokens_to_ids(tokenizer.tokenize(text))
+            files = [file_path] if is_folder == False else [entry.name for entry in os.scandir(file_path)]
 
-            for i in range(0, len(tokenized_text) - block_size + 1, block_size):  # Truncate in block of block_size
-                self.examples.append(tokenizer.build_inputs_with_special_tokens(tokenized_text[i : i + block_size]))
+            for file in files:
+                with open(file_path, encoding="utf-8") as f:
+                    text = f.read()
+
+                tokenized_text = tokenizer.convert_tokens_to_ids(tokenizer.tokenize(text))
+
+                individual_size = 0
+                for i in range(0, len(tokenized_text) - block_size + 1, block_size):  # Truncate in block of block_size
+                    self.examples.append(tokenizer.build_inputs_with_special_tokens(tokenized_text[i : i + block_size]))
+                    individual_size += 1
+
+                self.slice_index.append(individual_size)
             # Note that we are loosing the last truncated example here for the sake of simplicity (no padding)
             # If your dataset is small, first you should loook for a bigger one :-) and second you
             # can change this behavior by adding (model specific) padding.
@@ -123,7 +138,7 @@ class TextDataset(Dataset):
 
         self.data = self.examples
         self.targets = [0 for i in range(len(self.data))]
-
+        
     def __len__(self):
         return len(self.examples)
 
@@ -826,4 +841,3 @@ def main():
             results.update(result)
 
     return results
-

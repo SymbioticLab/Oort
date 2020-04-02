@@ -194,25 +194,26 @@ class DataPartitioner(object):
 
         self.get_JSD(overallNumSamples/float(totalNumOfSamples), self.classPerWorker, [0] * numOfClients)
 
-    def partitionTraceNLP(self, dataToClient):
+    def partitionTraceNLP(self):
         clientToData = {}
         clientNumSamples = {}
-        numOfLabels = self.numOfLabels
+        numOfLabels = 1
+        base = 0
 
         # data share the same index with labels
-        for index, sample in enumerate(self.data.data):
-            sample = sample.split('__')[0]
-            clientId = dataToClient[sample]
-            labelId = self.labels[index]
+        for index, sample in enumerate(self.data.slice_index):
+            clientId = index
+            labelId = 0
 
             if clientId not in clientToData:
-                clientToData[clientId] = []
+                clientToData[clientId] = [base+i for i in range(sample)]
                 clientNumSamples[clientId] = [0] * numOfLabels
+                base += sample
 
-            clientToData[clientId].append(index)
-            clientNumSamples[clientId][labelId] += 1
+            clientToData[clientId] = []
+            clientNumSamples[clientId][labelId] += sample
 
-        numOfClients = len(clientToData.keys())
+        numOfClients = len(self.data.slice_index)
         self.classPerWorker = np.zeros([numOfClients, numOfLabels])
 
         for clientId in range(numOfClients):
@@ -227,17 +228,17 @@ class DataPartitioner(object):
 
     def partitionDataByDefault(self, sizes, sequential, ratioOfClassWorker, filter_class, _args):
         if self.is_trace and not self.args.enforce_random:
-            # read the serialized sampleToClient file
-            dataToClient = OrderedDict()
-
-            with open(self.dataMapFile, 'rb') as db:
-                dataToClient = pickle.load(db)
-
             # use the real trace, thus no need to partition
             if self.task != 'nlp':
+                # read the serialized sampleToClient file
+                dataToClient = OrderedDict()
+
+                with open(self.dataMapFile, 'rb') as db:
+                    dataToClient = pickle.load(db)
+
                 self.partitionTraceCV(dataToClient=dataToClient)
             else:
-                self.partitionTraceNLP(dataToClient=dataToClient)
+                self.partitionTraceNLP()
         else:
             self.partitionData(sizes=sizes, sequential=sequential, ratioOfClassWorker=ratioOfClassWorker, filter_class=filter_class, args=_args)
 
