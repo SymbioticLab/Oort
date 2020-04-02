@@ -197,16 +197,9 @@ def run_forward_pass(model, test_data):
     for data, target in test_data:
         data, target = Variable(data).to(device=device), Variable(target).to(device=device)
  
-        if args.model != 'inception_v3':
-            output = model(data)
-            loss = criterion(output, target)
-        else:
-            output, aux_outputs = model(data)
-            loss1 = criterion(output, target)
-            loss2 = criterion(aux_outputs, target)
-            loss = loss1 + 0.4*loss2
-
-        #loss = criterion(output, target)
+        output = model(data)
+        loss = criterion(output, target)
+        
         test_loss += loss.data.item()
         test_len += len(target)
 
@@ -221,7 +214,7 @@ def run_backward_pass(model, test_data):
     totalLoss = None
     gradient_norm = 0
 
-    model.eval()
+    #model.eval()
     criterion = CrossEntropyLossProx().to(device=device) if args.proxy_avg else torch.nn.CrossEntropyLoss().to(device=device)
     optimizer = MySGD(model.parameters(), lr=learning_rate, momentum=0.9, weight_decay=5e-4)
 

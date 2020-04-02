@@ -98,7 +98,7 @@ class TextDataset(Dataset):
             directory, args.model_type + "_cached_lm_" + str(block_size) + "_" + filename
         )
 
-        if os.path.exists(cached_features_file) and not args.overwrite_cache:
+        if False:#os.path.exists(cached_features_file) and not args.overwrite_cache:
             logger.info("Loading features from cached file %s", cached_features_file)
             with open(cached_features_file, "rb") as handle:
                 self.examples = pickle.load(handle)
@@ -155,8 +155,10 @@ class LineByLineTextDataset(Dataset):
 def load_and_cache_examples(args, tokenizer, evaluate=False):
     file_path = args.eval_data_file if evaluate else args.train_data_file
     if args.line_by_line:
+        logging.info("=====Start to initiate LineByLineTextDataset")
         return LineByLineTextDataset(tokenizer, args, file_path=file_path, block_size=args.block_size)
     else:
+        logging.info("=====Start to initiate TextDataset")
         return TextDataset(tokenizer, args, file_path=file_path, block_size=args.block_size)
 
 
@@ -824,3 +826,4 @@ def main():
             results.update(result)
 
     return results
+

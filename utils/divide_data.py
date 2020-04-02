@@ -38,6 +38,7 @@ class DataPartitioner(object):
         self.labels = self.data.targets
         self.is_trace = False
         self.dataMapFile = None
+        self.args = args
 
         np.random.seed(seed)
 
@@ -126,6 +127,42 @@ class DataPartitioner(object):
             tempDistr =np.array([c / float(tempDataSize) for c in tempClassPerWorker[worker]])
             self.workerDistance.append(emd(dataDistr, tempDistr, dist_matrix))
 
+    def loadFilterInfo(self):
+        # load data-to-client mapping
+        indicesToRm = []
+
+        try:
+            dataToClient = OrderedDict()
+
+            with open(self.args.data_mapfile, 'rb') as db:
+                dataToClient = pickle.load(db)
+
+            clientNumSamples = {}
+            sampleIdToClient = []
+
+            # data share the same index with labels
+            for index, _sample in enumerate(self.data.data):
+                sample = _sample.split('__')[0]
+                clientId = dataToClient[sample]
+
+                if clientId not in clientNumSamples:
+                    clientNumSamples[clientId] = 0
+
+                clientNumSamples[clientId] += 1
+                sampleIdToClient.append(clientId)
+
+            # we need to remove those with less than certain number of samples
+            logging.info("====Try to remove clients w/ less than {} samples".format(self.args.filter_less))
+
+            for index, clientId in enumerate(sampleIdToClient):
+                if clientNumSamples[clientId] < self.args.filter_less:
+                    indicesToRm.append(index)
+        except Exception as e:
+            logging.info("====Failed to generate indicesToRm")
+            #pass 
+
+        return indicesToRm
+
     def partitionTraceCV(self, dataToClient):
         clientToData = {}
         clientNumSamples = {}
@@ -188,8 +225,8 @@ class DataPartitioner(object):
 
         self.get_JSD(overallNumSamples/float(totalNumOfSamples), self.classPerWorker, [0] * numOfClients)
 
-    def partitionDataByDefault(self, sizes, sequential, ratioOfClassWorker, filter_class, args):
-        if self.is_trace:
+    def partitionDataByDefault(self, sizes, sequential, ratioOfClassWorker, filter_class, _args):
+        if self.is_trace and not self.args.enforce_random:
             # read the serialized sampleToClient file
             dataToClient = OrderedDict()
 
@@ -202,7 +239,7 @@ class DataPartitioner(object):
             else:
                 self.partitionTraceNLP(dataToClient=dataToClient)
         else:
-            self.partitionData(sizes=sizes, sequential=sequential, ratioOfClassWorker=ratioOfClassWorker, filter_class=filter_class, args=args)
+            self.partitionData(sizes=sizes, sequential=sequential, ratioOfClassWorker=ratioOfClassWorker, filter_class=filter_class, args=_args)
 
     def partitionData(self, sizes=None, sequential=0, ratioOfClassWorker=None, filter_class=0, args = None):
         targets = self.getTargets()
@@ -222,11 +259,19 @@ class DataPartitioner(object):
         # random partition
         if sequential == 0:
             logging.info("========= Start of Random Partition =========\n")
-            indexes = [x for x in range(0, data_len)]
+
+            # may need to filter ...
+            indicesToRm = set()
+            if self.args.filter_less != 0:
+                indicesToRm = set(self.loadFilterInfo())
+
+            indexes = [x for x in range(0, data_len) if x not in indicesToRm]
+
             self.rng.shuffle(indexes)
+            realDataLen = len(indexes)
 
             for ratio in sizes:
-                part_len = int(ratio * data_len)
+                part_len = int(ratio * realDataLen)
                 self.partitions.append(indexes[0:part_len])
                 indexes = indexes[part_len:]
 
@@ -356,7 +401,7 @@ class DataPartitioner(object):
             resultIndex = self.partitions[_partition]
         else:
             for i in range(len(self.partitions)):
-                if i % args.total_worker == is_rank:
+                if i % self.args.total_worker == is_rank:
                     resultIndex += self.partitions[i]
 
         self.rng.shuffle(resultIndex)
@@ -380,7 +425,7 @@ def partition_dataset(partitioner, workers, partitionRatio=[], sequential=0, rat
     if len(partitionRatio) > 0:
         partition_sizes = partitionRatio
 
-    partitioner.partitionDataByDefault(sizes=partition_sizes, sequential=sequential, ratioOfClassWorker=ratioOfClassWorker,filter_class=filter_class, args=arg)
+    partitioner.partitionDataByDefault(sizes=partition_sizes, sequential=sequential, ratioOfClassWorker=ratioOfClassWorker,filter_class=filter_class, _args=arg)
     #logging.info("====Partitioning data takes {} s\n".format(time.time() - stime()))
 
 def select_dataset(rank: int, partition: DataPartitioner, batch_size: int, isTest=False, is_rank=0, collate_fn=None):
@@ -391,4 +436,3 @@ def select_dataset(rank: int, partition: DataPartitioner, batch_size: int, isTes
         return DataLoader(partition, batch_size=batch_size, shuffle=True, pin_memory=False, num_workers=args.num_loaders, drop_last=False, timeout=timeOut)
     else:
         return DataLoader(partition, batch_size=batch_size, shuffle=True, pin_memory=False, num_workers=args.num_loaders, drop_last=False, timeout=timeOut, collate_fn=collate_fn)
-

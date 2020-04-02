@@ -101,15 +101,9 @@ def test_model(rank, model, test_data, criterion=nn.NLLLoss(), tokenizer=None):
         if args.task != 'nlp':
             data, target = Variable(data).cuda(), Variable(target).cuda()
 
-            if args.model != 'inception_v3':
-                output = model(data)
-                loss = criterion(output, target)
-            else:
-                output, aux_outputs = model(data)
-                loss1 = criterion(output, target)
-                loss2 = criterion(aux_outputs, target)
-                loss = loss1 + 0.4*loss2
-
+            output = model(data)
+            loss = criterion(output, target)
+            
             test_loss += loss.data.item()  # Variable.data
             acc = accuracy(output, target, topk=(1, 5))
 

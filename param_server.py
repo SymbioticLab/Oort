@@ -347,6 +347,11 @@ def run(model, test_data, queue, param_q, stop_signal, clientSampler):
                         clientSampler.registerScore(clientId, 
                                                     math.sqrt(iteration_loss[i]) * min(clientSampler.getClient(clientId).size, 
                                                     args.upload_epoch*args.batch_size), time_stamp=epoch_count)
+                    elif args.score_mode == "size":
+                        clientSampler.registerScore(clientId, min(clientSampler.getClient(clientId).size, 
+                                                    args.upload_epoch*args.batch_size), time_stamp=epoch_count)
+                    elif args.score_mode == "dist":
+                        clientSampler.registerScore(clientId, (1.0 - clientSampler.getClient(clientId).distance), time_stamp=epoch_count)
                     else:
                         clientSampler.registerScore(clientId, (1.0 - clientSampler.getClient(clientId).distance), time_stamp=epoch_count)
 
@@ -525,6 +530,8 @@ if __name__ == "__main__":
 
     model, train_dataset, test_dataset = init_dataset()
 
+    logging.info("====Len of train_dataset: {}, Len of test_dataset: {}".format(len(train_dataset), len(test_dataset)))
+    
     test_data = DataLoader(test_dataset, batch_size=args.test_bsz, shuffle=True)
 
     print("====PS: finish loading test_data")
