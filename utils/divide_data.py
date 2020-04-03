@@ -200,6 +200,8 @@ class DataPartitioner(object):
         numOfLabels = 1
         base = 0
 
+        logging.info("====partitionTraceNLP slice_index is {}".format(self.data.slice_index))
+
         # data share the same index with labels
         for index, sample in enumerate(self.data.slice_index):
             clientId = index
@@ -210,7 +212,6 @@ class DataPartitioner(object):
                 clientNumSamples[clientId] = [0] * numOfLabels
                 base += sample
 
-            clientToData[clientId] = []
             clientNumSamples[clientId][labelId] += sample
 
         numOfClients = len(self.data.slice_index)

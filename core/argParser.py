@@ -136,7 +136,7 @@ parser.add_argument(
 )
 parser.add_argument(
     "--block_size",
-    default=512,
+    default=32,
     type=int,
     help="Optional input sequence length after tokenization."
     "The training dataset will be truncated in block of this size for training."
@@ -191,7 +191,7 @@ parser.add_argument(
     "--overwrite_output_dir", action="store_true", help="Overwrite the content of the output directory"
 )
 parser.add_argument(
-    "--overwrite_cache", action="store_true", help="Overwrite the cached training and evaluation sets"
+    "--overwrite_cache", type=bool, default=False, help="Overwrite the cached training and evaluation sets"
 )
 parser.add_argument("--seed", type=int, default=42, help="random seed for initialization")
 

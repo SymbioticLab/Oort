@@ -211,7 +211,7 @@ def init_dataset():
         train_dataset = load_and_cache_examples(args, tokenizer, evaluate=False) 
         test_dataset = load_and_cache_examples(args, tokenizer, evaluate=True)
 
-        model = AlbertForMaskedLM.from_pretrained(args.conf_path)
+        model = AlbertForMaskedLM.from_pretrained(args.data_dir)
 
     else:
         print('DataSet must be {}!'.format(['Mnist', 'Cifar', 'openImg', 'blog']))

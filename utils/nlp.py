@@ -88,9 +88,10 @@ MODEL_CLASSES = {
 
 
 class TextDataset(Dataset):
-    def __init__(self, tokenizer: PreTrainedTokenizer, args, file_path: str, block_size=512, is_folder=False):
+    def __init__(self, tokenizer: PreTrainedTokenizer, args, file_path: str, block_size=512):
 
         block_size = block_size - (tokenizer.max_len - tokenizer.max_len_single_sentence)
+        is_folder = True if args.data_mapfile is not None else False
 
         if is_folder == False:
             assert os.path.isfile(file_path)
@@ -108,16 +109,20 @@ class TextDataset(Dataset):
             logger.info("Loading features from cached file %s", cached_features_file)
             with open(cached_features_file, "rb") as handle:
                 self.examples = pickle.load(handle)
+                self.slice_index = pickle.load(handle)
         else:
             logger.info("Creating features from dataset file at %s", directory)
 
             self.examples = []
             self.slice_index = []
 
-            files = [file_path] if is_folder == False else [entry.name for entry in os.scandir(file_path)]
+            if is_folder == False:
+                files = [file_path]
+            else:
+                files = [os.path.join(file_path, entry.name) for entry in os.scandir(file_path) if '_cached_lm_' not in entry.name]
 
             for file in files:
-                with open(file_path, encoding="utf-8") as f:
+                with open(file, encoding="utf-8") as f:
                     text = f.read()
 
                 tokenized_text = tokenizer.convert_tokens_to_ids(tokenizer.tokenize(text))
@@ -135,6 +140,7 @@ class TextDataset(Dataset):
             logger.info("Saving features into cached file %s", cached_features_file)
             with open(cached_features_file, "wb") as handle:
                 pickle.dump(self.examples, handle, protocol=pickle.HIGHEST_PROTOCOL)
+                pickle.dump(self.slice_index, handle, protocol=pickle.HIGHEST_PROTOCOL)
 
         self.data = self.examples
         self.targets = [0 for i in range(len(self.data))]
@@ -168,12 +174,14 @@ class LineByLineTextDataset(Dataset):
         return torch.tensor(self.examples[i], dtype=torch.long)
 
 def load_and_cache_examples(args, tokenizer, evaluate=False):
-    file_path = args.eval_data_file if evaluate else args.train_data_file
+    if args.data_mapfile is None:
+        file_path = args.eval_data_file if evaluate else args.train_data_file
+    else:
+        file_path = os.path.join(args.data_dir, 'test') if evaluate else os.path.join(args.data_dir, 'train')
+
     if args.line_by_line:
-        logging.info("=====Start to initiate LineByLineTextDataset")
         return LineByLineTextDataset(tokenizer, args, file_path=file_path, block_size=args.block_size)
     else:
-        logging.info("=====Start to initiate TextDataset")
         return TextDataset(tokenizer, args, file_path=file_path, block_size=args.block_size)
 
 

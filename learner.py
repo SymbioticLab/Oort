@@ -163,7 +163,7 @@ def init_dataset():
         test_dataset = load_and_cache_examples(args, tokenizer, evaluate=True)
 
         # TODO: load a model and train it from scratch
-        model = AlbertForMaskedLM.from_pretrained(args.conf_path)
+        model = AlbertForMaskedLM.from_pretrained(args.data_dir)
 
     else:
         print('DataSet must be {}!'.format(['Mnist', 'Cifar']))
