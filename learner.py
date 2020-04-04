@@ -296,9 +296,9 @@ def run_client(clientId, cmodel, iters, learning_rate, argdicts = {}):
 
         train_data_itr = iter(client_train_data)
         total_batch_size = len(train_data_itr)
-        global_data_iter[clientId] = [train_data_itr, curBatch, total_batch_size]
+        global_data_iter[clientId] = [train_data_itr, curBatch, total_batch_size, argdicts['iters']]
     else:
-        [train_data_itr, curBatch, total_batch_size] = global_data_iter[clientId]
+        [train_data_itr, curBatch, total_batch_size, epo] = global_data_iter[clientId]
 
     local_trained = 0
     numOfPreWarmUp = 1
@@ -418,9 +418,16 @@ def run_client(clientId, cmodel, iters, learning_rate, argdicts = {}):
                     (curBatch % total_batch_size), total_batch_size, round(loss.data.item(), 4), 
                     round(time.time() - it_start, 4), round(comp_duration, 4)))
 
+    # remove the one with LRU
+    if len(global_client_profile) > args.max_iter_store:
+        allClients = global_data_iter.keys()
+        rmClient = sorted(allClients, key=lambda k:global_data_iter[k][3])[0]
+
+        del global_data_iter[rmClient]
+
     # save the state of this client if # of batches > iters, since we want to pass over all samples at least one time
     if total_batch_size > iters and len(train_data_itr_list) > 0:
-        global_data_iter[clientId] = [train_data_itr_list[0], curBatch, total_batch_size]
+        global_data_iter[clientId] = [train_data_itr_list[0], curBatch, total_batch_size, argdicts['iters']]
     else:
         for loader in train_data_itr_list:
             loader._shutdown_workers()
@@ -472,8 +479,8 @@ def run(rank, model, train_data, test_data, queue, param_q, stop_flag, client_cf
 
     testResults = [0, 0, 0, 0]
     # first run a forward pass
-    # test_loss, acc, acc_5, testResults = test_model(rank, model, test_data, criterion=criterion, tokenizer=tokenizer)
-    uploadEpoch = -1
+    test_loss, acc, acc_5, testResults = test_model(rank, model, test_data, criterion=criterion, tokenizer=tokenizer)
+    uploadEpoch = 0
 
     last_test = time.time()
 

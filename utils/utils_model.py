@@ -122,10 +122,11 @@ def test_model(rank, model, test_data, criterion=nn.NLLLoss(), tokenizer=None):
         
     # loss function averages over batch size
     test_loss /= len(test_data)
-    test_loss = round(test_loss, 4)
 
-    acc = round(correct / test_len, 4)
+    # in NLP, we care about the perplexity of the model
+    acc = round(correct / test_len, 4) if args.task != 'nlp' else math.exp(test_loss)
     acc_5 = round(top_5 / test_len, 4)
+    test_loss = round(test_loss, 4)
 
     logging.info('Rank {}: Test set: Average loss: {}, Top-1 Accuracy: {}/{} ({}), Top-5 Accuracy: {}'
           .format(rank, test_loss, correct, len(test_data.dataset), acc, acc_5))

@@ -32,6 +32,7 @@ parser.add_argument('--run_all', type=bool, default=False)
 parser.add_argument('--sampler_path', type=str, default=None)
 parser.add_argument('--model_path', type=str, default=None)
 parser.add_argument('--conf_path', type=str, default='~/dataset/')
+parser.add_argument('--max_iter_store', type=int, default=100)
 
 # The configuration of different hyper-parameters for training
 parser.add_argument('--epochs', type=int, default=2000)
@@ -72,6 +73,7 @@ parser.add_argument('--is_even_avg', type=bool, default=True)
 parser.add_argument('--sample_seed', type=int, default=233)
 parser.add_argument('--test_train_data', type=bool, default=False)
 parser.add_argument('--enforce_random', type=bool, default=False)
+parser.add_argument('--test_ratio', type=float, default=1.0)
 
 # for albert
 

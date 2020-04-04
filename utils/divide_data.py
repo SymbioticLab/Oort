@@ -151,9 +151,6 @@ class DataPartitioner(object):
                 clientNumSamples[clientId] += 1
                 sampleIdToClient.append(clientId)
 
-            # we need to remove those with less than certain number of samples
-            logging.info("====Try to remove clients w/ less than {} samples".format(self.args.filter_less))
-
             for index, clientId in enumerate(sampleIdToClient):
                 if clientNumSamples[clientId] < self.args.filter_less:
                     indicesToRm.append(index)
@@ -162,6 +159,17 @@ class DataPartitioner(object):
             #pass 
 
         return indicesToRm
+
+    def loadFilterInfoNLP(self):
+        indices = []
+        base = 0
+
+        for idx, sample in enumerate(self.data.slice_index):
+            if sample < args.filter_less:
+                indices = indices + [base+i for i in range(sample)]
+            base += sample
+
+        return indices
 
     def partitionTraceCV(self, dataToClient):
         clientToData = {}
@@ -206,6 +214,11 @@ class DataPartitioner(object):
         for index, sample in enumerate(self.data.slice_index):
             clientId = index
             labelId = 0
+
+            # if sample < args.filter_less:
+            #     index -= 1
+            #     base += sample
+            #     continue
 
             if clientId not in clientToData:
                 clientToData[clientId] = [base+i for i in range(sample)]
@@ -265,8 +278,14 @@ class DataPartitioner(object):
             # may need to filter ...
             indicesToRm = set()
             if self.args.filter_less != 0:
-                indicesToRm = set(self.loadFilterInfo())
+                if args.task != 'nlp':
+                    indicesToRm = set(self.loadFilterInfo())
+                else:
+                    indicesToRm = set(self.loadFilterInfoNLP())
 
+                # we need to remove those with less than certain number of samples
+                logging.info("====Try to remove clients w/ less than {} samples, and remove {} samples".format(self.args.filter_less, len(indicesToRm)))
+            
             indexes = [x for x in range(0, data_len) if x not in indicesToRm]
 
             self.rng.shuffle(indexes)
@@ -406,6 +425,9 @@ class DataPartitioner(object):
                 if i % self.args.total_worker == is_rank:
                     resultIndex += self.partitions[i]
 
+        exeuteLength = len(resultIndex) if istest == False else int(len(resultIndex) * args.test_ratio)
+
+        resultIndex = resultIndex[:exeuteLength]
         self.rng.shuffle(resultIndex)
 
         logging.info("====Data length for client {} is {}".format(partition, len(resultIndex)))
