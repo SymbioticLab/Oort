@@ -278,7 +278,7 @@ class DataPartitioner(object):
             # may need to filter ...
             indicesToRm = set()
             if self.args.filter_less != 0:
-                if args.task != 'nlp':
+                if self.task != 'nlp':
                     indicesToRm = set(self.loadFilterInfo())
                 else:
                     indicesToRm = set(self.loadFilterInfoNLP())

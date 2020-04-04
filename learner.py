@@ -489,7 +489,7 @@ def run(rank, model, train_data, test_data, queue, param_q, stop_flag, client_cf
     for epoch in range(1, int(args.epochs) + 1):
         try:
             if epoch % args.decay_epoch == 0:
-                learning_rate = max(1e-4, learning_rate * args.decay_factor)
+                learning_rate = max(args.min_learning_rate, learning_rate * args.decay_factor)
 
             trainedModels = []
             preTrainedLoss = []

@@ -74,6 +74,7 @@ parser.add_argument('--sample_seed', type=int, default=233)
 parser.add_argument('--test_train_data', type=bool, default=False)
 parser.add_argument('--enforce_random', type=bool, default=False)
 parser.add_argument('--test_ratio', type=float, default=1.0)
+parser.add_argument('--min_learning_rate', type=float, default=1e-4)
 
 # for albert
 
