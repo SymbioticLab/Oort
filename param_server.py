@@ -20,15 +20,6 @@ from torch.utils.data import DataLoader
 from torchvision import datasets, transforms
 import torchvision.models as tormodels
 
-from transformers import (
-    WEIGHTS_NAME,
-    AdamW,
-    AlbertConfig,
-    AlbertForMaskedLM,
-    AlbertTokenizer,
-    get_linear_schedule_with_warmup,
-)
-
 from utils.models import *
 from utils.utils_data import get_data_transform
 from utils.utils_model import test_model
@@ -211,7 +202,9 @@ def init_dataset():
         train_dataset = load_and_cache_examples(args, tokenizer, evaluate=False) 
         test_dataset = load_and_cache_examples(args, tokenizer, evaluate=True)
 
-        model = AlbertForMaskedLM.from_pretrained(args.data_dir)
+        # we should train from scratch
+        config = AutoConfig.from_pretrained(os.path.join(args.data_dir, 'albert-base-v2-config.json'))
+        model = AutoModelWithLMHead.from_config(config)
 
     else:
         print('DataSet must be {}!'.format(['Mnist', 'Cifar', 'openImg', 'blog']))

@@ -162,8 +162,9 @@ def init_dataset():
         train_dataset = load_and_cache_examples(args, tokenizer, evaluate=False) 
         test_dataset = load_and_cache_examples(args, tokenizer, evaluate=True)
 
-        # TODO: load a model and train it from scratch
-        model = AlbertForMaskedLM.from_pretrained(args.data_dir)
+        # we should train from scratch
+        config = AutoConfig.from_pretrained(os.path.join(args.data_dir, 'albert-base-v2-config.json'))
+        model = AutoModelWithLMHead.from_config(config)
 
     else:
         print('DataSet must be {}!'.format(['Mnist', 'Cifar']))
@@ -384,6 +385,7 @@ def run_client(clientId, cmodel, iters, learning_rate, argdicts = {}):
         if args.task == 'nlp':
             outputs = cmodel(data, masked_lm_labels=target) if args.mlm else cmodel(data, labels=target)
             loss = outputs[0]
+            torch.nn.utils.clip_grad_norm_(cmodel.parameters(), args.max_grad_norm)
         else:
             if args.model != 'inception_v3':
                 output = cmodel(data)
@@ -410,6 +412,7 @@ def run_client(clientId, cmodel, iters, learning_rate, argdicts = {}):
                 param.data -= delta_w[idx].to(device=device)
         else:
             optimizer.step()
+            cmodel.zero_grad()
 
         comp_duration = (time.time() - comp_start)
     

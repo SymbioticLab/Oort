@@ -41,31 +41,14 @@ from transformers import (
     WEIGHTS_NAME,
     AdamW,
     AutoConfig,
-    BertConfig,
-    BertForMaskedLM,
-    BertTokenizer,
-    CamembertConfig,
-    CamembertForMaskedLM,
-    CamembertTokenizer,
-    DistilBertConfig,
-    DistilBertForMaskedLM,
-    DistilBertTokenizer,
-    GPT2Config,
-    GPT2LMHeadModel,
-    GPT2Tokenizer,
-    OpenAIGPTConfig,
-    OpenAIGPTLMHeadModel,
-    OpenAIGPTTokenizer,
+    AutoModelWithLMHead,
+    AutoTokenizer,
     PreTrainedModel,
     PreTrainedTokenizer,
-    RobertaConfig,
-    RobertaForMaskedLM,
-    RobertaTokenizer,
+    get_linear_schedule_with_warmup,
     AlbertConfig,
     AlbertForMaskedLM,
     AlbertTokenizer,
-    get_linear_schedule_with_warmup,
-    AutoModelWithLMHead,
 )
 
 
@@ -78,63 +61,32 @@ except ImportError:
 logger = logging.getLogger(__name__)
 
 
-MODEL_CLASSES = {
-    "gpt2": (GPT2Config, GPT2LMHeadModel, GPT2Tokenizer),
-    "openai-gpt": (OpenAIGPTConfig, OpenAIGPTLMHeadModel, OpenAIGPTTokenizer),
-    "bert": (BertConfig, BertForMaskedLM, BertTokenizer),
-    "roberta": (RobertaConfig, RobertaForMaskedLM, RobertaTokenizer),
-    "distilbert": (DistilBertConfig, DistilBertForMaskedLM, DistilBertTokenizer),
-    "camembert": (CamembertConfig, CamembertForMaskedLM, CamembertTokenizer),
-    "albert": (AlbertConfig, AlbertForMaskedLM, AlbertTokenizer),
-}
-
-
 class TextDataset(Dataset):
     def __init__(self, tokenizer: PreTrainedTokenizer, args, file_path: str, block_size=512):
+        assert os.path.isfile(file_path)
 
         block_size = block_size - (tokenizer.max_len - tokenizer.max_len_single_sentence)
-        is_folder = True if args.data_mapfile is not None else False
 
-        if is_folder == False:
-            assert os.path.isfile(file_path)
-            directory, filename = os.path.split(file_path)
-            cached_features_file = os.path.join(
-                    directory, args.model_type + "_cached_lm_" + str(block_size) + "_" + filename
-                )   
-        else:
-            directory = file_path
-            cached_features_file = os.path.join(
-                    directory, args.model_type + "_cached_lm_" + str(block_size)
-                )
+        directory, filename = os.path.split(file_path)
+        cached_features_file = os.path.join(
+            directory, args.model_type + "_cached_lm_" + str(block_size) + "_" + filename
+        )
 
         if os.path.exists(cached_features_file) and not args.overwrite_cache:
             logger.info("Loading features from cached file %s", cached_features_file)
             with open(cached_features_file, "rb") as handle:
                 self.examples = pickle.load(handle)
-                self.slice_index = pickle.load(handle)
         else:
             logger.info("Creating features from dataset file at %s", directory)
 
             self.examples = []
-            self.slice_index = []
+            with open(file_path, encoding="utf-8") as f:
+                text = f.read()
 
-            if is_folder == False:
-                files = [file_path]
-            else:
-                files = [os.path.join(file_path, entry.name) for entry in os.scandir(file_path) if '_cached_lm_' not in entry.name]
+            tokenized_text = tokenizer.convert_tokens_to_ids(tokenizer.tokenize(text))
 
-            for file in files:
-                with open(file, encoding="utf-8") as f:
-                    text = f.read()
-
-                tokenized_text = tokenizer.convert_tokens_to_ids(tokenizer.tokenize(text))
-
-                individual_size = 0
-                for i in range(0, len(tokenized_text) - block_size + 1, block_size):  # Truncate in block of block_size
-                    self.examples.append(tokenizer.build_inputs_with_special_tokens(tokenized_text[i : i + block_size]))
-                    individual_size += 1
-
-                self.slice_index.append(individual_size)
+            for i in range(0, len(tokenized_text) - block_size + 1, block_size):  # Truncate in block of block_size
+                self.examples.append(tokenizer.build_inputs_with_special_tokens(tokenized_text[i : i + block_size]))
             # Note that we are loosing the last truncated example here for the sake of simplicity (no padding)
             # If your dataset is small, first you should loook for a bigger one :-) and second you
             # can change this behavior by adding (model specific) padding.
@@ -142,11 +94,7 @@ class TextDataset(Dataset):
             logger.info("Saving features into cached file %s", cached_features_file)
             with open(cached_features_file, "wb") as handle:
                 pickle.dump(self.examples, handle, protocol=pickle.HIGHEST_PROTOCOL)
-                pickle.dump(self.slice_index, handle, protocol=pickle.HIGHEST_PROTOCOL)
 
-        self.data = self.examples
-        self.targets = [0 for i in range(len(self.data))]
-        
     def __len__(self):
         return len(self.examples)
 
@@ -166,8 +114,6 @@ class LineByLineTextDataset(Dataset):
             lines = [line for line in f.read().splitlines() if (len(line) > 0 and not line.isspace())]
 
         self.examples = tokenizer.batch_encode_plus(lines, add_special_tokens=True, max_length=block_size)["input_ids"]
-        self.data = self.examples
-        self.targets = [0 for i in range(len(self.data))]
 
     def __len__(self):
         return len(self.examples)
@@ -175,12 +121,9 @@ class LineByLineTextDataset(Dataset):
     def __getitem__(self, i):
         return torch.tensor(self.examples[i], dtype=torch.long)
 
-def load_and_cache_examples(args, tokenizer, evaluate=False):
-    if args.data_mapfile is None:
-        file_path = args.eval_data_file if evaluate else args.train_data_file
-    else:
-        file_path = os.path.join(args.data_dir, 'test') if evaluate else os.path.join(args.data_dir, 'train')
 
+def load_and_cache_examples(args, tokenizer, evaluate=False):
+    file_path = args.eval_data_file if evaluate else args.train_data_file
     if args.line_by_line:
         return LineByLineTextDataset(tokenizer, args, file_path=file_path, block_size=args.block_size)
     else:
@@ -230,29 +173,6 @@ def _rotate_checkpoints(args, checkpoint_prefix="checkpoint", use_mtime=False) -
         logger.info("Deleting older checkpoint [{}] due to args.save_total_limit".format(checkpoint))
         shutil.rmtree(checkpoint)
 
-def invertBool(list):
-    size = list.size()
-    temp = torch.zeros(size, dtype=torch.bool)
-    for i in range(size[0]):
-        for j in range(size[1]):
-            temp[i][j] = False if list[i][j] else True
-    return temp
-
-def toBool(list):
-    size = list.size()
-    temp = torch.zeros(size, dtype=torch.bool)
-    for i in range(size[0]):
-        for j in range(size[1]):
-            temp[i][j] = True if list[i][j] else False
-    return temp
-
-def boolAnd(list1, list2):
-    size = list1.size()
-    temp = torch.zeros(size, dtype=torch.bool)
-    for i in range(size[0]):
-        for j in range(size[1]):
-            temp[i][j] = True if list1[i][j] and list2[i][j] else False
-    return temp
 
 def mask_tokens(inputs: torch.Tensor, tokenizer: PreTrainedTokenizer, args) -> Tuple[torch.Tensor, torch.Tensor]:
     """ Prepare masked tokens inputs/labels for masked language modeling: 80% MASK, 10% random, 10% original. """
@@ -268,19 +188,19 @@ def mask_tokens(inputs: torch.Tensor, tokenizer: PreTrainedTokenizer, args) -> T
     special_tokens_mask = [
         tokenizer.get_special_tokens_mask(val, already_has_special_tokens=True) for val in labels.tolist()
     ]
-    probability_matrix.masked_fill_(torch.tensor(special_tokens_mask, dtype=torch.uint8), value=0.0)
+    probability_matrix.masked_fill_(torch.tensor(special_tokens_mask, dtype=torch.bool), value=0.0)
     if tokenizer._pad_token is not None:
         padding_mask = labels.eq(tokenizer.pad_token_id)
         probability_matrix.masked_fill_(padding_mask, value=0.0)
-    masked_indices = torch.tensor(torch.bernoulli(probability_matrix), dtype=torch.bool).detach()
-    labels[invertBool(masked_indices)] = -100  # We only compute loss on masked tokens
+    masked_indices = torch.bernoulli(probability_matrix).bool()
+    labels[~masked_indices] = -100  # We only compute loss on masked tokens
 
     # 80% of the time, we replace masked input tokens with tokenizer.mask_token ([MASK])
-    indices_replaced = boolAnd(toBool(torch.bernoulli(torch.full(labels.shape, 0.8))), toBool(masked_indices))
+    indices_replaced = torch.bernoulli(torch.full(labels.shape, 0.8)).bool() & masked_indices
     inputs[indices_replaced] = tokenizer.convert_tokens_to_ids(tokenizer.mask_token)
 
     # 10% of the time, we replace masked input tokens with random word
-    indices_random = boolAnd(boolAnd(toBool(torch.bernoulli(torch.full(labels.shape, 0.5))), toBool(masked_indices)), invertBool(indices_replaced))
+    indices_random = torch.bernoulli(torch.full(labels.shape, 0.5)).bool() & masked_indices & ~indices_replaced
     random_words = torch.randint(len(tokenizer), labels.shape, dtype=torch.long)
     inputs[indices_random] = random_words[indices_random]
 
@@ -310,6 +230,9 @@ def train(args, train_dataset, model: PreTrainedModel, tokenizer: PreTrainedToke
         args.num_train_epochs = args.max_steps // (len(train_dataloader) // args.gradient_accumulation_steps) + 1
     else:
         t_total = len(train_dataloader) // args.gradient_accumulation_steps * args.num_train_epochs
+
+    model = model.module if hasattr(model, "module") else model  # Take care of distributed/parallel training
+    model.resize_token_embeddings(len(tokenizer))
 
     # Prepare optimizer and schedule (linear warmup and decay)
     no_decay = ["bias", "LayerNorm.weight"]
@@ -386,9 +309,6 @@ def train(args, train_dataset, model: PreTrainedModel, tokenizer: PreTrainedToke
             logger.info("  Starting fine-tuning.")
 
     tr_loss, logging_loss = 0.0, 0.0
-
-    model_to_resize = model.module if hasattr(model, "module") else model  # Take care of distributed/parallel training
-    model_to_resize.resize_token_embeddings(len(tokenizer))
 
     model.zero_grad()
     train_iterator = trange(
@@ -476,6 +396,7 @@ def train(args, train_dataset, model: PreTrainedModel, tokenizer: PreTrainedToke
         tb_writer.close()
 
     return global_step, tr_loss / global_step
+
 
 def evaluate(args, model: PreTrainedModel, tokenizer: PreTrainedTokenizer, prefix="") -> Dict:
     # Loop to handle MNLI double evaluation (matched, mis-matched)
@@ -603,7 +524,7 @@ def main():
     )
     parser.add_argument(
         "--block_size",
-        default=-1,
+        default=32,
         type=int,
         help="Optional input sequence length after tokenization."
         "The training dataset will be truncated in block of this size for training."
@@ -658,7 +579,7 @@ def main():
         "--overwrite_output_dir", action="store_true", help="Overwrite the content of the output directory"
     )
     parser.add_argument(
-        "--overwrite_cache", action="store_true", help="Overwrite the cached training and evaluation sets"
+        "--overwrite_cache", type=bool, default=False, help="Overwrite the cached training and evaluation sets"
     )
     parser.add_argument("--seed", type=int, default=42, help="random seed for initialization")
 
@@ -701,6 +622,7 @@ def main():
         and os.listdir(args.output_dir)
         and args.do_train
         and not args.overwrite_output_dir
+        and not args.should_continue
     ):
         raise ValueError(
             "Output directory ({}) already exists and is not empty. Use --overwrite_output_dir to overcome.".format(
@@ -720,7 +642,7 @@ def main():
     # Setup CUDA, GPU & distributed training
     if args.local_rank == -1 or args.no_cuda:
         device = torch.device("cuda" if torch.cuda.is_available() and not args.no_cuda else "cpu")
-        args.n_gpu = torch.cuda.device_count()
+        args.n_gpu = 0 if args.no_cuda else torch.cuda.device_count()
     else:  # Initializes the distributed backend which will take care of sychronizing nodes/GPUs
         torch.cuda.set_device(args.local_rank)
         device = torch.device("cuda", args.local_rank)
@@ -750,25 +672,29 @@ def main():
     if args.local_rank not in [-1, 0]:
         torch.distributed.barrier()  # Barrier to make sure only the first process in distributed training download model & vocab
 
-    config_class, model_class, tokenizer_class = MODEL_CLASSES[args.model_type]
-    
+    #if args.config_name:
+    config = AutoConfig.from_pretrained('/gpfs/gpfs0/groups/chowdhury/fanlai/dataset/blog/albert-base-v2-config.json')
+    # elif args.model_name_or_path:
+    #     config = AutoConfig.from_pretrained(args.model_name_or_path, cache_dir=args.cache_dir)
+    # else:
+    #     # When we release a pip version exposing CONFIG_MAPPING,
+    #     # we can do `config = CONFIG_MAPPING[args.model_type]()`.
+    #     raise ValueError(
+    #         "You are instantiating a new config instance from scratch. This is not supported, but you can do it from another script, save it,"
+    #         "and load it from here, using --config_name"
+    #     )
 
-    if args.config_name:
-        config = config_class.from_pretrained("/gpfs/gpfs0/groups/chowdhury/zxfeng/transformers/cache_config")
-    elif args.model_name_or_path:
-        config = config_class.from_pretrained("/gpfs/gpfs0/groups/chowdhury/zxfeng/transformers/cache_config")
-    else:
-        config = config_class()
-
-    if args.tokenizer_name:
-        tokenizer = tokenizer_class.from_pretrained(args.tokenizer_name, cache_dir=args.cache_dir)
-    elif args.model_name_or_path:
-        tokenizer = tokenizer_class.from_pretrained(args.model_name_or_path, cache_dir=args.cache_dir)
-    else:
-        raise ValueError(
-            "You are instantiating a new {} tokenizer. This is not supported, but you can do it from another script, save it,"
-            "and load it from here, using --tokenizer_name".format(tokenizer_class.__name__)
-        )
+    # if args.tokenizer_name:
+    #     tokenizer = AutoTokenizer.from_pretrained(args.tokenizer_name, cache_dir=args.cache_dir)
+    # elif args.model_name_or_path:
+    #     tokenizer = AutoTokenizer.from_pretrained(args.model_name_or_path, cache_dir=args.cache_dir)
+    # else:
+    #     raise ValueError(
+    #         "You are instantiating a new tokenizer from scratch. This is not supported, but you can do it from another script, save it,"
+    #         "and load it from here, using --tokenizer_name"
+    #     )
+    tokenizer = AlbertTokenizer.from_pretrained('albert-base-v2')
+    model = AlbertForMaskedLM.from_pretrained('/gpfs/gpfs0/groups/chowdhury/fanlai/dataset/blog')
 
     if args.block_size <= 0:
         args.block_size = tokenizer.max_len
@@ -776,16 +702,16 @@ def main():
     else:
         args.block_size = min(args.block_size, tokenizer.max_len)
 
-    if args.model_name_or_path:
-        model = model_class.from_pretrained(
-            args.model_name_or_path,
-            from_tf=bool(".ckpt" in args.model_name_or_path),
-            config=config,
-            cache_dir=args.cache_dir,
-        )
-    else:
-        logger.info("Training new model from scratch")
-        model = model_class(config=config)
+    # if args.model_name_or_path:
+    #     model = AutoModelWithLMHead.from_pretrained(
+    #         args.model_name_or_path,
+    #         from_tf=bool(".ckpt" in args.model_name_or_path),
+    #         config=config,
+    #         cache_dir=args.cache_dir,
+    #     )
+    # else:
+    #     logger.info("Training new model from scratch")
+    model = AutoModelWithLMHead.from_config(config)
 
     model.to(args.device)
 
@@ -826,8 +752,8 @@ def main():
         torch.save(args, os.path.join(args.output_dir, "training_args.bin"))
 
         # Load a trained model and vocabulary that you have fine-tuned
-        model = model_class.from_pretrained(args.output_dir)
-        tokenizer = tokenizer_class.from_pretrained(args.output_dir)
+        model = AutoModelWithLMHead.from_pretrained(args.output_dir)
+        tokenizer = AutoTokenizer.from_pretrained(args.output_dir)
         model.to(args.device)
 
     # Evaluation
@@ -844,10 +770,14 @@ def main():
             global_step = checkpoint.split("-")[-1] if len(checkpoints) > 1 else ""
             prefix = checkpoint.split("/")[-1] if checkpoint.find("checkpoint") != -1 else ""
 
-            model = model_class.from_pretrained(checkpoint)
+            model = AutoModelWithLMHead.from_pretrained(checkpoint)
             model.to(args.device)
             result = evaluate(args, model, tokenizer, prefix=prefix)
             result = dict((k + "_{}".format(global_step), v) for k, v in result.items())
             results.update(result)
 
     return results
+
+
+if __name__ == "__main__":
+    main()

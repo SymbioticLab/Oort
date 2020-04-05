@@ -116,7 +116,7 @@ parser.add_argument(
     "--mlm", action="store_true", help="Train with masked-language modeling loss instead of language modeling."
 )
 parser.add_argument(
-    "--mlm_probability", type=float, default=0.15, help="Ratio of tokens to mask for masked language modeling loss"
+    "--mlm_probability", type=float, default=0.1, help="Ratio of tokens to mask for masked language modeling loss"
 )
 
 parser.add_argument(

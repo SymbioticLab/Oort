@@ -1,7 +1,7 @@
 import sys, os, time, datetime
 
 
-paramsCmd = ' --ps_ip=10.255.11.92 --model=albert-base-v2 --epochs=20000 --upload_epoch=20  --dump_epoch=2 --learning_rate=5e-5 --min_learning_rate=1e-5 --decay_epoch=10 --model_avg=True '
+paramsCmd = ' --ps_ip=10.255.11.92 --model=albert-base-v2 --epochs=20000 --upload_epoch=20  --dump_epoch=2 --learning_rate=4e-3 --min_learning_rate=1e-4 --decay_epoch=50 --model_avg=True '
 
 
 os.system("bhosts > vms")
