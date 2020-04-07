@@ -84,6 +84,7 @@ last_model_tensors = []
 nextClientIds = None
 global_data_iter = {}
 global_client_profile = {}
+global_optimizers = {}
 
 workers = [int(v) for v in str(args.learners).split('-')]
 
@@ -273,16 +274,20 @@ def run_client(clientId, cmodel, iters, learning_rate, argdicts = {}):
     if args.task != 'nlp':
         optimizer = MySGD(cmodel.parameters(), lr=learning_rate, momentum=0.9, weight_decay=5e-4)
     else:
-        # Prepare optimizer and schedule (linear warmup and decay)
-        no_decay = ["bias", "LayerNorm.weight"]
-        optimizer_grouped_parameters = [
-            {
-                "params": [p for n, p in cmodel.named_parameters() if not any(nd in n for nd in no_decay)],
-                "weight_decay": 5e-4,
-            },
-            {"params": [p for n, p in cmodel.named_parameters() if any(nd in n for nd in no_decay)], "weight_decay": 0.0},
-        ]
-        optimizer = AdamW(optimizer_grouped_parameters, lr=learning_rate, eps=args.adam_epsilon)
+        if clientId not in global_optimizers:
+            # Prepare optimizer and schedule (linear warmup and decay)
+            no_decay = ["bias", "LayerNorm.weight"]
+            optimizer_grouped_parameters = [
+                {
+                    "params": [p for n, p in cmodel.named_parameters() if not any(nd in n for nd in no_decay)],
+                    "weight_decay": 5e-4,
+                },
+                {"params": [p for n, p in cmodel.named_parameters() if any(nd in n for nd in no_decay)], "weight_decay": 0},
+            ]
+            optimizer = AdamW(optimizer_grouped_parameters, lr=learning_rate, eps=args.adam_epsilon)
+            global_optimizers[clientId] = optimizer
+        else:
+            optimizer = global_optimizers[clientId]
 
     criterion = CrossEntropyLossProx().to(device=device) if args.proxy_avg else torch.nn.CrossEntropyLoss().to(device=device)
 
@@ -385,7 +390,7 @@ def run_client(clientId, cmodel, iters, learning_rate, argdicts = {}):
         if args.task == 'nlp':
             outputs = cmodel(data, masked_lm_labels=target) if args.mlm else cmodel(data, labels=target)
             loss = outputs[0]
-            torch.nn.utils.clip_grad_norm_(cmodel.parameters(), args.max_grad_norm)
+            #torch.nn.utils.clip_grad_norm_(cmodel.parameters(), args.max_grad_norm)
         else:
             if args.model != 'inception_v3':
                 output = cmodel(data)
@@ -436,6 +441,9 @@ def run_client(clientId, cmodel, iters, learning_rate, argdicts = {}):
             loader._shutdown_workers()
         del train_data_itr_list
         del global_data_iter[clientId]
+
+    if args.task == 'nlp':
+        global_optimizers[clientId] = optimizer
 
     model_param = [param.data.cpu().numpy() for param in cmodel.parameters()]
     
@@ -512,6 +520,10 @@ def run(rank, model, train_data, test_data, queue, param_q, stop_flag, client_cf
                 with open(tempModelPath, 'rb') as fin:
                     model = pickle.load(fin)
                     model = model.to(device=device)
+
+                # if NLP, we have to load the optimizer as well
+                # if args.task == 'nlp':
+
 
                 if args.score_mode == 'norm':
                     # need to get the individual norm of samples

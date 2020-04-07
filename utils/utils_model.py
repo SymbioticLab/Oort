@@ -95,6 +95,7 @@ def test_model(rank, model, test_data, criterion=nn.NLLLoss(), tokenizer=None):
 
     correct2 = 0
     test_len = 0
+    perplexity_loss = 0.
 
     model.eval()
     for data, target in test_data:
@@ -115,18 +116,24 @@ def test_model(rank, model, test_data, criterion=nn.NLLLoss(), tokenizer=None):
             data, target = mask_tokens(data, tokenizer, args) if args.mlm else (data, data)
             data, target = Variable(data).cuda(), Variable(target).cuda()
             
-            output = model(data, masked_lm_labels=target) if args.mlm else model(data, labels=target)
-            test_loss += output[0].item()
+            outputs = model(data, masked_lm_labels=target) if args.mlm else model(data, labels=target)
+            test_loss += outputs[0].item()
+            perplexity_loss += outputs[0].mean().item()
 
         test_len += len(target)
         
     # loss function averages over batch size
     test_loss /= len(test_data)
+    perplexity_loss /= len(test_data)
 
     # in NLP, we care about the perplexity of the model
-    acc = round(correct / test_len, 4) if args.task != 'nlp' else math.exp(test_loss)
+    acc = round(correct / test_len, 4) 
     acc_5 = round(top_5 / test_len, 4)
     test_loss = round(test_loss, 4)
+
+    if args.task == 'nlp':
+        correct = math.exp(perplexity_loss)
+        acc = correct
 
     logging.info('Rank {}: Test set: Average loss: {}, Top-1 Accuracy: {}/{} ({}), Top-5 Accuracy: {}'
           .format(rank, test_loss, correct, len(test_data.dataset), acc, acc_5))
@@ -139,17 +146,16 @@ def accuracy(output, target, topk=(1,)):
         maxk = max(topk)
         #batch_size = target.size(0)
 
+        #logging.info("====To get accuracy, top-k is {}, while shape is {}".format(maxk, output.shape))
         _, pred = output.topk(maxk, 1, True, True)
         pred = pred.t()
         correct = pred.eq(target.view(1, -1).expand_as(pred))
 
-        #logging.info("====Start to capture accuracy result")
         res = []
         for k in topk:
             correct_k = correct[:k].view(-1).float().sum(0, keepdim=True)
             res.append(correct_k)
 
-        #logging.info("====Accuracy result is {}".format(res))
         return res
 
 class RandomParams(object):

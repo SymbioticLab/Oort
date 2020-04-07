@@ -139,7 +139,7 @@ parser.add_argument(
 )
 parser.add_argument(
     "--block_size",
-    default=32,
+    default=64,
     type=int,
     help="Optional input sequence length after tokenization."
     "The training dataset will be truncated in block of this size for training."

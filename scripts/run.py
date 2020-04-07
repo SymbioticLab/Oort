@@ -1,4 +1,4 @@
-import sys, os, time, datetime
+import sys, os, time, datetime, random
 
 
 paramsCmd = ' --ps_ip=10.255.11.92 --model=shufflenet_v2_x2_0 --epochs=20000 --upload_epoch=20  --dump_epoch=100 --learning_rate=0.04 --decay_epoch=5 --model_avg=True --batch_size=32 '
@@ -72,6 +72,10 @@ for w in range(1, numOfWorkers + 1):
     jobName = 'learner' + str(w)
 
     _vm = sorted(avaiVms, key=avaiVms.get, reverse=True)[0]
+
+    # random shuffle
+    # random.shuffle(_vm)
+    # _vm = _vm[0]
     assignedVMs.append(_vm)
 
     avaiVms[_vm] -= threadQuota

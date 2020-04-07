@@ -8,7 +8,7 @@
 
 
 #rm /tmp/torch/*
-
+rm -rf ~/.nv
 rm -rf /tmp/pymp-*
 rm -rf /tmp/mobilenet*
 rm -rf /tmp/vgg*
