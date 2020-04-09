@@ -31,7 +31,7 @@ class ClientSampler(object):
 
             if self.mode == "bandit":
                 #if self.score == "loss":
-                self.ucbSampler.registerArm(clientId, reward=10.0 - dis, size=size)
+                self.ucbSampler.registerArm(clientId, reward=min(size, args.upload_epoch*args.batch_size), size=size)
                 #else:
                 #    self.ucbSampler.registerArm(clientId, reward=1.0 - dis, size=size)
 
@@ -132,5 +132,3 @@ class ClientSampler(object):
 
     def getClientReward(self, clientId):
         return self.ucbSampler.getClientReward(clientId)
-
-

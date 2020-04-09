@@ -27,8 +27,8 @@ class UCB(object):
     def registerArm(self, armId, size, reward):
         # Initiate the score for arms. [score, time_stamp, # of trials, size of client]
         if armId not in self.totalArms:
-             self.totalArms[armId] = [-1, -1, 0, size]
-             self.unexplored.add(armId)
+             self.totalArms[armId] = [reward, 0, 0, size]
+             #self.unexplored.add(armId)
 
     def registerReward(self, armId, reward, time_stamp):
         # [reward, time stamp]
@@ -134,6 +134,6 @@ class UCB(object):
         _min = min(aList)*0.999
         _range = max(_max - _min, thres)
 
-        return _max, _min, _range
+        return float(_max), float(_min), float(_range)
 
 

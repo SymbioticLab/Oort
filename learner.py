@@ -25,11 +25,13 @@ from utils.crosslossprox import CrossEntropyLossProx
 from utils.nlp import *
 from utils.inception import *
 
-device = torch.device(args.to_device)
+#device = torch.device(args.to_device)
 #torch.set_num_threads(int(args.threads))
 
 logDir = os.getcwd() + "/../../models/" + args.model + '/' + args.time_stamp + '/learner/'
 logFile = logDir + 'log_'+str(args.this_rank)
+modelDir = os.getcwd() + "/../../models/"  + args.model
+modelPath = modelDir+'/'+str(args.model)+'.pth.tar' if args.model_path is None else args.model_path
 
 def init_logging():
     global logDir
@@ -63,6 +65,8 @@ os.environ['GLOO_SOCKET_IFNAME'] = 'vlan260'
 # try to pick the right gpus
 cudaPrefix = 'cuda:'
 deviceId = None
+device = torch.device(args.to_device)
+
 for i in range(4):
     try:
         device = torch.device(cudaPrefix+str(i))
@@ -114,18 +118,17 @@ def init_myprocesses(rank, size, model,
     fn(rank, model, train_dataset, test_dataset, q, param_q, stop_flag, client_cfg)
 
 def init_dataset():
-    global tokenizer
+    global tokenizer, device
+
+    outputClass = {'Mnist': 10, 'cifar10': 10, "imagenet": 1000, 'emnist': 47, 'openImg': 596}
 
     if args.data_set == 'Mnist':
-        model = MnistCNN()
         train_transform, test_transform = get_data_transform('mnist')
 
         train_dataset = datasets.MNIST(args.data_dir, train=True, download=False,
                                        transform=train_transform)
         test_dataset = datasets.MNIST(args.data_dir, train=False, download=False,
                                       transform=test_transform)
-
-        model = tormodels.__dict__[args.model](num_classes=10)
 
     elif args.data_set == 'cifar10':
         train_transform, test_transform = get_data_transform('cifar')
@@ -134,44 +137,49 @@ def init_dataset():
         test_dataset = datasets.CIFAR10(args.data_dir, train=False, download=True,
                                         transform=test_transform)
 
-        model = tormodels.__dict__[args.model](num_classes=10)
-
     elif args.data_set == "imagenet":
         train_transform, test_transform = get_data_transform('imagenet')
         train_dataset = datasets.ImageNet(args.data_dir, split='train', download=False, transform=train_transform)
         test_dataset = datasets.ImageNet(args.data_dir, split='val', download=False, transform=test_transform)
 
-        model = tormodels.__dict__[args.model]()
-
     elif args.data_set == 'emnist':
         test_dataset = datasets.EMNIST(args.data_dir, split='balanced', train=False, download=True, transform=transforms.ToTensor())
         train_dataset = datasets.EMNIST(args.data_dir, split='balanced', train=True, download=True, transform=transforms.ToTensor())
 
-        model = tormodels.__dict__[args.model](num_classes=47)
-
     elif args.data_set == 'openImg':
-        train_transform, test_transform = get_data_transform('openImg')
+        transformer_ns = 'openImg' if args.model != 'inception_v3' else 'openImgInception'
+        train_transform, test_transform = get_data_transform(transformer_ns) 
         train_dataset = OPENIMG(args.data_dir, train=True, transform=train_transform)
         test_dataset = OPENIMG(args.data_dir, train=False, transform=test_transform)
-
-        # if args.model == 'inception_v3':
-        #     model = tormodels.__dict__[args.model](num_classes=596, aux_logits=False)
-        # else:
-        model = tormodels.__dict__[args.model](num_classes=596)
-
+        
     elif args.data_set == 'blog':
         train_dataset = load_and_cache_examples(args, tokenizer, evaluate=False) 
         test_dataset = load_and_cache_examples(args, tokenizer, evaluate=True)
-
-        # we should train from scratch
-        config = AutoConfig.from_pretrained(os.path.join(args.data_dir, 'albert-base-v2-config.json'))
-        model = AutoModelWithLMHead.from_config(config)
-
     else:
-        print('DataSet must be {}!'.format(['Mnist', 'Cifar']))
+        print('DataSet must be {}!'.format(['Mnist', 'Cifar', 'openImg', 'blog']))
         sys.exit(-1)
 
+    logging.info("====Initialize the model")
+
+    # convert gradient tensor to numpy structure
+    if args.load_model:
+        try:
+            with open(modelPath, 'rb') as fin:
+                model = pickle.load(fin)
+            logging.info("====Load model successfully\n")
+        except Exception as e:
+            logging.info("====Error: Failed to load model due to {}\n".format(str(e)))
+            sys.exit(-1)
+    else:
+        if args.task != 'nlp':
+            model = tormodels.__dict__[args.model](num_classes=outputClass[args.data_set])
+        else:
+            # we should train from scratch
+            config = AutoConfig.from_pretrained(os.path.join(args.data_dir, 'albert-base-v2-config.json'))
+            model = AutoModelWithLMHead.from_config(config)
+
     model = model.to(device=device)
+    logging.info("====Initialize client configuration")
 
     # initiate the device information - normalized computation speed by enforcing sleeping, bandwidth
     client_cfg = {}
@@ -194,7 +202,6 @@ def run_forward_pass(model, test_data):
     # we want avg{Loss^2}
 
     model.eval()
-    #criterion = CrossEntropyLossProx().to(device=device) if args.proxy_avg else torch.nn.CrossEntropyLoss().to(device=device)
 
     criterion = CrossEntropyLossProx(reduction='none').to(device=device) if args.proxy_avg else torch.nn.CrossEntropyLoss(reduction='none').to(device=device)
    
@@ -203,9 +210,16 @@ def run_forward_pass(model, test_data):
     for data, target in test_data:
         data, target = Variable(data).to(device=device), Variable(target).to(device=device)
  
-        output = model(data)
+        if args.model != 'inception_v3':
+            output = model(data)
+            loss = criterion(output, target)
+        else:
+            output, aux_outputs = model(data)
+            loss1 = criterion(output, target)
+            loss2 = criterion(aux_outputs, target)
+            loss = loss1 + 0.3*loss2
 
-        loss = criterion(output, target)
+        #loss = criterion(output, target)
 
         for l in loss.tolist():
             test_loss += l**2
@@ -242,7 +256,7 @@ def run_backward_pass(model, test_data):
             output, aux_outputs = model(data)
             loss1 = criterion(output, target)
             loss2 = criterion(aux_outputs, target)
-            loss = loss1 + 0.4*loss2
+            loss = loss1 + 0.3*loss2
 
         test_loss += loss.data.item()
         test_len += len(target)
@@ -374,7 +388,7 @@ def run_client(clientId, cmodel, iters, learning_rate, argdicts = {}):
             break
 
         # avoid errors in BN
-        if len(target) <= 1:
+        if len(target) <= 5:
             itr -= 1
             continue
 
@@ -400,7 +414,7 @@ def run_client(clientId, cmodel, iters, learning_rate, argdicts = {}):
                 output, aux_outputs = cmodel(data)
                 loss1 = criterion(output, target)
                 loss2 = criterion(aux_outputs, target)
-                loss = loss1 + 0.4*loss2
+                loss = loss1 + 0.3*loss2
             # if args.proxy_avg:
             #     loss = criterion(output, target, global_weight=last_model_tensors, 
             #                     individual_weight=cmodel.parameters(), mu=0.01)
@@ -468,7 +482,7 @@ def run_client(clientId, cmodel, iters, learning_rate, argdicts = {}):
     return model_param, epoch_train_loss, local_trained, str(speed) + '_' + str(count), time_cost, isSuccess
 
 def run(rank, model, train_data, test_data, queue, param_q, stop_flag, client_cfg):
-    print("====Worker: Start running")
+    logging.info("====Worker: Start running")
 
     global nextClientIds, global_trainDB, last_model_tensors
     criterion = CrossEntropyLossProx().to(device=device) if args.proxy_avg else torch.nn.CrossEntropyLoss().to(device=device)
@@ -478,11 +492,15 @@ def run(rank, model, train_data, test_data, queue, param_q, stop_flag, client_cf
 
     # Fetch the initial parameters from the server side (we called it parameter_server)
     last_model_tensors = []
-    for idx, param in enumerate(model.parameters()):
-        tmp_tensor = torch.zeros_like(param.data)
-        dist.broadcast(tensor=tmp_tensor, src=0)
-        param.data = tmp_tensor
-        last_model_tensors.append(copy.deepcopy(tmp_tensor))
+
+    if not args.load_model:
+        for idx, param in enumerate(model.parameters()):
+            tmp_tensor = torch.zeros_like(param.data)
+            dist.broadcast(tensor=tmp_tensor, src=0)
+            param.data = tmp_tensor
+    
+    for idx, param in enumerate(model.parameters()): 
+        last_model_tensors.append(copy.deepcopy(param.data))
 
     print('Begin!')
     logging.info('\n' + repr(args) + '\n')
@@ -522,10 +540,6 @@ def run(rank, model, train_data, test_data, queue, param_q, stop_flag, client_cf
                     model = pickle.load(fin)
                     model = model.to(device=device)
 
-                # if NLP, we have to load the optimizer as well
-                # if args.task == 'nlp':
-
-
                 if args.score_mode == 'norm':
                     # need to get the individual norm of samples
                     backward_dataset = select_dataset(nextClientId, global_trainDB, batch_size=1)
@@ -563,7 +577,7 @@ def run(rank, model, train_data, test_data, queue, param_q, stop_flag, client_cf
             # upload the weight
             sendStart = time.time()
             testResults.append(uploadEpoch)
-            queue.put_nowait({rank: [trainedModels, preTrainedLoss, trainedSize, False, ranClients, trainSpeed, testResults, virtualClock]})
+            queue.put({rank: [trainedModels, preTrainedLoss, trainedSize, False, ranClients, trainSpeed, testResults, virtualClock]})
             uploadEpoch = -1
             sendDur = time.time() - sendStart
 
@@ -640,17 +654,6 @@ def setup_seed(seed):
 
 if __name__ == "__main__":
     setup_seed(args.this_rank)
-
-    train_bsz = args.batch_size
-
-    model, train_dataset, test_dataset, client_cfg = init_dataset()
-
-    splitTrainRatio = []
-
-    # Initialize PS - client communication channel
-    world_size = len(workers) + 1
-    this_rank = args.this_rank
-
     BaseManager.register('get_queue')
     BaseManager.register('get_param')
     BaseManager.register('get_stop_signal')
@@ -660,6 +663,15 @@ if __name__ == "__main__":
     q = manager.get_queue()  # queue for parameter_server signal process
     param_q = manager.get_param()  # init
     stop_signal = manager.get_stop_signal()  # stop
+
+    logging.info("====Start to initialize dataset")
+    model, train_dataset, test_dataset, client_cfg = init_dataset()
+
+    splitTrainRatio = []
+
+    # Initialize PS - client communication channel
+    world_size = len(workers) + 1
+    this_rank = args.this_rank
     dist.init_process_group(args.backend, rank=this_rank, world_size=world_size)
 
     # Split the dataset
