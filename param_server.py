@@ -329,7 +329,10 @@ def run(model, test_data, queue, param_q, stop_signal, clientSampler):
                     if args.score_mode == "loss":
                         clientSampler.registerScore(clientId, 
                                                     math.sqrt(iteration_loss[i]) * min(clientSampler.getClient(clientId).size, 
-                                                    args.upload_epoch*args.batch_size), time_stamp=epoch_count
+                                                    args.upload_epoch*args.batch_size), 
+                                                    time_stamp=epoch_count
+                                                    #min(clientSampler.getClient(clientId).size, 
+                                                    #args.upload_epoch*args.batch_size)
                                       )
                     elif args.score_mode == "norm_model":
                         clientSampler.registerScore(clientId, 
@@ -480,6 +483,10 @@ def run(model, test_data, queue, param_q, stop_signal, clientSampler):
                         # dump sampler
                         with open(logDir + '/sampler_' + str(currentMinStep), 'wb') as fout:
                             pickle.dump(clientSampler, fout)
+
+                        # dump metrics
+                        with open(logDir + '/sampler_metrics_' + str(currentMinStep), 'wb') as fout:
+                            pickle.dump(clientSampler.getAllMetrics(), fout)
 
                         logging.info("====Dump model and sampler successfully")
 

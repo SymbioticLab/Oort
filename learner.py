@@ -274,20 +274,21 @@ def run_client(clientId, cmodel, iters, learning_rate, argdicts = {}):
     if args.task != 'nlp':
         optimizer = MySGD(cmodel.parameters(), lr=learning_rate, momentum=0.9, weight_decay=5e-4)
     else:
-        if clientId not in global_optimizers:
-            # Prepare optimizer and schedule (linear warmup and decay)
-            no_decay = ["bias", "LayerNorm.weight"]
-            optimizer_grouped_parameters = [
-                {
-                    "params": [p for n, p in cmodel.named_parameters() if not any(nd in n for nd in no_decay)],
-                    "weight_decay": 5e-4,
-                },
-                {"params": [p for n, p in cmodel.named_parameters() if any(nd in n for nd in no_decay)], "weight_decay": 0},
-            ]
-            optimizer = AdamW(optimizer_grouped_parameters, lr=learning_rate, eps=args.adam_epsilon)
-            global_optimizers[clientId] = optimizer
-        else:
-            optimizer = global_optimizers[clientId]
+        optimizer = torch.optim.SGD(cmodel.parameters(), lr=learning_rate, momentum=0.9, weight_decay=5e-4)
+    #     if clientId not in global_optimizers:
+    #         # Prepare optimizer and schedule (linear warmup and decay)
+    #         no_decay = ["bias", "LayerNorm.weight"]
+    #         optimizer_grouped_parameters = [
+    #             {
+    #                 "params": [p for n, p in cmodel.named_parameters() if not any(nd in n for nd in no_decay)],
+    #                 "weight_decay": 5e-4,
+    #             },
+    #             {"params": [p for n, p in cmodel.named_parameters() if any(nd in n for nd in no_decay)], "weight_decay": 0},
+    #         ]
+    #         optimizer = AdamW(optimizer_grouped_parameters, lr=learning_rate, eps=args.adam_epsilon)
+    #         global_optimizers[clientId] = optimizer
+    #     else:
+    #         optimizer = global_optimizers[clientId]
 
     criterion = CrossEntropyLossProx().to(device=device) if args.proxy_avg else torch.nn.CrossEntropyLoss().to(device=device)
 
@@ -442,8 +443,8 @@ def run_client(clientId, cmodel, iters, learning_rate, argdicts = {}):
         del train_data_itr_list
         del global_data_iter[clientId]
 
-    if args.task == 'nlp':
-        global_optimizers[clientId] = optimizer
+    # if args.task == 'nlp':
+    #     global_optimizers[clientId] = optimizer
 
     model_param = [param.data.cpu().numpy() for param in cmodel.parameters()]
     
