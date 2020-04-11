@@ -1,6 +1,5 @@
 from __future__ import print_function
 import warnings
-from PIL import Image
 import os
 import os.path
 import numpy as np
@@ -8,8 +7,9 @@ import torch
 import codecs
 import string
 import time
+import h5py as h5
 
-class OPENIMG():
+class stackoverflow():
     """
     Args:
         root (string): Root directory of dataset where ``MNIST/processed/training.pt``
@@ -28,6 +28,7 @@ class OPENIMG():
     training_file = 'train'
     test_file = 'test'
     classes = []
+    MAX_SEQ_LEN = 20000
 
     @property
     def train_labels(self):
@@ -65,12 +66,12 @@ class OPENIMG():
             raise RuntimeError('Dataset not found.' +
                                ' You have to download it')
 
-        # load class information
-        with open(os.path.join(self.processed_folder, 'classTags'), 'r') as fin:
-            self.classes = [tag.strip() for tag in fin.readlines()]
+        # # load class information
+        # with open(os.path.join(self.processed_folder, 'classTags'), 'r') as fin:
+        #     self.classes = [tag.strip() for tag in fin.readlines()]
 
-        self.classMapping = self.class_to_idx
-        self.path = os.path.join(self.processed_folder, self.data_file)
+        # self.classMapping = self.class_to_idx
+        # self.path = os.path.join(self.processed_folder, self.data_file)
         # load data and targets
         self.data, self.targets = self.load_file(self.path)
 
@@ -118,20 +119,56 @@ class OPENIMG():
         return (os.path.exists(os.path.join(self.processed_folder,
                                             self.data_file)))
 
+    def create_tag_vocab(vocab_size):
+        """Creates vocab from `vocab_size` most common tags in Stackoverflow."""
+        tags_file = "vocab_tags.txt"
+        with open(tags_file, 'rb') as f:
+            tags = pickle.load(f)
+        return tags[:vocab_size]
+
+
+    def create_token_vocab(vocab_size):
+        """Creates vocab from `vocab_size` most common words in Stackoverflow."""
+        tokens_file = "vocab_tokens.txt"
+        with open(tokens_file, 'rb') as f:
+            tokens = pickle.load(f)
+        return tokens[:vocab_size]
+
     def load_file(self, path):
+
+        # First, get the token and tag dict
+        vocab_tokens = create_token_vocab(10000)
+        vocab_tags = create_tag_vocab(500)
+
+        vocab_tokens_dict = {k: v for v, k in enumerate(vocab_tokens)}
+        vocab_tags_dict = {k: v for v, k in enumerate(vocab_tags)}
+
+        # Load the traning data
+        train_file = h5.File("stackoverflow_train.h5", "r")
+        text, tags = [], []
         stime = time.time()
-        rawImg, rawTags = [], []
 
-        imgFiles = os.scandir(path)
-        #imgFiles = [f for f in os.listdir(path)]# if os.path.isfile(os.path.join(path, f)) and '.jpg' in f]
+        client_list = list(f['examples'])
+        title = str(f['examples']['00000001']['title'])
 
-        for imgFile in imgFiles:
-            imgFile = imgFile.name
-            classTag = imgFile.replace('.jpg', '').split('__')[1]
-            if classTag in self.classMapping:
-                rawImg.append(imgFile)
-                rawTags.append(self.classMapping[classTag])
+        for client in client_list:
+            tags_list = list(f['examples']['00000001']['tags'])
+            tokens_list = list(f['examples']['00000001']['tokens'])
 
-        dtime = time.time() - stime
-        print(dtime)
-        return rawImg, rawTags
+            for tags, tokens in zip(tags_list, tokens_list):
+                tokens_list = [s for s in tokens.split() if s in vocab_tokens_dict]
+                tags_list = [s for s in tags.split('|') if s in vocab_tags_dict]
+
+                # Lookup tensor
+                tokens = torch.tensor([vocab_tokens_dict[i] for i in tokens_list], dtype=torch.long)
+                tokens = F.one_hot(tokens).float()
+                tokens = tokens.mean(0)
+
+                tags = torch.tensor([vocab_tags_dict[i] for i in tags_list], dtype=torch.long)
+                tags = F.one_hot(tags).float()
+                tags = tokens.sum(0)
+
+                text.append(tokens)
+                tags.append(tags)
+
+        return text, tags
