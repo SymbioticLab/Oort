@@ -21,7 +21,7 @@ class ClientSampler(object):
         self.rng.seed(sample_seed)
         self.count = 0
 
-    def registerClient(self, hostId, clientId, dis, size, speed = 1.0):
+    def registerClient(self, hostId, clientId, dis, size, speed=[1.0, 1.0]):
 
         uniqueId = self.getUniqueId(hostId, clientId)
         self.Clients[uniqueId] = Client(hostId, clientId, dis, size, speed)
@@ -30,25 +30,27 @@ class ClientSampler(object):
             self.feasibleClients.append(clientId)
 
             if self.mode == "bandit":
-                #if self.score == "loss":
                 self.ucbSampler.registerArm(clientId, reward=min(size, args.upload_epoch*args.batch_size), size=size)
-                #else:
-                #    self.ucbSampler.registerArm(clientId, reward=1.0 - dis, size=size)
 
     def getAllClients(self):
         return self.feasibleClients
 
     def getClient(self, clientId):
         return self.Clients[self.getUniqueId(0, clientId)]
+
+    def getCompletionTime(self, clientId, batch_size, upload_epoch, model_size):
+        return self.Clients[self.getUniqueId(0, clientId)].getCompletionTime(
+                batch_size=batch_size, upload_epoch=upload_epoch, model_size=model_size
+            )
         
     def registerSpeed(self, hostId, clientId, speed):
         uniqueId = self.getUniqueId(hostId, clientId)
         self.Clients[uniqueId].speed = speed
 
-    def registerScore(self, clientId, reward, time_stamp=0):
+    def registerScore(self, clientId, reward, auxi=1.0, time_stamp=0):
         # currently, we only use distance as reward
         if self.mode == "bandit":
-            self.ucbSampler.registerReward(clientId, reward, time_stamp)
+            self.ucbSampler.registerReward(clientId, reward, auxi=auxi, time_stamp=time_stamp)
 
         self.registerClientScore(clientId, reward)
     
@@ -132,3 +134,4 @@ class ClientSampler(object):
 
     def getClientReward(self, clientId):
         return self.ucbSampler.getClientReward(clientId)
+

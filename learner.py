@@ -151,7 +151,6 @@ def init_dataset():
         train_transform, test_transform = get_data_transform(transformer_ns) 
         train_dataset = OPENIMG(args.data_dir, train=True, transform=train_transform)
         test_dataset = OPENIMG(args.data_dir, train=False, transform=test_transform)
-        
     elif args.data_set == 'blog':
         train_dataset = load_and_cache_examples(args, tokenizer, evaluate=False) 
         test_dataset = load_and_cache_examples(args, tokenizer, evaluate=True)
@@ -183,13 +182,6 @@ def init_dataset():
 
     # initiate the device information - normalized computation speed by enforcing sleeping, bandwidth
     client_cfg = {}
-
-    if os.path.exists(args.client_path):
-        with open(args.client_path, 'r') as fin:
-            for line in fin.readlines():
-                items = line.strip().split()
-                clientId, compute, commu = int(items[0]), float(items[1]), float(items[2])
-                global_client_profile[clientId] = [compute, commu]
 
     return model, train_dataset, test_dataset, client_cfg
 
@@ -304,7 +296,7 @@ def run_client(clientId, cmodel, iters, learning_rate, argdicts = {}):
     #     else:
     #         optimizer = global_optimizers[clientId]
 
-    criterion = CrossEntropyLossProx().to(device=device) if args.proxy_avg else torch.nn.CrossEntropyLoss().to(device=device)
+    criterion = CrossEntropyLossProx(reduction='none').to(device=device) if args.proxy_avg else torch.nn.CrossEntropyLoss(reduction='none').to(device=device)
 
     train_data_itr_list = []
 
@@ -420,11 +412,15 @@ def run_client(clientId, cmodel, iters, learning_rate, argdicts = {}):
             #                     individual_weight=cmodel.parameters(), mu=0.01)
             #else:
 
-        loss.backward()
-
-        #if itr < total_batch_size:
-        epoch_train_loss += (loss.data.item() * len(target))
+        # only measure the last epoch
+        #if itr >= (iters - total_batch_size - 1):
+        for l in loss.tolist():
+            epoch_train_loss += l**2
+        #epoch_train_loss += (loss.data.item() * len(target))
         count += len(target)
+        loss = torch.mean(loss)
+
+        loss.backward()
 
         if args.task != 'nlp':
             delta_w = optimizer.get_delta_w(learning_rate)

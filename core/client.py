@@ -3,14 +3,17 @@ class Client(object):
     def __init__(self, hostId, clientId, dis, size, speed):
         self.hostId = hostId
         self.clientId = clientId
-        self.speed = speed
+        self.compute_speed = speed[0]
+        self.bandwidth = speed[1]
         self.distance = dis
         self.size = size
         self.score = dis
-        #self.lastPiggBack = time.time()
 
     def getScore(self):
         return self.score
 
     def registerReward(self, reward):
         self.score = reward
+
+    def getCompletionTime(self, batch_size, upload_epoch, model_size):
+        return (batch_size * upload_epoch/float(self.compute_speed) + model_size/float(self.bandwidth))

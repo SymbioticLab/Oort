@@ -1,7 +1,7 @@
 import sys, os, time, datetime, random
 
 
-paramsCmd = ' --ps_ip=10.255.11.92 --model=densenet121 --epochs=20000 --upload_epoch=20  --dump_epoch=2 --learning_rate=0.04 --decay_epoch=5 --model_avg=True --batch_size=32 '
+paramsCmd = ' --ps_ip=10.255.11.92 --model=mobilenet_v2 --epochs=20000 --upload_epoch=20  --dump_epoch=20 --learning_rate=0.04 --decay_epoch=5 --model_avg=True --batch_size=32 '
 
 
 os.system("bhosts > vms")
@@ -9,11 +9,12 @@ os.system("rm *.o")
 os.system("rm *.e")
 
 avaiVms = {}
-blacklist = set()
+quotalist = {}
 
-with open('blacklist', 'r') as fin:
+with open('quotas', 'r') as fin:
     for v in fin.readlines():
-        blacklist.add(v.strip())
+        items = v.strip().split()
+        quotalist[items[0]] = int(items[1])
 
 threadQuota = 10
 
@@ -23,12 +24,15 @@ with open('vms', 'r') as fin:
         if 'gpu-cn0' in line:
             # and 'gpu-cn011' not in line and 'gpu-cn008' not in line and 'gpu-cn001' not in line and 'gpu-cn012' not in line and 'gpu-cn005' not in line and 'gpu-cn006' not in line and 'gpu-cn004' not in line: #and 'gpu-cn012' not in line and 'gpu-cn011' not in line:
             items = line.strip().split()
-            if items[0] not in blacklist:
-                status = items[1]
-                threadsGpu = int(items[5])
 
-                if status == "ok" and (40-threadsGpu) >= threadQuota:
-                    avaiVms[items[0]] = 40 - threadsGpu
+            status = items[1]
+            threadsGpu = int(items[5])
+            vmName = items[0]
+            #print(vmName,'#', quotalist[vmName])
+            maxQuota = quotalist[vmName] if vmName in quotalist else 999
+
+            if status == "ok" and (40-threadsGpu) >= threadQuota and maxQuota >= threadQuota:
+                avaiVms[vmName] = min(40 - threadsGpu, maxQuota)
 
 # remove all log files, and scripts first
 files = [f for f in os.listdir('.') if os.path.isfile(f)]
@@ -66,12 +70,16 @@ assignedVMs = []
 
 # generate new scripts, assign each worker to different vms
 for w in range(1, numOfWorkers + 1):
-    print('assign ...' + str(w))
+    
     rankId = ' --this_rank=' + str(w)
     fileName = jobPrefix+str(w)
     jobName = 'learner' + str(w)
 
     _vm = sorted(avaiVms, key=avaiVms.get, reverse=True)[0]
+    print('assign ...{} to {}'.format(str(w), _vm))
+    # _minvmlist = [x for x in _vms if x == _vms[0]]
+    # random.shuffle(_minvmlist)
+    # _vm = _minvmlist[0]
 
     # random shuffle
     # random.shuffle(_vm)
@@ -105,6 +113,6 @@ vmSets = set()
 for w in range(1, numOfWorkers + 1):
     # avoid gpu contention on the same machine
     if assignedVMs[w-1] in vmSets:
-        time.sleep(3)
+        time.sleep(1)
     vmSets.add(assignedVMs[w-1])
     os.system('bsub < learner' + str(w) + '.lsf')

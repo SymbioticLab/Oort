@@ -106,6 +106,13 @@ def initiate_sampler_query(numOfClients):
         with open(args.sampler_path, 'rb') as loader:
             clientSampler = pickle.load(loader)
 
+    # load client profiles
+    global_client_profile = {}
+    if os.path.exists(args.client_path):
+        with open(args.client_path, 'rb') as fin:
+            # {clientId: [computer, bandwidth]}
+            global_client_profile = pickle.load(fin)
+
     collectedClients = 0
     initial_time = time.time()
     clientId = 1
@@ -125,7 +132,8 @@ def initiate_sampler_query(numOfClients):
 
                 for index, dis in enumerate(distanceVec):
                     # since the worker rankId starts from 1, we also configure the initial dataId as 1
-                    clientSampler.registerClient(rank_src, clientId, dis, sizeVec[index])
+                    systemProfile = global_client_profile[clientId] if clientId in global_client_profile else [1.0, 1.0]
+                    clientSampler.registerClient(rank_src, clientId, dis, sizeVec[index], speed=systemProfile)
                     clientId += 1
 
                 passed = True
@@ -326,23 +334,24 @@ def run(model, test_data, queue, param_q, stop_signal, clientSampler):
                     if args.score_mode == "loss":
                         clientSampler.registerScore(clientId, 
                                                     math.sqrt(iteration_loss[i]) * min(clientSampler.getClient(clientId).size, 
-                                                    args.upload_epoch*args.batch_size), 
+                                                    args.upload_epoch*args.batch_size), auxi = math.sqrt(iteration_loss[i]),
                                                     time_stamp=epoch_count
-                                                    #min(clientSampler.getClient(clientId).size, 
-                                                    #args.upload_epoch*args.batch_size)
                                       )
                     elif args.score_mode == "norm_model":
                         clientSampler.registerScore(clientId, 
-                                                    math.sqrt(gradients.norm(2).data.item()) * min(clientSampler.getClient(clientId).size, 
-                                                    args.upload_epoch*args.batch_size), time_stamp=epoch_count
+                                                    gradients.norm(2).data.item() * min(clientSampler.getClient(clientId).size, 
+                                                    args.upload_epoch*args.batch_size), auxi=gradients.norm(2).data.item(), 
+                                                    time_stamp=epoch_count
                                       )
                     elif args.score_mode == "norm":
                         clientSampler.registerScore(clientId, 
                                                     math.sqrt(iteration_loss[i]) * min(clientSampler.getClient(clientId).size, 
-                                                    args.upload_epoch*args.batch_size), time_stamp=epoch_count)
+                                                    args.upload_epoch*args.batch_size), auxi=math.sqrt(iteration_loss[i]),
+                                                    time_stamp=epoch_count)
                     elif args.score_mode == "size":
                         clientSampler.registerScore(clientId, min(clientSampler.getClient(clientId).size, 
-                                                    args.upload_epoch*args.batch_size), time_stamp=epoch_count)
+                                                    args.upload_epoch*args.batch_size), 
+                                                    time_stamp=epoch_count)
                     elif args.score_mode == "dist":
                         clientSampler.registerScore(clientId, (1.0 - clientSampler.getClient(clientId).distance), time_stamp=epoch_count)
                     else:
@@ -350,7 +359,7 @@ def run(model, test_data, queue, param_q, stop_signal, clientSampler):
 
                     if isSelected:
                         received_updates += 1
-                        global_virtual_clock = max(global_virtual_clock, last_global_virtual_clock + virtualClock[i])
+                        #global_virtual_clock = max(global_virtual_clock, last_global_virtual_clock + virtualClock[i])
 
                 logging.info("====Done handling rank {}, with ratio {}, now collected {} clients".format(rank_src, ratioSample, received_updates))
 
@@ -421,9 +430,27 @@ def run(model, test_data, queue, param_q, stop_signal, clientSampler):
                     # resampling the clients if necessary
                     if epoch_count % args.resampling_interval == 0:
                         logging.info("====Start to sample for epoch {}, global virtualClock is {}".format(epoch_count, global_virtual_clock))
-                        sampledClients = sorted(clientSampler.resampleClients(max(args.total_worker, len(workers)), cur_time=epoch_count))
-                        logging.info("====Try to resample clients, and result is {}".format(sampledClients))
+                        numToRealRun = max(args.total_worker, len(workers))
+                        numToSample = int(numToRealRun * args.overcommit)
+                        sampledClientsReal = sorted(clientSampler.resampleClients(numToSample, cur_time=epoch_count))
+
+                        # we decide to simulate the wall-clock and remove the stragglers
+                        completionTimes = []
+                        for virtualClient in sampledClientsReal:
+                            completionTimes.append(clientSampler.getCompletionTime(virtualClient, 
+                                                    batch_size=args.batch_size, upload_epoch=args.upload_epoch, 
+                                                    model_size=args.model_size)
+                                                )
+                        # get the top-k completions
+                        top_k_index = sorted(range(len(completionTimes)), key=lambda k:completionTimes[k])[:numToRealRun]
+                        sampledClients = [sampledClientsReal[k] for k in top_k_index]
                         sampledClientSet = set(sampledClients)
+
+                        # update the virtual clock
+                        global_virtual_clock += completionTimes[top_k_index[-1]]
+
+                        logging.info("====Try to resample clients, and result is: \n{}\n while final takes: \n {}"
+                                    .format(sampledClientsReal, sampledClients))
 
                         # simulate the optimal
                         if args.run_all:

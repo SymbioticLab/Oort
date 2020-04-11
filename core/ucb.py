@@ -11,9 +11,9 @@ class UCB(object):
         self.numOfTrials = 0
 
         self.exploration = 0.9
-        self.decay_factor = 0.99
-        self.exploration_min = 0.1
-        self.alpha = 0.2
+        self.decay_factor = 0.95
+        self.exploration_min = 0.2
+        self.alpha = 0.3
 
         self.pacer_delta = 0#0.5 if score_mode == "loss" else 0
         self.pacer = -self.pacer_delta
@@ -25,17 +25,30 @@ class UCB(object):
         np2.random.seed(sample_seed)
 
     def registerArm(self, armId, size, reward):
-        # Initiate the score for arms. [score, time_stamp, # of trials, size of client]
+        # Initiate the score for arms. [score, time_stamp, # of trials, size of client, auxi]
         if armId not in self.totalArms:
-             self.totalArms[armId] = [reward, 0, 0, size]
-             #self.unexplored.add(armId)
+             self.totalArms[armId] = [0, 0, 0, size, 0]
+             self.unexplored.add(armId)
 
-    def registerReward(self, armId, reward, time_stamp):
+    def registerReward(self, armId, reward, auxi, time_stamp):
         # [reward, time stamp]
         self.totalArms[armId][0] = reward
         self.totalArms[armId][1] = time_stamp
         self.totalArms[armId][2] += 1
+        self.totalArms[armId][4] = auxi
+
         self.unexplored.discard(armId)
+
+    def getExpectation(self):
+        sum_reward = 0.
+        sum_count = 0.
+
+        for arm in self.totalArms:
+            if self.totalArms[arm][0] > 0:
+                sum_count += 1
+                sum_reward += self.totalArms[arm][4]
+
+        return sum_reward/sum_count
 
     def getTopK(self, numOfSamples, cur_time):
         self.numOfTrials += 1
@@ -47,24 +60,37 @@ class UCB(object):
         orderedKeys = list(self.totalArms.keys())
 
         moving_reward, staleness, allloss = [], [], {}
+        expectation_reward = self.getExpectation()
 
         for sampledId in orderedKeys:
-            if self.totalArms[sampledId][1] != -1:
-                moving_reward.append(self.totalArms[sampledId][0])
+            if self.totalArms[sampledId][0] > 0:
+                creward = self.totalArms[sampledId][0]
+            #else:
+                # haven't try before, then assign to avg reward x size
+                #creward = expectation_reward # * self.totalArms[sampledId][3]
+
+                moving_reward.append(creward)
                 staleness.append(cur_time - self.totalArms[sampledId][1])
 
-        max_reward, min_reward, range_reward = self.get_norm(moving_reward)
-        max_staleness, min_staleness, range_staleness = self.get_norm(staleness, thres=1)
+        max_reward, min_reward, range_reward, avg_reward = self.get_norm(moving_reward)
+        max_staleness, min_staleness, range_staleness, avg_staleness = self.get_norm(staleness, thres=1)
+        
 
         for key in orderedKeys:
             # we have played this arm before
-            if self.totalArms[key][1] != -1:
-                sc = (self.totalArms[key][0] - min_reward)/float(range_reward) \
+            if self.totalArms[key][0] > 0:
+                creward = self.totalArms[key][0]
+                numOfExploited += 1
+            #else:
+                # haven't try before, then assign to avg reward x size
+                #creward = expectation_reward #* self.totalArms[key][3]
+
+                sc = (creward - min_reward)/float(range_reward) \
                     + self.alpha*((cur_time-self.totalArms[key][1]) - min_staleness)/float(range_staleness)
 
                 if self.totalArms[key][1] == cur_time - 1:
                     allloss[key] = self.totalArms[key][0]
-                numOfExploited += 1
+
                 scores[key] = sc
 
         clientLakes = list(scores.keys())
@@ -78,11 +104,11 @@ class UCB(object):
 
         # pacer_from = int(self.pacer)
         # pacer_to = min(pacer_from + exploitLen, len(scores))
-        # pickedClients = sorted(scores, key=scores.get, reverse=True)[pacer_from:pacer_to]
+        pickedClients = sorted(scores, key=scores.get, reverse=True)[:exploitLen]
 
         # dynamic UCB, pick by probablity
-        totalSc = float(sum([scores[key] for key in clientLakes]))
-        pickedClients = list(np2.random.choice(clientLakes, exploitLen, p=[scores[key]/totalSc for key in clientLakes], replace=False))
+        #totalSc = float(sum([scores[key] for key in clientLakes]))
+        #pickedClients = list(np2.random.choice(clientLakes, exploitLen, p=[scores[key]/totalSc for key in clientLakes], replace=False))
 
         # exploration 
         if len(self.unexplored) > 0:
@@ -133,7 +159,6 @@ class UCB(object):
         _max = max(aList)
         _min = min(aList)*0.999
         _range = max(_max - _min, thres)
+        _avg = sum(aList)/float(len(aList))
 
-        return float(_max), float(_min), float(_range)
-
-
+        return float(_max), float(_min), float(_range), float(_avg)
