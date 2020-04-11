@@ -296,7 +296,8 @@ def run_client(clientId, cmodel, iters, learning_rate, argdicts = {}):
     #     else:
     #         optimizer = global_optimizers[clientId]
 
-    criterion = CrossEntropyLossProx(reduction='none').to(device=device) if args.proxy_avg else torch.nn.CrossEntropyLoss(reduction='none').to(device=device)
+    #criterion = CrossEntropyLossProx(reduction='none').to(device=device) if args.proxy_avg else torch.nn.CrossEntropyLoss(reduction='none').to(device=device)
+    criterion = CrossEntropyLossProx().to(device=device) if args.proxy_avg else torch.nn.CrossEntropyLoss().to(device=device)
 
     train_data_itr_list = []
 
@@ -414,11 +415,11 @@ def run_client(clientId, cmodel, iters, learning_rate, argdicts = {}):
 
         # only measure the last epoch
         #if itr >= (iters - total_batch_size - 1):
-        for l in loss.tolist():
-            epoch_train_loss += l**2
-        #epoch_train_loss += (loss.data.item() * len(target))
+        # for l in loss.tolist():
+        #     epoch_train_loss += l**2
+        epoch_train_loss += (loss.data.item() * len(target))
         count += len(target)
-        loss = torch.mean(loss)
+        # loss = torch.mean(loss)
 
         loss.backward()
 

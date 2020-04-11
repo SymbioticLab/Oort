@@ -1,7 +1,7 @@
 import math
 from random import Random
 from collections import OrderedDict
-import logging
+import logging, pickle
 import numpy as np2
 
 class UCB(object):
@@ -113,10 +113,13 @@ class UCB(object):
         # exploration 
         if len(self.unexplored) > 0:
             _unexplored = list(self.unexplored)
-            self.rng.shuffle(_unexplored)
-            exploreLen = min(len(_unexplored), numOfSamples - len(pickedClients))
 
-            pickedClients = pickedClients + _unexplored[:exploreLen]
+            # prioritize w/ some rewards (i.e., size)
+            unexplored_by_rewards = sorted(_unexplored, reverse=True, key=lambda k:self.totalArms[k][3])
+            #self.rng.shuffle(_unexplored)
+            exploreLen = min(len(_unexplored), numOfSamples - len(pickedClients))
+            
+            pickedClients = pickedClients + unexplored_by_rewards[:exploreLen]
         else:
             # no clients left for exploration
             self.exploration_min = 0.

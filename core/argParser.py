@@ -33,6 +33,8 @@ parser.add_argument('--sampler_path', type=str, default=None)
 parser.add_argument('--model_path', type=str, default=None)
 parser.add_argument('--conf_path', type=str, default='~/dataset/')
 parser.add_argument('--max_iter_store', type=int, default=100)
+parser.add_argument('--overcommit', type=float, default=1.0)
+parser.add_argument('--model_size', type=float, default=0)
 
 # The configuration of different hyper-parameters for training
 parser.add_argument('--epochs', type=int, default=2000)
@@ -216,3 +218,4 @@ parser.add_argument("--server_port", type=str, default="", help="For distant deb
 
 
 args = parser.parse_args()
+
