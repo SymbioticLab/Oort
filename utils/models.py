@@ -488,6 +488,8 @@ class linearRegression(nn.Module):
         out = self.linear(x)
         return out
 
+
+
 # ============================= LogisticRegression Regression ==============================
 class LogisticRegression(nn.Module):
     def __init__(self, input_dim, output_dim):
@@ -495,8 +497,8 @@ class LogisticRegression(nn.Module):
         self.linear = nn.Linear(input_dim, output_dim)
 
     def forward(self, x):
-        outputs = self.linear(x)
-        return outputs
+        output = F.sigmoid(self.linear(x))
+        return output
 
 # ============================= SVM ==============================
 class LinearSVM(nn.Module):
