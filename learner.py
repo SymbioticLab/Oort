@@ -296,8 +296,8 @@ def run_client(clientId, cmodel, iters, learning_rate, argdicts = {}):
     #     else:
     #         optimizer = global_optimizers[clientId]
 
-    #criterion = CrossEntropyLossProx(reduction='none').to(device=device) if args.proxy_avg else torch.nn.CrossEntropyLoss(reduction='none').to(device=device)
-    criterion = CrossEntropyLossProx().to(device=device) if args.proxy_avg else torch.nn.CrossEntropyLoss().to(device=device)
+    criterion = CrossEntropyLossProx(reduction='none').to(device=device) if args.proxy_avg else torch.nn.CrossEntropyLoss(reduction='none').to(device=device)
+    #criterion = CrossEntropyLossProx().to(device=device) if args.proxy_avg else torch.nn.CrossEntropyLoss().to(device=device)
 
     train_data_itr_list = []
 
@@ -316,7 +316,7 @@ def run_client(clientId, cmodel, iters, learning_rate, argdicts = {}):
 
     local_trained = 0
     numOfPreWarmUp = 1
-    epoch_train_loss = 0.
+    epoch_train_loss = None
     comp_duration = 0.
     norm_gradient = 0.
     count = 0
@@ -326,6 +326,7 @@ def run_client(clientId, cmodel, iters, learning_rate, argdicts = {}):
 
     numOfFailures = 0
     numOfTries = 5
+
     cmodel.train()
     # TODO: if indeed enforce FedAvg, we will run fixed number of epochs, instead of iterations
 
@@ -380,11 +381,6 @@ def run_client(clientId, cmodel, iters, learning_rate, argdicts = {}):
         if numOfFailures >= numOfTries:
             break
 
-        # avoid errors in BN
-        if len(target) <= 5:
-            itr -= 1
-            continue
-
         numOfFailures = 0
         curBatch = curBatch + 1
 
@@ -414,13 +410,18 @@ def run_client(clientId, cmodel, iters, learning_rate, argdicts = {}):
             #else:
 
         # only measure the last epoch
-        #if itr >= (iters - total_batch_size - 1):
-        # for l in loss.tolist():
-        #     epoch_train_loss += l**2
-        epoch_train_loss += (loss.data.item() * len(target))
-        count += len(target)
-        # loss = torch.mean(loss)
+        temp_loss = 0.
+        if itr >= (iters - total_batch_size - 1):
+            for l in loss.tolist():
+                temp_loss += l**2
 
+        if epoch_train_loss is None:
+            epoch_train_loss = temp_loss
+        else:
+            epoch_train_loss = (1. - args.loss_decay) * epoch_train_loss + args.loss_decay * temp_loss
+        count += len(target)
+
+        loss = torch.mean(loss)
         loss.backward()
 
         if args.task != 'nlp':
@@ -471,7 +472,7 @@ def run_client(clientId, cmodel, iters, learning_rate, argdicts = {}):
     isSuccess = True
     if count > 0:
         speed = time_spent/float(count) 
-        epoch_train_loss /= float(count)
+        #epoch_train_loss /= float(count)
     else:
         isSuccess = False
         logging.info("====Failed to run client {}".format(clientId))
@@ -539,7 +540,7 @@ def run(rank, model, train_data, test_data, queue, param_q, stop_flag, client_cf
 
                 if args.score_mode == 'norm':
                     # need to get the individual norm of samples
-                    backward_dataset = select_dataset(nextClientId, global_trainDB, batch_size=1)
+                    backward_dataset = select_dataset(nextClientId, global_trainDB, batch_size=1, isTest=True)
                     gradient_norm = run_backward_pass(model, backward_dataset)
                     score = gradient_norm
 
@@ -556,7 +557,7 @@ def run(rank, model, train_data, test_data, queue, param_q, stop_flag, client_cf
 
                 score = -1
                 if args.forward_pass:
-                    forward_dataset = select_dataset(nextClientId, global_trainDB, batch_size=args.test_bsz)
+                    forward_dataset = select_dataset(nextClientId, global_trainDB, batch_size=args.test_bsz, isTest=True)
                     forward_loss = run_forward_pass(model, forward_dataset)
                     score = forward_loss
 
@@ -605,6 +606,7 @@ def run(rank, model, train_data, test_data, queue, param_q, stop_flag, client_cf
             evalStart = time.time()
             # test the model if necessary
             if epoch % int(args.eval_interval) == 0:
+                model = model.to(device=device)
                 # forward pass of the training data
                 if args.test_train_data:
                     rank_train_data = select_dataset(

@@ -15,7 +15,7 @@ class ClientSampler(object):
         self.filter_less = args.filter_less
         self.filter_more = args.filter_more
 
-        self.ucbSampler = UCB(sample_seed=sample_seed, score_mode=score) if self.mode == "bandit" else None
+        self.ucbSampler = UCB(sample_seed=sample_seed, score_mode=score, sample_window=args.sample_window) if self.mode == "bandit" else None
         self.feasibleClients = []
         self.rng = Random()
         self.rng.seed(sample_seed)

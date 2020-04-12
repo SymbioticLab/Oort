@@ -251,7 +251,7 @@ def run(model, test_data, queue, param_q, stop_signal, clientSampler):
     data_size_epoch = 0   # len(train_data), one epoch
     epoch_count = 1
     global_virtual_clock = 0.
-    last_global_virtual_clock = global_virtual_clock
+    round_duration = 0.
 
     staleness = 0
     learner_staleness = {l: 0 for l in workers}
@@ -359,7 +359,6 @@ def run(model, test_data, queue, param_q, stop_signal, clientSampler):
 
                     if isSelected:
                         received_updates += 1
-                        #global_virtual_clock = max(global_virtual_clock, last_global_virtual_clock + virtualClock[i])
 
                 logging.info("====Done handling rank {}, with ratio {}, now collected {} clients".format(rank_src, ratioSample, received_updates))
 
@@ -429,7 +428,9 @@ def run(model, test_data, queue, param_q, stop_signal, clientSampler):
 
                     # resampling the clients if necessary
                     if epoch_count % args.resampling_interval == 0:
-                        logging.info("====Start to sample for epoch {}, global virtualClock is {}".format(epoch_count, global_virtual_clock))
+                        logging.info("====Start to sample for epoch {}, global virtualClock: {}, round_duration: {}"
+                                        .format(epoch_count, global_virtual_clock, round_duration))
+                        
                         numToRealRun = max(args.total_worker, len(workers))
                         numToSample = int(numToRealRun * args.overcommit)
                         sampledClientsReal = sorted(clientSampler.resampleClients(numToSample, cur_time=epoch_count))
@@ -445,9 +446,7 @@ def run(model, test_data, queue, param_q, stop_signal, clientSampler):
                         top_k_index = sorted(range(len(completionTimes)), key=lambda k:completionTimes[k])[:numToRealRun]
                         sampledClients = [sampledClientsReal[k] for k in top_k_index]
                         sampledClientSet = set(sampledClients)
-
-                        # update the virtual clock
-                        global_virtual_clock += completionTimes[top_k_index[-1]]
+                        round_duration = completionTimes[top_k_index[-1]]
 
                         logging.info("====Try to resample clients, and result is: \n{}\n while final takes: \n {}"
                                     .format(sampledClientsReal, sampledClients))
@@ -515,7 +514,9 @@ def run(model, test_data, queue, param_q, stop_signal, clientSampler):
                         model = model.to(device=device)
 
                     last_global_model = [param for param in pickle.loads(pickle.dumps(model)).parameters()]
-                    last_global_virtual_clock = global_virtual_clock
+                    
+                    # update the virtual clock
+                    global_virtual_clock += round_duration
 
                 # The training stop
                 if(epoch_count >= args.epochs):

@@ -455,8 +455,10 @@ def partition_dataset(partitioner, workers, partitionRatio=[], sequential=0, rat
 def select_dataset(rank: int, partition: DataPartitioner, batch_size: int, isTest=False, is_rank=0, collate_fn=None):
     partition = partition.use(rank - 1, isTest, is_rank-1)
     timeOut = 0 if isTest else 60
+    numOfThreads = args.num_loaders
+    dropLast = False if isTest else True
 
     if collate_fn is None:
-        return DataLoader(partition, batch_size=batch_size, shuffle=True, pin_memory=False, num_workers=args.num_loaders, drop_last=False, timeout=timeOut)
+        return DataLoader(partition, batch_size=batch_size, shuffle=True, pin_memory=False, num_workers=numOfThreads, drop_last=dropLast, timeout=timeOut)
     else:
-        return DataLoader(partition, batch_size=batch_size, shuffle=True, pin_memory=False, num_workers=args.num_loaders, drop_last=False, timeout=timeOut, collate_fn=collate_fn)
+        return DataLoader(partition, batch_size=batch_size, shuffle=True, pin_memory=False, num_workers=numOfThreads, drop_last=dropLast, timeout=timeOut, collate_fn=collate_fn)

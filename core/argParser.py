@@ -35,6 +35,8 @@ parser.add_argument('--conf_path', type=str, default='~/dataset/')
 parser.add_argument('--max_iter_store', type=int, default=100)
 parser.add_argument('--overcommit', type=float, default=1.0)
 parser.add_argument('--model_size', type=float, default=0)
+parser.add_argument('--sample_window', type=float, default=5.0)
+parser.add_argument('--loss_decay', type=float, default=0.5)
 
 # The configuration of different hyper-parameters for training
 parser.add_argument('--epochs', type=int, default=2000)

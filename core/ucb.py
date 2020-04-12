@@ -6,22 +6,21 @@ import numpy as np2
 
 class UCB(object):
 
-    def __init__(self, sample_seed, score_mode):
+    def __init__(self, sample_seed, score_mode, sample_window):
         self.totalArms = OrderedDict()
         self.numOfTrials = 0
 
         self.exploration = 0.9
-        self.decay_factor = 0.95
+        self.decay_factor = 0.98
         self.exploration_min = 0.2
         self.alpha = 0.3
-
-        self.pacer_delta = 0#0.5 if score_mode == "loss" else 0
-        self.pacer = -self.pacer_delta
 
         self.rng = Random()
         self.rng.seed(sample_seed)
         self.unexplored = set()
         self.score_mode = score_mode
+
+        self.sample_window = sample_window
         np2.random.seed(sample_seed)
 
     def registerArm(self, armId, size, reward):
@@ -104,7 +103,9 @@ class UCB(object):
 
         # pacer_from = int(self.pacer)
         # pacer_to = min(pacer_from + exploitLen, len(scores))
-        pickedClients = sorted(scores, key=scores.get, reverse=True)[:exploitLen]
+        pickedClients = sorted(scores, key=scores.get, reverse=True)[:int(self.sample_window*exploitLen)]
+        totalSc = float(sum([scores[key] for key in pickedClients]))
+        pickedClients = list(np2.random.choice(pickedClients, exploitLen, p=[scores[key]/totalSc for key in pickedClients], replace=False))
 
         # dynamic UCB, pick by probablity
         #totalSc = float(sum([scores[key] for key in clientLakes]))
@@ -118,7 +119,6 @@ class UCB(object):
             unexplored_by_rewards = sorted(_unexplored, reverse=True, key=lambda k:self.totalArms[k][3])
             #self.rng.shuffle(_unexplored)
             exploreLen = min(len(_unexplored), numOfSamples - len(pickedClients))
-            
             pickedClients = pickedClients + unexplored_by_rewards[:exploreLen]
         else:
             # no clients left for exploration
@@ -141,8 +141,8 @@ class UCB(object):
         top_k_score.append(self.totalArms[last_exploit] + \
             [(self.totalArms[last_exploit][0] - min_reward)/float(range_reward), self.alpha*((cur_time-self.totalArms[last_exploit][1]) - min_staleness)/float(range_staleness)])
 
-        logging.info("====At time {}, UCB exploited {}, un-explored {}, pacer {} to {}, top-k score is {}"
-            .format(cur_time, numOfExploited, len(self.totalArms) - numOfExploited, self.pacer, pacer_to, top_k_score))
+        logging.info("====At time {}, UCB exploited {}, un-explored {}, top-k score is {}"
+            .format(cur_time, numOfExploited, len(self.totalArms) - numOfExploited, top_k_score))
         logging.info("====At time {}, all rewards are {}".format(cur_time, allloss))
 
         return pickedClients
