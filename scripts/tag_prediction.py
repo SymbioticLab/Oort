@@ -1,19 +1,25 @@
 import torch
+import torch.nn as nn
+import torch.nn.functional as F
 from torch.autograd import Variable
 import torchvision.transforms as transforms
 import pickle
 import h5py as h5
+import sys
+sys.path.append("..")
+from utils.stackoverflow import *
 
-
-class LogisticRegression(torch.nn.Module):
+class LogisticRegression(nn.Module):
     def __init__(self, input_dim, output_dim):
         super(LogisticRegression, self).__init__()
-        self.linear = torch.nn.Linear(input_dim, output_dim)
-
+        self.linear = nn.Linear(input_dim, output_dim)
 
     def forward(self, x):
-        y_pred = F.sigmoid(self.linear(x))
-        return y_pred
+        output = F.sigmoid(self.linear(x))
+        return output
+
+
+
 
 def create_logistic_model(vocab_tokens_size, vocab_tags_size):
     """Logistic regression to predict tags of StackOverflow.
@@ -23,44 +29,76 @@ def create_logistic_model(vocab_tokens_size, vocab_tags_size):
         vocab_tags_size: Size of token vocabulary to use.
 
     """
-
     model = LogisticRegression(vocab_tokens_size, vocab_tags_size)
-    return model 
-
-def create_tag_vocab(vocab_size):
-    """Creates vocab from `vocab_size` most common tags in Stackoverflow."""
-    tags_file = "vocab_tags.txt"
-    with open(tags_file, 'rb') as f:
-        tags = pickle.load(f)
-    return tags[:vocab_size]
-
-
-def create_token_vocab(vocab_size):
-  """Creates vocab from `vocab_size` most common words in Stackoverflow."""
-    tokens_file = "vocab_tokens.txt"
-    with open(tokens_file, 'rb') as f:
-        tokens = pickle.load(f)
-    return tokens[:vocab_size]
-
-
-def get_stackoverflow_datasets(vocab_tokens_size=10000,
-                               vocab_tags_size=500,
-                               max_training_elements_per_user=500,
-                               client_batch_size=100,
-                               client_epochs_per_round=1,
-                               num_validation_examples=10000):
-
-
-    stackoverflow_train, _, stackoverflow_test = tff.simulation.datasets.stackoverflow.load_data(
-    )
-
-
-    vocab_tokens = create_token_vocab(vocab_tokens_size)
-    vocab_tags = create_tag_vocab(vocab_tags_size)
+    return model
 
 
 
-def train():
-    criterion = nn.CrossEntropyLoss()  
-    optimizer = torch.optim.SGD(model.parameters(), lr=learning_rate)  
-    return None
+
+def train(vocab_tokens_size=10000, vocab_tags_size=500):
+    # Hyper-parameters
+    input_size = 28 * 28    # 784
+    num_classes = 10
+    num_epochs = 5
+    batch_size = 1
+    learning_rate = 0.001
+
+    # Logistic regression model
+    model = create_logistic_model(vocab_tokens_size, vocab_tags_size)
+
+
+    train_dataset = stackoverflow('/users/xzhu/tag/stackoverflow_tf/', True)
+    #test_dataset = stackoverflow('/users/xzhu/tag/stackoverflow_tf/', False)
+    #print(train_dataset.__getitem__(0)[0].size())
+
+    # Data loader (input pipeline)
+    train_loader = torch.utils.data.DataLoader(dataset=train_dataset,
+                                            batch_size=batch_size,
+                                            shuffle=True)
+
+    #test_loader = torch.utils.data.DataLoader(dataset=test_dataset,
+    #                                        batch_size=batch_size,
+    #                                        shuffle=False)
+
+    # Loss and optimizer
+    # nn.CrossEntropyLoss() computes softmax internally
+    #criterion = nn.CrossEntropyLoss()
+    criterion = nn.BCELoss()
+    optimizer = torch.optim.SGD(model.parameters(), lr=learning_rate)
+
+    # Train the model
+    total_step = len(train_loader)
+    for epoch in range(num_epochs):
+        for i, (text, labels) in enumerate(train_loader):
+            # Forward pass
+            outputs = model(text)
+            loss = criterion(outputs, labels)
+
+            #loss = criterion(outputs, torch.max(labels, 1)[1])
+
+            # Backward and optimize
+            optimizer.zero_grad()
+            loss.backward()
+            optimizer.step()
+
+            if (i+1) % 100 == 0:
+                print ('Epoch [{}/{}], Step [{}/{}], Loss: {:.4f}'
+                    .format(epoch+1, num_epochs, i+1, total_step, loss.item()))
+
+    # # Test the model
+    # # In test phase, we don't need to compute gradients (for memory efficiency)
+    # with torch.no_grad():
+    #     correct = 0
+    #     total = 0
+    #     for images, labels in test_loader:
+    #         images = images.reshape(-1, input_size)
+    #         outputs = model(images)
+    #         _, predicted = torch.max(outputs.data, 1)
+    #         total += labels.size(0)
+    #         correct += (predicted == labels).sum()
+
+    #     print('Accuracy of the model on the 10000 test images: {} %'.format(100 * correct / total))
+
+
+
+train()

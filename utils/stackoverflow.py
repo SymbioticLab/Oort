@@ -1,15 +1,14 @@
 from __future__ import print_function
 import warnings
-from PIL import Image
 import os
 import os.path
-import numpy as np
 import torch
-import codecs
-import string
 import time
+import pickle
+import h5py as h5
+import torch.nn.functional as F
 
-class OPENIMG():
+class stackoverflow():
     """
     Args:
         root (string): Root directory of dataset where ``MNIST/processed/training.pt``
@@ -25,9 +24,8 @@ class OPENIMG():
             target and transforms it.
     """
 
-    training_file = 'train'
-    test_file = 'test'
     classes = []
+    MAX_SEQ_LEN = 20000
 
     @property
     def train_labels(self):
@@ -49,13 +47,12 @@ class OPENIMG():
         warnings.warn("test_data has been renamed data")
         return self.data
 
-    def __init__(self, root, train=True, transform=None, target_transform=None):
-        
+    def __init__(self, root, train=True):
         self.train = train  # training set or test set
         self.root = root
-        self.transform = transform
-        self.target_transform = target_transform
-
+        #self.transform = transform
+        #self.target_transform = target_transform
+        """
         if self.train:
             self.data_file = self.training_file
         else:
@@ -64,40 +61,26 @@ class OPENIMG():
         if not self._check_exists():
             raise RuntimeError('Dataset not found.' +
                                ' You have to download it')
+        """
 
-        # load class information
-        with open(os.path.join(self.processed_folder, 'classTags'), 'r') as fin:
-            self.classes = [tag.strip() for tag in fin.readlines()]
+        self.train_file = 'stackoverflow_train.h5'
+        self.test_file = 'stackoverflow_test.h5'
+        self.train = train
 
-        self.classMapping = self.class_to_idx
-        self.path = os.path.join(self.processed_folder, self.data_file)
+
         # load data and targets
-        self.data, self.targets = self.load_file(self.path)
+        self.data, self.targets = self.load_file(self.root)
 
     def __getitem__(self, index):
         """
-        Args:
+        Args:xx
             index (int): Index
 
         Returns:
-            tuple: (image, target) where target is index of the target class.
+            tuple: (text, tags)
         """
-        imgName, target = self.data[index], int(self.targets[index])
 
-        # doing this so that it is consistent with all other datasets
-        # to return a PIL Image
-        img = Image.open(os.path.join(self.path, imgName))
-        
-        # avoid channel error
-        img = img.convert('RGB')
-
-        if self.transform is not None:
-            img = self.transform(img)
-
-        if self.target_transform is not None:
-            target = self.target_transform(target)
-
-        return img, target
+        return self.data[index], self.targets[index]
 
     def __len__(self):
         return len(self.data)
@@ -118,20 +101,65 @@ class OPENIMG():
         return (os.path.exists(os.path.join(self.processed_folder,
                                             self.data_file)))
 
+    def create_tag_vocab(self, vocab_size, path):
+        """Creates vocab from `vocab_size` most common tags in Stackoverflow."""
+        tags_file = "vocab_tags.txt"
+        with open(path + tags_file, 'rb') as f:
+            tags = pickle.load(f)
+        return tags[:vocab_size]
+
+
+    def create_token_vocab(self, vocab_size, path):
+        """Creates vocab from `vocab_size` most common words in Stackoverflow."""
+        tokens_file = "vocab_tokens.txt"
+        with open(path + tokens_file, 'rb') as f:
+            tokens = pickle.load(f)
+        return tokens[:vocab_size]
+
     def load_file(self, path):
-        stime = time.time()
-        rawImg, rawTags = [], []
 
-        imgFiles = os.scandir(path)
-        #imgFiles = [f for f in os.listdir(path)]# if os.path.isfile(os.path.join(path, f)) and '.jpg' in f]
+        # First, get the token and tag dict
 
-        for imgFile in imgFiles:
-            imgFile = imgFile.name
-            classTag = imgFile.replace('.jpg', '').split('__')[1]
-            if classTag in self.classMapping:
-                rawImg.append(imgFile)
-                rawTags.append(self.classMapping[classTag])
+        vocab_tokens_size = 10000
+        vocab_tags_size = 500
+        vocab_tokens = self.create_token_vocab(vocab_tokens_size, path)
+        vocab_tags = self.create_tag_vocab(vocab_tags_size, path)
 
-        dtime = time.time() - stime
-        print(dtime)
-        return rawImg, rawTags
+        vocab_tokens_dict = {k: v for v, k in enumerate(vocab_tokens)}
+        vocab_tags_dict = {k: v for v, k in enumerate(vocab_tags)}
+
+        # Load the traning data
+        if self.train:
+            train_file = h5.File(path + self.train_file, "r")
+        else:
+            train_file = h5.File(path + self.test_file, "r")
+        print(self.train)
+        text, target_tags = [], []
+
+        client_list = list(train_file['examples'])
+
+        for client in client_list:
+            tags_list = list(train_file['examples'][client]['tags'])
+            tokens_list = list(train_file['examples'][client]['tokens'])
+
+            title = str(train_file['examples'][client]['title'])
+            for tags, tokens in zip(tags_list, tokens_list):
+                tokens_list = [s for s in tokens.decode("utf-8").split() if s in vocab_tokens_dict]
+                tags_list = [s for s in tags.decode("utf-8").split('|') if s in vocab_tags_dict]
+                if not tokens_list or not tags_list:
+                    continue
+                # Lookup tensor
+                tokens = torch.tensor([vocab_tokens_dict[i] for i in tokens_list], dtype=torch.long)
+                tokens = F.one_hot(tokens, vocab_tokens_size).float()
+                tokens = tokens.mean(0)
+
+
+                tags = torch.tensor([vocab_tags_dict[i] for i in tags_list], dtype=torch.long)
+                tags = F.one_hot(tags, vocab_tags_size).float()
+                tags = tags.sum(0)
+
+                text.append(tokens)
+                target_tags.append(tags)
+            break
+
+        return text, target_tags
