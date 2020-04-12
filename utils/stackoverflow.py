@@ -63,17 +63,13 @@ class stackoverflow():
                                ' You have to download it')
         """
 
-        training_file = 'stackoverflow_train.h5'
-        test_file = 'stackoverflow_test.h5'
-        self.path = ""
-        if train: 
-            self.path = root + train
-        else :
-            self.path = root + test
+        self.train_file = 'stackoverflow_train.h5'
+        self.test_file = 'stackoverflow_test.h5'
+        self.train = train
 
 
         # load data and targets
-        self.data, self.targets = self.load_file(self.path)
+        self.data, self.targets = self.load_file(self.root)
 
     def __getitem__(self, index):
         """
@@ -133,16 +129,20 @@ class stackoverflow():
         vocab_tags_dict = {k: v for v, k in enumerate(vocab_tags)}
 
         # Load the traning data
-        train_file = h5.File(path, "r")
+        if self.train:
+            train_file = h5.File(path + self.train_file, "r")
+        else:
+            train_file = h5.File(path + self.test_file, "r")
+        print(self.train)
         text, target_tags = [], []
 
         client_list = list(train_file['examples'])
-        title = str(train_file['examples']['00000001']['title'])
 
         for client in client_list:
-            tags_list = list(train_file['examples']['00000001']['tags'])
-            tokens_list = list(train_file['examples']['00000001']['tokens'])
+            tags_list = list(train_file['examples'][client]['tags'])
+            tokens_list = list(train_file['examples'][client]['tokens'])
 
+            title = str(train_file['examples'][client]['title'])
             for tags, tokens in zip(tags_list, tokens_list):
                 tokens_list = [s for s in tokens.decode("utf-8").split() if s in vocab_tokens_dict]
                 tags_list = [s for s in tags.decode("utf-8").split('|') if s in vocab_tags_dict]
