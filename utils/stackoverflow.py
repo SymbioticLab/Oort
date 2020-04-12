@@ -49,12 +49,12 @@ class stackoverflow():
         warnings.warn("test_data has been renamed data")
         return self.data
 
-    def __init__(self, root, train=True, transform=None, target_transform=None):
+    def __init__(self, root, train=True):
         self.train = train  # training set or test set
         self.root = root
-        self.transform = transform
-        self.target_transform = target_transform
-
+        #self.transform = transform
+        #self.target_transform = target_transform
+        """
         if self.train:
             self.data_file = self.training_file
         else:
@@ -63,7 +63,7 @@ class stackoverflow():
         if not self._check_exists():
             raise RuntimeError('Dataset not found.' +
                                ' You have to download it')
-
+        """
         # load data and targets
         self.data, self.targets = self.load_file(self.root)
 
@@ -75,6 +75,7 @@ class stackoverflow():
         Returns:
             tuple: (text, tags)
         """
+
         return self.data[index], self.targets[index]
 
     def __len__(self):
@@ -96,33 +97,36 @@ class stackoverflow():
         return (os.path.exists(os.path.join(self.processed_folder,
                                             self.data_file)))
 
-    def create_tag_vocab(self, vocab_size):
+    def create_tag_vocab(self, vocab_size, path):
         """Creates vocab from `vocab_size` most common tags in Stackoverflow."""
         tags_file = "vocab_tags.txt"
-        with open(tags_file, 'rb') as f:
+        with open(path + tags_file, 'rb') as f:
             tags = pickle.load(f)
         return tags[:vocab_size]
 
 
-    def create_token_vocab(self, vocab_size):
+    def create_token_vocab(self, vocab_size, path):
         """Creates vocab from `vocab_size` most common words in Stackoverflow."""
         tokens_file = "vocab_tokens.txt"
-        with open(tokens_file, 'rb') as f:
+        with open(path + tokens_file, 'rb') as f:
             tokens = pickle.load(f)
         return tokens[:vocab_size]
 
     def load_file(self, path):
 
         # First, get the token and tag dict
-        vocab_tokens = self.create_token_vocab(10000)
-        vocab_tags = self.create_tag_vocab(500)
+
+        vocab_tokens_size = 10000
+        vocab_tags_size = 500
+        vocab_tokens = self.create_token_vocab(vocab_tokens_size, path)
+        vocab_tags = self.create_tag_vocab(vocab_tags_size, path)
 
         vocab_tokens_dict = {k: v for v, k in enumerate(vocab_tokens)}
         vocab_tags_dict = {k: v for v, k in enumerate(vocab_tags)}
 
         # Load the traning data
-        train_file = h5.File("stackoverflow_train.h5", "r")
-        text, tags = [], []
+        train_file = h5.File(path + "stackoverflow_train.h5", "r")
+        text, target_tags = [], []
 
         client_list = list(train_file['examples'])
         title = str(train_file['examples']['00000001']['title'])
@@ -132,19 +136,22 @@ class stackoverflow():
             tokens_list = list(train_file['examples']['00000001']['tokens'])
 
             for tags, tokens in zip(tags_list, tokens_list):
-                tokens_list = [s for s in tokens.split() if s in vocab_tokens_dict]
-                tags_list = [s for s in tags.split('|') if s in vocab_tags_dict]
-
+                tokens_list = [s for s in tokens.decode("utf-8").split() if s in vocab_tokens_dict]
+                tags_list = [s for s in tags.decode("utf-8").split('|') if s in vocab_tags_dict]
+                if not tokens_list or not tags_list:
+                    continue
                 # Lookup tensor
                 tokens = torch.tensor([vocab_tokens_dict[i] for i in tokens_list], dtype=torch.long)
-                tokens = F.one_hot(tokens).float()
+                tokens = F.one_hot(tokens, vocab_tokens_size).float()
                 tokens = tokens.mean(0)
 
+
                 tags = torch.tensor([vocab_tags_dict[i] for i in tags_list], dtype=torch.long)
-                tags = F.one_hot(tags).float()
-                tags = tokens.sum(0)
+                tags = F.one_hot(tags, vocab_tags_size).float()
+                tags = tags.sum(0)
 
                 text.append(tokens)
-                tags.append(tags)
+                target_tags.append(tags)
+            break
 
-        return text, tags
+        return text, target_tags
