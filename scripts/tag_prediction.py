@@ -36,11 +36,11 @@ def create_logistic_model(vocab_tokens_size, vocab_tags_size):
 
 
 def train(vocab_tokens_size=10000, vocab_tags_size=500):
-    # Hyper-parameters 
+    # Hyper-parameters
     input_size = 28 * 28    # 784
     num_classes = 10
     num_epochs = 5
-    batch_size = 100
+    batch_size = 1
     learning_rate = 0.001
 
     # Logistic regression model
@@ -48,39 +48,41 @@ def train(vocab_tokens_size=10000, vocab_tags_size=500):
 
 
     train_dataset = stackoverflow('/users/xzhu/tag/stackoverflow_tf/', True)
-    test_dataset = stackoverflow('/users/xzhu/tag/stackoverflow_tf/', False)
+    #test_dataset = stackoverflow('/users/xzhu/tag/stackoverflow_tf/', False)
     #print(train_dataset.__getitem__(0)[0].size())
 
     # Data loader (input pipeline)
-    train_loader = torch.utils.data.DataLoader(dataset=train_dataset, 
-                                            batch_size=batch_size, 
+    train_loader = torch.utils.data.DataLoader(dataset=train_dataset,
+                                            batch_size=batch_size,
                                             shuffle=True)
 
-    test_loader = torch.utils.data.DataLoader(dataset=test_dataset, 
-                                            batch_size=batch_size, 
-                                            shuffle=False)
+    #test_loader = torch.utils.data.DataLoader(dataset=test_dataset,
+    #                                        batch_size=batch_size,
+    #                                        shuffle=False)
 
     # Loss and optimizer
     # nn.CrossEntropyLoss() computes softmax internally
-    criterion = nn.CrossEntropyLoss()  
-    optimizer = torch.optim.SGD(model.parameters(), lr=learning_rate)  
+    #criterion = nn.CrossEntropyLoss()
+    criterion = nn.BCELoss()
+    optimizer = torch.optim.SGD(model.parameters(), lr=learning_rate)
 
     # Train the model
     total_step = len(train_loader)
     for epoch in range(num_epochs):
         for i, (text, labels) in enumerate(train_loader):
-
             # Forward pass
             outputs = model(text)
             loss = criterion(outputs, labels)
-            
+
+            #loss = criterion(outputs, torch.max(labels, 1)[1])
+
             # Backward and optimize
             optimizer.zero_grad()
             loss.backward()
             optimizer.step()
-            
+
             if (i+1) % 100 == 0:
-                print ('Epoch [{}/{}], Step [{}/{}], Loss: {:.4f}' 
+                print ('Epoch [{}/{}], Step [{}/{}], Loss: {:.4f}'
                     .format(epoch+1, num_epochs, i+1, total_step, loss.item()))
 
     # # Test the model
