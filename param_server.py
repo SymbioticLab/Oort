@@ -26,6 +26,7 @@ from utils.utils_model import test_model
 from utils.openImg import *
 from utils.nlp import *
 from utils.inception import *
+from utils.stackoverflow import *
 
 #device = torch.device(args.to_device)
 
@@ -202,6 +203,11 @@ def init_dataset():
     elif args.data_set == 'blog':
         train_dataset = load_and_cache_examples(args, tokenizer, evaluate=False) 
         test_dataset = load_and_cache_examples(args, tokenizer, evaluate=True)
+
+    elif args.data_set == 'stackoverflow':
+        train_dataset = stackoverflow(args.data_dir, train=True)
+        test_dataset = stackoverflow(args.data_dir, train=False)
+
     else:
         print('DataSet must be {}!'.format(['Mnist', 'Cifar', 'openImg', 'blog']))
         sys.exit(-1)

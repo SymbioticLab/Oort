@@ -45,11 +45,7 @@ def train(vocab_tokens_size=10000, vocab_tags_size=500):
 
 
     train_dataset = stackoverflow('/users/xzhu/tag/stackoverflow_tf/', True)
-    print(train_dataset.__getitem__(0)[0].size())
-    print(train_dataset.__getitem__(0)[1].size())
 
-    print(train_dataset.__getitem__(1)[0].size())
-    print(train_dataset.__getitem__(1)[1].size())
 
 
 

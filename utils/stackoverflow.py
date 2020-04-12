@@ -24,8 +24,6 @@ class stackoverflow():
             target and transforms it.
     """
 
-    training_file = 'train'
-    test_file = 'test'
     classes = []
     MAX_SEQ_LEN = 20000
 
@@ -64,8 +62,18 @@ class stackoverflow():
             raise RuntimeError('Dataset not found.' +
                                ' You have to download it')
         """
+
+        training_file = 'stackoverflow_train.h5'
+        test_file = 'stackoverflow_test.h5'
+        self.path = ""
+        if train: 
+            self.path = root + train
+        else :
+            self.path = root + test
+
+
         # load data and targets
-        self.data, self.targets = self.load_file(self.root)
+        self.data, self.targets = self.load_file(self.path)
 
     def __getitem__(self, index):
         """
@@ -125,7 +133,7 @@ class stackoverflow():
         vocab_tags_dict = {k: v for v, k in enumerate(vocab_tags)}
 
         # Load the traning data
-        train_file = h5.File(path + "stackoverflow_train.h5", "r")
+        train_file = h5.File(path, "r")
         text, target_tags = [], []
 
         client_list = list(train_file['examples'])
