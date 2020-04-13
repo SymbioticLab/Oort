@@ -69,7 +69,7 @@ class stackoverflow():
 
 
         # load data and targets
-        self.data, self.targets = self.load_file(self.root)
+        self.data, self.target, self.dict = self.load_file(self.root)
 
     def __getitem__(self, index):
         """
@@ -81,6 +81,9 @@ class stackoverflow():
         """
 
         return self.data[index], self.targets[index]
+
+    def __mapping_dict__(self):
+        return self.dict
 
     def __len__(self):
         return len(self.data)
@@ -135,6 +138,10 @@ class stackoverflow():
             train_file = h5.File(path + self.test_file, "r")
         print(self.train)
         text, target_tags = [], []
+        
+        # Mapping from sample id to target tag
+        mapping_dict = {}
+        count = 0
 
         client_list = list(train_file['examples'])
 
@@ -158,8 +165,10 @@ class stackoverflow():
                 tags = F.one_hot(tags, vocab_tags_size).float()
                 tags = tags.sum(0)
 
+                count += 1
+                mapping_dict[count] = tags
                 text.append(tokens)
                 target_tags.append(tags)
-            break
+            # break
 
-        return text, target_tags
+        return text, target_tags. mapping_dict
