@@ -218,6 +218,10 @@ parser.add_argument("--local_rank", type=int, default=-1, help="For distributed 
 parser.add_argument("--server_ip", type=str, default="", help="For distant debugging.")
 parser.add_argument("--server_port", type=str, default="", help="For distant debugging.")
 
+# for tag prediction
+parser.add_argument("--vocab_token_size", type=int, default=10000, help="For vocab token size")
+parser.add_argument("--vocab_tag_size", type=int, default=500, help="For vocab tag size")
+
 
 args = parser.parse_args()
 

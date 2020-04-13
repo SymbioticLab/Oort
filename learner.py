@@ -151,9 +151,15 @@ def init_dataset():
         train_transform, test_transform = get_data_transform(transformer_ns) 
         train_dataset = OPENIMG(args.data_dir, train=True, transform=train_transform)
         test_dataset = OPENIMG(args.data_dir, train=False, transform=test_transform)
+
     elif args.data_set == 'blog':
         train_dataset = load_and_cache_examples(args, tokenizer, evaluate=False) 
         test_dataset = load_and_cache_examples(args, tokenizer, evaluate=True)
+
+    elif args.data_set == 'stackoverflow':
+        train_dataset = stackoverflow(args.data_dir, train=True)
+        test_dataset = stackoverflow(args.data_dir, train=False)
+
     else:
         print('DataSet must be {}!'.format(['Mnist', 'Cifar', 'openImg', 'blog']))
         sys.exit(-1)
@@ -170,12 +176,17 @@ def init_dataset():
             logging.info("====Error: Failed to load model due to {}\n".format(str(e)))
             sys.exit(-1)
     else:
-        if args.task != 'nlp':
-            model = tormodels.__dict__[args.model](num_classes=outputClass[args.data_set])
-        else:
+        if args.task == 'nlp':
             # we should train from scratch
             config = AutoConfig.from_pretrained(os.path.join(args.data_dir, 'albert-base-v2-config.json'))
             model = AutoModelWithLMHead.from_config(config)
+
+        elif args.task == 'tag':
+            # Load LR model for tag prediction
+            model = LogisticRegression(args.vocab_token_size, args.vocab_tag_size)
+
+        else:
+            model = tormodels.__dict__[args.model](num_classes=outputClass[args.data_set])
 
     model = model.to(device=device)
     logging.info("====Initialize client configuration")

@@ -225,12 +225,18 @@ def init_dataset():
             logging.info("====Error: Failed to load model due to {}\n".format(str(e)))
             sys.exit(-1)
     else:
-        if args.task != 'nlp':
-            model = tormodels.__dict__[args.model](num_classes=outputClass[args.data_set])
-        else:
+        if args.task == 'nlp':
             # we should train from scratch
             config = AutoConfig.from_pretrained(os.path.join(args.data_dir, 'albert-base-v2-config.json'))
             model = AutoModelWithLMHead.from_config(config)
+
+        elif args.task == 'tag':
+            # Load LR model for tag prediction
+            model = LogisticRegression(args.vocab_token_size, args.vocab_tag_size)
+            
+        else:
+            model = tormodels.__dict__[args.model](num_classes=outputClass[args.data_set])
+
 
     model = model.to(device=device)
 
