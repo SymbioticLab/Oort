@@ -69,7 +69,7 @@ class stackoverflow():
 
 
         # load data and targets
-        self.data, self.target, self.dict = self.load_file(self.root)
+        self.data, self.targets, self.dict = self.load_file(self.root)
 
     def __getitem__(self, index):
         """
@@ -138,7 +138,7 @@ class stackoverflow():
             train_file = h5.File(path + self.test_file, "r")
         print(self.train)
         text, target_tags = [], []
-        
+
         # Mapping from sample id to target tag
         mapping_dict = {}
         count = 0
@@ -169,6 +169,5 @@ class stackoverflow():
                 mapping_dict[count] = tags
                 text.append(tokens)
                 target_tags.append(tags)
-            # break
 
-        return text, target_tags. mapping_dict
+        return text, target_tags, mapping_dict

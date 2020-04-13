@@ -15,7 +15,7 @@ class LogisticRegression(nn.Module):
         self.linear = nn.Linear(input_dim, output_dim)
 
     def forward(self, x):
-        output = F.sigmoid(self.linear(x))
+        output = torch.sigmoid(self.linear(x))
         return output
 
 
@@ -48,6 +48,7 @@ def train(vocab_tokens_size=10000, vocab_tags_size=500):
 
 
     train_dataset = stackoverflow('/users/xzhu/tag/stackoverflow_tf/', True)
+    print(train_dataset.__mapping_dict__())
     #test_dataset = stackoverflow('/users/xzhu/tag/stackoverflow_tf/', False)
     #print(train_dataset.__getitem__(0)[0].size())
 

@@ -497,7 +497,7 @@ class LogisticRegression(nn.Module):
         self.linear = nn.Linear(input_dim, output_dim)
 
     def forward(self, x):
-        output = F.sigmoid(self.linear(x))
+        output = torch.sigmoid(self.linear(x))
         return output
 
 # ============================= SVM ==============================
