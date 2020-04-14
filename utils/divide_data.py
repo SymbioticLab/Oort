@@ -207,27 +207,38 @@ class DataPartitioner(object):
         clientNumSamples = {}
         numOfLabels = 1
         base = 0
+        numOfClients = 0
 
-        logging.info("====partitionTraceNLP slice_index is {}".format(self.data.slice_index))
+        if self.args.data_set == 'stackoverflow':
+            numOfLabels = self.args.num_class
+            for index, cId in enumerate(self.data.dict.keys()):
+                clientId = cId
+                labelId = self.data.targets[index]
 
-        # data share the same index with labels
-        for index, sample in enumerate(self.data.slice_index):
-            clientId = index
-            labelId = 0
+                if clientId not in clientToData:
+                    clientToData[clientId] = []
+                    clientNumSamples[clientId] = [0] * numOfLabels
+                clientToData[clientId].append(index)
 
-            # if sample < args.filter_less:
-            #     index -= 1
-            #     base += sample
-            #     continue
+            numOfClients = len(self.clientToData)
 
-            if clientId not in clientToData:
-                clientToData[clientId] = [base+i for i in range(sample)]
-                clientNumSamples[clientId] = [0] * numOfLabels
-                base += sample
+        else:
+            logging.info("====partitionTraceNLP slice_index is {}".format(self.data.slice_index))
 
-            clientNumSamples[clientId][labelId] += sample
+            # data share the same index with labels
+            for index, sample in enumerate(self.data.slice_index):
+                clientId = index
+                labelId = 0
 
-        numOfClients = len(self.data.slice_index)
+                if clientId not in clientToData:
+                    clientToData[clientId] = [base+i for i in range(sample)]
+                    clientNumSamples[clientId] = [0] * numOfLabels
+                    base += sample
+
+                clientNumSamples[clientId][labelId] += sample
+
+            numOfClients = len(self.data.slice_index)
+
         self.classPerWorker = np.zeros([numOfClients, numOfLabels])
 
         for clientId in range(numOfClients):

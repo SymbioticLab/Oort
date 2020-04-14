@@ -145,7 +145,7 @@ class stackoverflow():
 
         client_list = list(train_file['examples'])
 
-        for client in client_list:
+        for clientId, client in enumerate(client_list):
             tags_list = list(train_file['examples'][client]['tags'])
             tokens_list = list(train_file['examples'][client]['tokens'])
 
@@ -160,13 +160,12 @@ class stackoverflow():
                 tokens = F.one_hot(tokens, vocab_tokens_size).float()
                 tokens = tokens.mean(0)
 
-
                 tags = torch.tensor([vocab_tags_dict[i] for i in tags_list], dtype=torch.long)
                 tags = F.one_hot(tags, vocab_tags_size).float()
                 tags = tags.sum(0)
 
                 count += 1
-                mapping_dict[count] = tags
+                mapping_dict[count] = clientId
                 text.append(tokens)
                 target_tags.append(tags)
 

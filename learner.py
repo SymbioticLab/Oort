@@ -426,6 +426,7 @@ def run_client(clientId, cmodel, iters, learning_rate, argdicts = {}):
             for l in loss.tolist():
                 temp_loss += l**2
 
+        temp_loss = temp_loss/float(len(target))
         if epoch_train_loss is None:
             epoch_train_loss = temp_loss
         else:
