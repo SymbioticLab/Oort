@@ -25,6 +25,7 @@ parser.add_argument('--data_set', type=str, default='cifar10')
 parser.add_argument('--sample_mode', type=str, default='random')
 parser.add_argument('--score_mode', type=str, default='dis')
 parser.add_argument('--proxy_avg', type=bool, default=False)
+parser.add_argument('--proxy_mu', type=float, default=0.5)
 parser.add_argument('--filter_less', type=int, default=0)
 parser.add_argument('--filter_more', type=int, default=99999999)
 parser.add_argument('--forward_pass', type=bool, default=False)
@@ -224,4 +225,3 @@ parser.add_argument("--vocab_tag_size", type=int, default=500, help="For vocab t
 
 
 args = parser.parse_args()
-

@@ -151,15 +151,12 @@ def init_dataset():
         train_transform, test_transform = get_data_transform(transformer_ns) 
         train_dataset = OPENIMG(args.data_dir, train=True, transform=train_transform)
         test_dataset = OPENIMG(args.data_dir, train=False, transform=test_transform)
-
     elif args.data_set == 'blog':
         train_dataset = load_and_cache_examples(args, tokenizer, evaluate=False) 
         test_dataset = load_and_cache_examples(args, tokenizer, evaluate=True)
-
     elif args.data_set == 'stackoverflow':
         train_dataset = stackoverflow(args.data_dir, train=True)
         test_dataset = stackoverflow(args.data_dir, train=False)
-
     else:
         print('DataSet must be {}!'.format(['Mnist', 'Cifar', 'openImg', 'blog']))
         sys.exit(-1)
@@ -176,17 +173,15 @@ def init_dataset():
             logging.info("====Error: Failed to load model due to {}\n".format(str(e)))
             sys.exit(-1)
     else:
-        if args.task == 'nlp':
-            # we should train from scratch
-            config = AutoConfig.from_pretrained(os.path.join(args.data_dir, 'albert-base-v2-config.json'))
-            model = AutoModelWithLMHead.from_config(config)
-
+        if args.task != 'nlp':
+            model = tormodels.__dict__[args.model](num_classes=outputClass[args.data_set])
         elif args.task == 'tag':
             # Load LR model for tag prediction
             model = LogisticRegression(args.vocab_token_size, args.vocab_tag_size)
-
         else:
-            model = tormodels.__dict__[args.model](num_classes=outputClass[args.data_set])
+            # we should train from scratch
+            config = AutoConfig.from_pretrained(os.path.join(args.data_dir, 'albert-base-v2-config.json'))
+            model = AutoModelWithLMHead.from_config(config)
 
     model = model.to(device=device)
     logging.info("====Initialize client configuration")
@@ -307,7 +302,7 @@ def run_client(clientId, cmodel, iters, learning_rate, argdicts = {}):
     #     else:
     #         optimizer = global_optimizers[clientId]
 
-    criterion = CrossEntropyLossProx(reduction='none').to(device=device) if args.proxy_avg else torch.nn.CrossEntropyLoss(reduction='none').to(device=device)
+    criterion = torch.nn.CrossEntropyLoss(reduction='none').to(device=device)
     #criterion = CrossEntropyLossProx().to(device=device) if args.proxy_avg else torch.nn.CrossEntropyLoss().to(device=device)
 
     train_data_itr_list = []
@@ -415,10 +410,6 @@ def run_client(clientId, cmodel, iters, learning_rate, argdicts = {}):
                 loss1 = criterion(output, target)
                 loss2 = criterion(aux_outputs, target)
                 loss = loss1 + 0.3*loss2
-            # if args.proxy_avg:
-            #     loss = criterion(output, target, global_weight=last_model_tensors, 
-            #                     individual_weight=cmodel.parameters(), mu=0.01)
-            #else:
 
         # only measure the last epoch
         temp_loss = 0.
@@ -433,6 +424,7 @@ def run_client(clientId, cmodel, iters, learning_rate, argdicts = {}):
             epoch_train_loss = (1. - args.loss_decay) * epoch_train_loss + args.loss_decay * temp_loss
         count += len(target)
 
+        # ========= Define the backward loss ==============
         loss = torch.mean(loss)
         loss.backward()
 
@@ -443,6 +435,10 @@ def run_client(clientId, cmodel, iters, learning_rate, argdicts = {}):
         else:
             optimizer.step()
             cmodel.zero_grad()
+
+        if args.proxy_avg:
+            for idx, param in enumerate(cmodel.parameters()):
+                param.data -= (learning_rate * self.proxy_mu * (param.data - last_model_tensors[idx]))
 
         comp_duration = (time.time() - comp_start)
     
