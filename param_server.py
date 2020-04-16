@@ -27,6 +27,7 @@ from utils.openImg import *
 from utils.nlp import *
 from utils.inception import *
 from utils.stackoverflow import *
+from utils.yogi import *
 
 #device = torch.device(args.to_device)
 
@@ -229,14 +230,14 @@ def init_dataset():
             # we should train from scratch
             config = AutoConfig.from_pretrained(os.path.join(args.data_dir, 'albert-base-v2-config.json'))
             model = AutoModelWithLMHead.from_config(config)
-
         elif args.task == 'tag':
             # Load LR model for tag prediction
             model = LogisticRegression(args.vocab_token_size, args.vocab_tag_size)
-            
         else:
-            model = tormodels.__dict__[args.model](num_classes=outputClass[args.data_set])
-
+            if args.model == 'mnasnet':
+                model = MnasNet(num_classes=outputClass[args.data_set])
+            else:
+                model = tormodels.__dict__[args.model](num_classes=outputClass[args.data_set])
 
     model = model.to(device=device)
 
@@ -275,12 +276,16 @@ def run(model, test_data, queue, param_q, stop_signal, clientSampler):
     s_time = time.time()
     epoch_time = s_time
 
-    # In SSP, the fast workers have to wait the slowest worker a given duration
-    # The fast worker exceeding the duration will be pushed into the queue to wait
     global_update = 0
     received_updates = 0
     last_global_model = [param for param in pickle.loads(pickle.dumps(model)).parameters()]
     clientsLastEpoch = []
+    sumDeltaWeights = []
+
+    gradient_controller = None
+    # initiate yogi if necessary
+    if args.gradient_policy == 'yogi':
+        gradient_controller = YoGi(eta=args.yogi_eta, tau=args.yogi_tau, beta=args.yogi_beta)
 
     clientInfoFile = logDir + 'clientInfoFile'
     # dump the client info
@@ -315,6 +320,7 @@ def run(model, test_data, queue, param_q, stop_signal, clientSampler):
                 ratioSample = 0
 
                 logging.info("====Start to merge models")
+
                 for i, clientId in enumerate(clientIds):
                     gradients = None
                     ranSamples = float(speed[i].split('_')[1])
@@ -331,16 +337,18 @@ def run(model, test_data, queue, param_q, stop_signal, clientSampler):
                     for idx, param in enumerate(model.parameters()):
                         model_weight = torch.from_numpy(delta_ws[idx]).to(device=device)
 
+                        # model_weight is the delta of last model
                         if isSelected:
+                            # the first received client
                             if received_updates == 0:
-                                param.data = model_weight * ratioSample
+                                sumDeltaWeights.append(model_weight * ratioSample)
                             else:
-                                param.data += model_weight * ratioSample
+                                sumDeltaWeights[idx] += model_weight * ratioSample
 
-                        if gradients is None:
-                            gradients = (model_weight - last_global_model[idx]).flatten()
-                        else:
-                            gradients = torch.cat((gradients, (model_weight - last_global_model[idx]).flatten()))
+                        # if gradients is None:
+                        #     gradients = (model_weight - last_global_model[idx]).flatten()
+                        # else:
+                        #     gradients = torch.cat((gradients, (model_weight - last_global_model[idx]).flatten()))
 
                     # register the score
                     if args.score_mode == "loss":
@@ -349,12 +357,12 @@ def run(model, test_data, queue, param_q, stop_signal, clientSampler):
                                                     args.upload_epoch*args.batch_size), auxi = math.sqrt(iteration_loss[i]),
                                                     time_stamp=epoch_count
                                       )
-                    elif args.score_mode == "norm_model":
-                        clientSampler.registerScore(clientId, 
-                                                    gradients.norm(2).data.item() * min(clientSampler.getClient(clientId).size, 
-                                                    args.upload_epoch*args.batch_size), auxi=gradients.norm(2).data.item(), 
-                                                    time_stamp=epoch_count
-                                      )
+                    # elif args.score_mode == "norm_model":
+                    #     clientSampler.registerScore(clientId, 
+                    #                                 gradients.norm(2).data.item() * min(clientSampler.getClient(clientId).size, 
+                    #                                 args.upload_epoch*args.batch_size), auxi=gradients.norm(2).data.item(), 
+                    #                                 time_stamp=epoch_count
+                    #                   )
                     elif args.score_mode == "norm":
                         clientSampler.registerScore(clientId, 
                                                     math.sqrt(iteration_loss[i]) * min(clientSampler.getClient(clientId).size, 
@@ -364,8 +372,6 @@ def run(model, test_data, queue, param_q, stop_signal, clientSampler):
                         clientSampler.registerScore(clientId, min(clientSampler.getClient(clientId).size, 
                                                     args.upload_epoch*args.batch_size), 
                                                     time_stamp=epoch_count)
-                    elif args.score_mode == "dist":
-                        clientSampler.registerScore(clientId, (1.0 - clientSampler.getClient(clientId).distance), time_stamp=epoch_count)
                     else:
                         clientSampler.registerScore(clientId, (1.0 - clientSampler.getClient(clientId).distance), time_stamp=epoch_count)
 
@@ -426,7 +432,6 @@ def run(model, test_data, queue, param_q, stop_signal, clientSampler):
 
                 if len(workersToSend) > 0:
                     workersToSend = sorted(workersToSend)
-                    received_updates = 0
                     epoch_count += 1
 
                     logging.info("====Epoch {} completes {} clients, sampled rewards are: \n {} \n=========="
@@ -435,11 +440,16 @@ def run(model, test_data, queue, param_q, stop_signal, clientSampler):
                     clientsLastEpoch = []
                     send_start = time.time()
 
+                    # transformation of gradients if necessary
+                    if gradient_controller is not None:
+                        sumDeltaWeights = gradient_controller.update(sumDeltaWeights)
+
                     for idx, param in enumerate(model.parameters()):
+                        param.data += sumDeltaWeights[idx]
                         dist.broadcast(tensor=(param.data.to(device=device)), src=0)
 
                     # resampling the clients if necessary
-                    if epoch_count % args.resampling_interval == 0:
+                    if epoch_count % args.resampling_interval == 0 or epoch_count == 2:
                         logging.info("====Start to sample for epoch {}, global virtualClock: {}, round_duration: {}"
                                         .format(epoch_count, global_virtual_clock, round_duration))
                         
@@ -529,6 +539,8 @@ def run(model, test_data, queue, param_q, stop_signal, clientSampler):
                     
                     # update the virtual clock
                     global_virtual_clock += round_duration
+                    received_updates = 0
+                    sumDeltaWeights = []
 
                 # The training stop
                 if(epoch_count >= args.epochs):
