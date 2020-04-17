@@ -168,5 +168,9 @@ class stackoverflow():
                 mapping_dict[count] = clientId
                 text.append(tokens)
                 target_tags.append(tags)
-
+            
+            count += 1
+            if count > 100:
+                break
+            
         return text, target_tags, mapping_dict
