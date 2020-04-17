@@ -111,7 +111,7 @@ def test_model(rank, model, test_data, criterion=nn.NLLLoss(), tokenizer=None):
             # correct += acc[0].item()
             # top_5 += acc[1].item()
 
-        if args.task != 'nlp':
+        elif args.task != 'nlp':
             data, target = Variable(data).cuda(), Variable(target).cuda()
 
             output = model(data)
