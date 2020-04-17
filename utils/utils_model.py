@@ -99,7 +99,18 @@ def test_model(rank, model, test_data, criterion=nn.NLLLoss(), tokenizer=None):
 
     model.eval()
     for data, target in test_data:
-        
+        if args.task == 'tag':
+            data, target = Variable(data).cuda(), Variable(target).cuda()
+
+            output = model(data)
+            loss = criterion(output, target)
+            
+            test_loss += loss.data.item()  # Variable.data
+            # acc = accuracy(output, target, topk=(1, 5))
+
+            # correct += acc[0].item()
+            # top_5 += acc[1].item()
+
         if args.task != 'nlp':
             data, target = Variable(data).cuda(), Variable(target).cuda()
 

@@ -83,7 +83,7 @@ parser.add_argument('--min_learning_rate', type=float, default=1e-4)
 
 # for yogi
 parser.add_argument('--gradient_policy', type=str, default='')
-parser.add_argument('--yogi_eta', type=float, default=1.0)
+parser.add_argument('--yogi_eta', type=float, default=4e-2)
 parser.add_argument('--yogi_tau', type=float, default=1e-3)
 parser.add_argument('--yogi_beta', type=float, default=0.9)
 
