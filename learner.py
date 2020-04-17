@@ -24,6 +24,7 @@ from utils.utils_model import MySGD, test_model
 from utils.crosslossprox import CrossEntropyLossProx
 from utils.nlp import *
 from utils.inception import *
+from utils.stackoverflow import *
 
 #device = torch.device(args.to_device)
 #torch.set_num_threads(int(args.threads))
@@ -243,7 +244,7 @@ def run_backward_pass(model, test_data):
     gradient_norm = 0
 
     #model.eval()
-    criterion = torch.nn.CrossEntropyLoss(reduction='none').to(device=device) if args.task != 'tag' else torch.nn.BCELoss(reduction='none').to(device=device)
+    criterion = torch.nn.CrossEntropyLoss().to(device=device) if args.task != 'tag' else torch.nn.BCELoss().to(device=device)
     optimizer = MySGD(model.parameters(), lr=learning_rate, momentum=0.9, weight_decay=5e-4)
 
     gradientSamples = []
@@ -494,7 +495,7 @@ def run(rank, model, train_data, test_data, queue, param_q, stop_flag, client_cf
     logging.info("====Worker: Start running")
 
     global nextClientIds, global_trainDB, last_model_tensors
-    criterion = torch.nn.CrossEntropyLoss(reduction='none').to(device=device) if args.task != 'tag' else torch.nn.BCELoss(reduction='none').to(device=device)
+    criterion = torch.nn.CrossEntropyLoss().to(device=device) if args.task != 'tag' else torch.nn.BCELoss().to(device=device)
    
     global_trainDB = train_data
     startTime = time.time()
