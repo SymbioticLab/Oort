@@ -1,6 +1,6 @@
 import torch
 
-class YoGi(nn.Module):
+class YoGi():
     def __init__(self, eta=5e-2, tau=1e-3, beta=0.999):
         self.eta = eta
         self.tau = tau

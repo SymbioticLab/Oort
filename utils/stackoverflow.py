@@ -67,9 +67,16 @@ class stackoverflow():
         self.test_file = 'stackoverflow_test.h5'
         self.train = train
 
+        self.vocab_tokens_size = 10000
+        self.vocab_tags_size = 500
+
 
         # load data and targets
-        self.data, self.targets, self.dict = self.load_file(self.root)
+        self.raw_data, self.raw_targets, self.dict = self.load_file(self.root)
+
+        # we can't enumerate the raw data, thus generating artificial data to cheat the divide_data_loader
+        self.data = [0 for i in range(len(self.raw_data))]
+        self.targets = [0 for i in range(len(self.raw_targets))]
 
     def __getitem__(self, index):
         """
@@ -80,13 +87,24 @@ class stackoverflow():
             tuple: (text, tags)
         """
 
-        return self.data[index], self.targets[index]
+        # Lookup tensor
+        tokens = self.raw_data[index]
+        tokens = torch.tensor(tokens, dtype=torch.long)
+        tokens = F.one_hot(tokens, self.vocab_tokens_size).float()
+        tokens = tokens.mean(0)
+
+        tags = self.raw_targets[index]
+        tags = torch.tensor(tags, dtype=torch.long)
+        tags = F.one_hot(tags, self.vocab_tags_size).float()
+        tags = tags.sum(0)
+
+        return tokens, tags
 
     def __mapping_dict__(self):
         return self.dict
 
     def __len__(self):
-        return len(self.data)
+        return len(self.raw_data)
 
     @property
     def raw_folder(self):
@@ -122,11 +140,8 @@ class stackoverflow():
     def load_file(self, path):
 
         # First, get the token and tag dict
-
-        vocab_tokens_size = 10000
-        vocab_tags_size = 500
-        vocab_tokens = self.create_token_vocab(vocab_tokens_size, path)
-        vocab_tags = self.create_tag_vocab(vocab_tags_size, path)
+        vocab_tokens = self.create_token_vocab(self.vocab_tokens_size, path)
+        vocab_tags = self.create_tag_vocab(self.vocab_tags_size, path)
 
         vocab_tokens_dict = {k: v for v, k in enumerate(vocab_tokens)}
         vocab_tags_dict = {k: v for v, k in enumerate(vocab_tags)}
@@ -142,6 +157,7 @@ class stackoverflow():
         # Mapping from sample id to target tag
         mapping_dict = {}
         count = 0
+        clientCount = 0
 
         client_list = list(train_file['examples'])
 
@@ -155,22 +171,17 @@ class stackoverflow():
                 tags_list = [s for s in tags.decode("utf-8").split('|') if s in vocab_tags_dict]
                 if not tokens_list or not tags_list:
                     continue
-                # Lookup tensor
-                tokens = torch.tensor([vocab_tokens_dict[i] for i in tokens_list], dtype=torch.long)
-                tokens = F.one_hot(tokens, vocab_tokens_size).float()
-                tokens = tokens.mean(0)
 
-                tags = torch.tensor([vocab_tags_dict[i] for i in tags_list], dtype=torch.long)
-                tags = F.one_hot(tags, vocab_tags_size).float()
-                tags = tags.sum(0)
-
-                count += 1
                 mapping_dict[count] = clientId
+                tokens = [vocab_tokens_dict[i] for i in tokens_list]
+                tags = [vocab_tags_dict[i] for i in tags_list]
                 text.append(tokens)
                 target_tags.append(tags)
+
+                count += 1
             
-            count += 1
-            if count > 100:
+            clientCount += 1
+            if clientCount > 100:
                 break
             
         return text, target_tags, mapping_dict

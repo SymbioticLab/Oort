@@ -436,15 +436,16 @@ def run_client(clientId, cmodel, iters, learning_rate, argdicts = {}):
 
         if args.task != 'nlp':
             delta_w = optimizer.get_delta_w(learning_rate)
-            for idx, param in enumerate(cmodel.parameters()):
-                param.data -= delta_w[idx].to(device=device)
+
+            if not args.proxy_avg:
+                for idx, param in enumerate(cmodel.parameters()):
+                    param.data -= delta_w[idx].to(device=device)
+            else:
+                for idx, param in enumerate(cmodel.parameters()):
+                    param.data -= (delta_w[idx].to(device=device) + learning_rate * args.proxy_mu * (param.data - last_model_tensors[idx]))
         else:
             optimizer.step()
             cmodel.zero_grad()
-
-        if args.proxy_avg:
-            for idx, param in enumerate(cmodel.parameters()):
-                param.data -= (learning_rate * self.proxy_mu * (param.data - last_model_tensors[idx]))
 
         comp_duration = (time.time() - comp_start)
     
