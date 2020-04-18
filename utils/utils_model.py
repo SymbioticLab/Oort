@@ -106,10 +106,10 @@ def test_model(rank, model, test_data, criterion=nn.NLLLoss(), tokenizer=None):
             loss = criterion(output, target)
             
             test_loss += loss.data.item()  # Variable.data
-            # acc = accuracy(output, target, topk=(1, 5))
+            _, predicted = torch.max(output.data, 1)
 
-            # correct += acc[0].item()
-            # top_5 += acc[1].item()
+            _, label = torch.max(target, 1)
+            correct += torch.eq(predicted,label).sum().item()
 
         elif args.task != 'nlp':
             data, target = Variable(data).cuda(), Variable(target).cuda()

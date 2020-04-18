@@ -418,9 +418,15 @@ def run_client(clientId, cmodel, iters, learning_rate, argdicts = {}):
 
         # only measure the last epoch
         temp_loss = 0.
-        if itr >= (iters - total_batch_size - 1):
-            for l in loss.tolist():
-                temp_loss += l**2
+        if args.task == 'tag':
+            if itr >= (iters - total_batch_size - 1):
+                for l in loss.tolist():
+                    for i in l:
+                        temp_loss += i**2
+        else:
+            if itr >= (iters - total_batch_size - 1):
+                for l in loss.tolist():
+                    temp_loss += l**2
 
         temp_loss = temp_loss/float(len(target))
         if epoch_train_loss is None:
