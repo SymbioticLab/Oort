@@ -37,7 +37,8 @@ parser.add_argument('--max_iter_store', type=int, default=100)
 parser.add_argument('--overcommit', type=float, default=1.0)
 parser.add_argument('--model_size', type=float, default=0)
 parser.add_argument('--sample_window', type=float, default=5.0)
-parser.add_argument('--loss_decay', type=float, default=0.5)
+parser.add_argument('--round_threshold', type=int, default=-1)
+parser.add_argument('--round_penalty', type=float, default=1.0)
 
 # The configuration of different hyper-parameters for training
 parser.add_argument('--epochs', type=int, default=2000)
@@ -80,6 +81,7 @@ parser.add_argument('--test_train_data', type=bool, default=False)
 parser.add_argument('--enforce_random', type=bool, default=False)
 parser.add_argument('--test_ratio', type=float, default=1.0)
 parser.add_argument('--min_learning_rate', type=float, default=1e-4)
+parser.add_argument('--loss_decay', type=float, default=0.5)
 
 # for yogi
 parser.add_argument('--gradient_policy', type=str, default='')

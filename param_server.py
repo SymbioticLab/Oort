@@ -272,6 +272,7 @@ def run(model, test_data, queue, param_q, stop_signal, clientSampler):
     learner_cache_step = {l: 0 for l in workers}
     pendingWorkers = {}
     test_results = {}
+    virtualClientClock = {}
 
     s_time = time.time()
     epoch_time = s_time
@@ -350,13 +351,17 @@ def run(model, test_data, queue, param_q, stop_signal, clientSampler):
                         # else:
                         #     gradients = torch.cat((gradients, (model_weight - last_global_model[idx]).flatten()))
 
+                    # bias term for global speed
+                    virtual_c = virtualClientClock[clientId] if clientId in virtualClientClock else 1.
+                    clientUtility = 1. 
+
+                    if args.round_threshold != -1 and virtual_c > args.round_threshold:
+                        clientUtility = ((float(args.round_threshold)/virtual_c) ** args.round_penalty)
+
                     # register the score
                     if args.score_mode == "loss":
-                        clientSampler.registerScore(clientId, 
-                                                    math.sqrt(iteration_loss[i]) * min(clientSampler.getClient(clientId).size, 
-                                                    args.upload_epoch*args.batch_size), auxi = math.sqrt(iteration_loss[i]),
-                                                    time_stamp=epoch_count
-                                      )
+                        clientUtility *= math.sqrt(iteration_loss[i]) * min(clientSampler.getClient(clientId).size, 
+                                                    args.upload_epoch*args.batch_size)
                     # elif args.score_mode == "norm_model":
                     #     clientSampler.registerScore(clientId, 
                     #                                 gradients.norm(2).data.item() * min(clientSampler.getClient(clientId).size, 
@@ -364,17 +369,18 @@ def run(model, test_data, queue, param_q, stop_signal, clientSampler):
                     #                                 time_stamp=epoch_count
                     #                   )
                     elif args.score_mode == "norm":
-                        clientSampler.registerScore(clientId, 
-                                                    math.sqrt(iteration_loss[i]) * min(clientSampler.getClient(clientId).size, 
-                                                    args.upload_epoch*args.batch_size), auxi=math.sqrt(iteration_loss[i]),
-                                                    time_stamp=epoch_count)
-                    elif args.score_mode == "size":
-                        clientSampler.registerScore(clientId, min(clientSampler.getClient(clientId).size, 
-                                                    args.upload_epoch*args.batch_size), 
-                                                    time_stamp=epoch_count)
-                    else:
-                        clientSampler.registerScore(clientId, (1.0 - clientSampler.getClient(clientId).distance), time_stamp=epoch_count)
+                        clientUtility *= math.sqrt(iteration_loss[i]) * min(clientSampler.getClient(clientId).size, 
+                                                    args.upload_epoch*args.batch_size)
 
+                    elif args.score_mode == "size":
+                        clientUtility *= min(clientSampler.getClient(clientId).size, 
+                                                    args.upload_epoch*args.batch_size)
+                    else:
+                        clientUtility *= (1.0 - clientSampler.getClient(clientId).distance)
+                        
+                    clientSampler.registerScore(clientId, clientUtility, auxi = math.sqrt(iteration_loss[i]),
+                                                time_stamp=epoch_count
+                                  )
                     if isSelected:
                         received_updates += 1
 
@@ -459,19 +465,22 @@ def run(model, test_data, queue, param_q, stop_signal, clientSampler):
 
                         # we decide to simulate the wall-clock and remove the stragglers
                         completionTimes = []
+                        virtualClientClock = {}
                         for virtualClient in sampledClientsReal:
-                            completionTimes.append(clientSampler.getCompletionTime(virtualClient, 
+                            roundDuration = clientSampler.getCompletionTime(virtualClient, 
                                                     batch_size=args.batch_size, upload_epoch=args.upload_epoch, 
                                                     model_size=args.model_size)
-                                                )
+                            completionTimes.append(roundDuration)
+                            virtualClientClock[virtualClient] = roundDuration
+
                         # get the top-k completions
                         top_k_index = sorted(range(len(completionTimes)), key=lambda k:completionTimes[k])[:numToRealRun]
                         sampledClients = [sampledClientsReal[k] for k in top_k_index]
                         sampledClientSet = set(sampledClients)
                         round_duration = completionTimes[top_k_index[-1]]
 
-                        logging.info("====Try to resample clients, and result is: \n{}\n while final takes: \n {}"
-                                    .format(sampledClientsReal, sampledClients))
+                        logging.info("====Try to resample clients, and result is: \n{}\n while final takes: \n {} \n virtual duration is {}"
+                                    .format(sampledClientsReal, sampledClients, virtualClientClock))
 
                         # simulate the optimal
                         if args.run_all:
