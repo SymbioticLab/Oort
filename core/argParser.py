@@ -76,7 +76,7 @@ parser.add_argument('--zipf_alpha', type=str, default='5')
 parser.add_argument('--timeout', type=float, default=9999999)
 parser.add_argument('--full_gradient_interval', type=int, default=20)
 parser.add_argument('--is_even_avg', type=bool, default=True)
-parser.add_argument('--sample_seed', type=int, default=233)
+parser.add_argument('--sample_seed', type=int, default=123) #233
 parser.add_argument('--test_train_data', type=bool, default=False)
 parser.add_argument('--enforce_random', type=bool, default=False)
 parser.add_argument('--test_ratio', type=float, default=1.0)

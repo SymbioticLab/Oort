@@ -15,13 +15,13 @@ class ClientSampler(object):
         self.filter_less = args.filter_less
         self.filter_more = args.filter_more
 
-        self.ucbSampler = UCB(sample_seed=sample_seed, score_mode=score, sample_window=args.sample_window) if self.mode == "bandit" else None
+        self.ucbSampler = UCB(sample_seed=sample_seed, score_mode=score, args=args) if self.mode == "bandit" else None
         self.feasibleClients = []
         self.rng = Random()
         self.rng.seed(sample_seed)
         self.count = 0
 
-    def registerClient(self, hostId, clientId, dis, size, speed=[1.0, 1.0]):
+    def registerClient(self, hostId, clientId, dis, size, speed=[1.0, 1.0], duration=1):
 
         uniqueId = self.getUniqueId(hostId, clientId)
         self.Clients[uniqueId] = Client(hostId, clientId, dis, size, speed)
@@ -30,13 +30,20 @@ class ClientSampler(object):
             self.feasibleClients.append(clientId)
 
             if self.mode == "bandit":
-                self.ucbSampler.registerArm(clientId, reward=min(size, args.upload_epoch*args.batch_size), size=size)
+                self.ucbSampler.registerArm(clientId, reward=min(size, args.upload_epoch*args.batch_size), size=size, duration=duration)
 
     def getAllClients(self):
         return self.feasibleClients
 
     def getClient(self, clientId):
         return self.Clients[self.getUniqueId(0, clientId)]
+
+    def registerDuration(self, clientId, batch_size, upload_epoch, model_size):
+        if self.mode == "bandit":
+            roundDuration = self.Clients[self.getUniqueId(0, clientId)].getCompletionTime(
+                    batch_size=batch_size, upload_epoch=upload_epoch, model_size=model_size
+            )
+            self.ucbSampler.registerDuration(clientId, roundDuration)
 
     def getCompletionTime(self, clientId, batch_size, upload_epoch, model_size):
         return self.Clients[self.getUniqueId(0, clientId)].getCompletionTime(
@@ -47,10 +54,10 @@ class ClientSampler(object):
         uniqueId = self.getUniqueId(hostId, clientId)
         self.Clients[uniqueId].speed = speed
 
-    def registerScore(self, clientId, reward, auxi=1.0, time_stamp=0):
+    def registerScore(self, clientId, reward, auxi=1.0, time_stamp=0, duration=1.):
         # currently, we only use distance as reward
         if self.mode == "bandit":
-            self.ucbSampler.registerReward(clientId, reward, auxi=auxi, time_stamp=time_stamp)
+            self.ucbSampler.registerReward(clientId, reward, auxi=auxi, time_stamp=time_stamp, duration=duration)
 
         self.registerClientScore(clientId, reward)
     
@@ -134,4 +141,3 @@ class ClientSampler(object):
 
     def getClientReward(self, clientId):
         return self.ucbSampler.getClientReward(clientId)
-

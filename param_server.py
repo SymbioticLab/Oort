@@ -136,6 +136,10 @@ def initiate_sampler_query(numOfClients):
                     # since the worker rankId starts from 1, we also configure the initial dataId as 1
                     systemProfile = global_client_profile[clientId] if clientId in global_client_profile else [1.0, 1.0]
                     clientSampler.registerClient(rank_src, clientId, dis, sizeVec[index], speed=systemProfile)
+                    clientSampler.registerDuration(clientId, 
+                        batch_size=args.batch_size, upload_epoch=args.upload_epoch, 
+                        model_size=args.model_size)
+                    
                     clientId += 1
 
                 passed = True
@@ -355,12 +359,9 @@ def run(model, test_data, queue, param_q, stop_signal, clientSampler):
                     virtual_c = virtualClientClock[clientId] if clientId in virtualClientClock else 1.
                     clientUtility = 1. 
 
-                    if args.round_threshold != -1 and virtual_c > args.round_threshold:
-                        clientUtility = ((float(args.round_threshold)/virtual_c) ** args.round_penalty)
-
                     # register the score
                     if args.score_mode == "loss":
-                        clientUtility *= math.sqrt(iteration_loss[i]) * min(clientSampler.getClient(clientId).size, 
+                        clientUtility = math.sqrt(iteration_loss[i]) * min(clientSampler.getClient(clientId).size, 
                                                     args.upload_epoch*args.batch_size)
                     # elif args.score_mode == "norm_model":
                     #     clientSampler.registerScore(clientId, 
@@ -369,17 +370,17 @@ def run(model, test_data, queue, param_q, stop_signal, clientSampler):
                     #                                 time_stamp=epoch_count
                     #                   )
                     elif args.score_mode == "norm":
-                        clientUtility *= math.sqrt(iteration_loss[i]) * min(clientSampler.getClient(clientId).size, 
+                        clientUtility = math.sqrt(iteration_loss[i]) * min(clientSampler.getClient(clientId).size, 
                                                     args.upload_epoch*args.batch_size)
 
                     elif args.score_mode == "size":
-                        clientUtility *= min(clientSampler.getClient(clientId).size, 
+                        clientUtility = min(clientSampler.getClient(clientId).size, 
                                                     args.upload_epoch*args.batch_size)
                     else:
-                        clientUtility *= (1.0 - clientSampler.getClient(clientId).distance)
+                        clientUtility = (1.0 - clientSampler.getClient(clientId).distance)
                         
-                    clientSampler.registerScore(clientId, clientUtility, auxi = math.sqrt(iteration_loss[i]),
-                                                time_stamp=epoch_count
+                    clientSampler.registerScore(clientId, clientUtility, auxi=math.sqrt(iteration_loss[i]),
+                                                time_stamp=epoch_count, duration=virtual_c
                                   )
                     if isSelected:
                         received_updates += 1

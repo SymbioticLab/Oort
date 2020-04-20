@@ -6,7 +6,7 @@ import numpy as np2
 
 class UCB(object):
 
-    def __init__(self, sample_seed, score_mode, sample_window):
+    def __init__(self, sample_seed, score_mode, args):
         self.totalArms = OrderedDict()
         self.numOfTrials = 0
 
@@ -19,22 +19,30 @@ class UCB(object):
         self.rng.seed(sample_seed)
         self.unexplored = set()
         self.score_mode = score_mode
+        self.args = args
 
-        self.sample_window = sample_window
+        self.sample_window = self.args.sample_window
         np2.random.seed(sample_seed)
 
-    def registerArm(self, armId, size, reward):
-        # Initiate the score for arms. [score, time_stamp, # of trials, size of client, auxi]
+    def registerArm(self, armId, size, reward, duration):
+        # Initiate the score for arms. [score, time_stamp, # of trials, size of client, auxi, duration]
         if armId not in self.totalArms:
-             self.totalArms[armId] = [0, 0, 0, size, 0]
+             self.totalArms[armId] = [0, 0, 0, size, 0, duration]
              self.unexplored.add(armId)
 
-    def registerReward(self, armId, reward, auxi, time_stamp):
+    def registerDuration(self, armId, duration):
+        if armId in self.totalArms:
+            self.totalArms[armId][5] = duration
+
+    def registerReward(self, armId, reward, auxi, time_stamp, duration):
         # [reward, time stamp]
         self.totalArms[armId][0] = reward
         self.totalArms[armId][1] = time_stamp
         self.totalArms[armId][2] += 1
         self.totalArms[armId][4] = auxi
+
+        if self.args.round_threshold != -1:
+            self.totalArms[armId][5] = duration 
 
         self.unexplored.discard(armId)
 
@@ -64,10 +72,6 @@ class UCB(object):
         for sampledId in orderedKeys:
             if self.totalArms[sampledId][0] > 0:
                 creward = self.totalArms[sampledId][0]
-            #else:
-                # haven't try before, then assign to avg reward x size
-                #creward = expectation_reward # * self.totalArms[sampledId][3]
-
                 moving_reward.append(creward)
                 staleness.append(cur_time - self.totalArms[sampledId][1])
 
@@ -80,15 +84,16 @@ class UCB(object):
             if self.totalArms[key][0] > 0:
                 creward = self.totalArms[key][0]
                 numOfExploited += 1
-            #else:
-                # haven't try before, then assign to avg reward x size
-                #creward = expectation_reward #* self.totalArms[key][3]
 
                 sc = (creward - min_reward)/float(range_reward) \
                     + self.alpha*((cur_time-self.totalArms[key][1]) - min_staleness)/float(range_staleness)
 
                 if self.totalArms[key][1] == cur_time - 1:
                     allloss[key] = self.totalArms[key][0]
+
+                clientDuration = self.totalArms[key][5]
+                if self.args.round_threshold != -1 and clientDuration > self.args.round_threshold:
+                    sc *= ((float(self.args.round_threshold)/clientDuration) ** self.args.round_penalty)
 
                 scores[key] = sc
 
@@ -115,8 +120,16 @@ class UCB(object):
         if len(self.unexplored) > 0:
             _unexplored = list(self.unexplored)
 
+            init_reward = {}
+            for cl in _unexplored:
+                init_reward[cl] = self.totalArms[cl][3]
+                clientDuration = self.totalArms[cl][5]
+
+                if self.args.round_threshold != -1 and clientDuration > self.args.round_threshold:
+                    init_reward[cl] *= ((float(self.args.round_threshold)/clientDuration) ** self.args.round_penalty)
+
             # prioritize w/ some rewards (i.e., size)
-            unexplored_by_rewards = sorted(_unexplored, reverse=True, key=lambda k:self.totalArms[k][3])
+            unexplored_by_rewards = sorted(_unexplored, reverse=True, key=lambda k:init_reward[k])
             #self.rng.shuffle(_unexplored)
             exploreLen = min(len(_unexplored), numOfSamples - len(pickedClients))
             pickedClients = pickedClients + unexplored_by_rewards[:exploreLen]
