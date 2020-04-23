@@ -27,7 +27,7 @@ class UCB(object):
     def registerArm(self, armId, size, reward, duration):
         # Initiate the score for arms. [score, time_stamp, # of trials, size of client, auxi, duration]
         if armId not in self.totalArms:
-             self.totalArms[armId] = [0, 0, 0, size, 0, duration]
+             self.totalArms[armId] = [0., 0., 0., float(size), 0., duration]
              self.unexplored.add(armId)
 
     def registerDuration(self, armId, duration):
@@ -40,9 +40,7 @@ class UCB(object):
         self.totalArms[armId][1] = time_stamp
         self.totalArms[armId][2] += 1
         self.totalArms[armId][4] = auxi
-
-        if self.args.round_threshold != -1:
-            self.totalArms[armId][5] = duration 
+        self.totalArms[armId][5] = duration 
 
         self.unexplored.discard(armId)
 
@@ -62,8 +60,8 @@ class UCB(object):
         # normalize the score of all arms: Avg + Confidence
         scores = {}
         numOfExploited = 0
-        pacer_from = 0
-        pacer_to = 0
+        exploreLen = 0
+
         orderedKeys = list(self.totalArms.keys())
 
         moving_reward, staleness, allloss = [], [], {}
@@ -88,12 +86,12 @@ class UCB(object):
                 sc = (creward - min_reward)/float(range_reward) \
                     + self.alpha*((cur_time-self.totalArms[key][1]) - min_staleness)/float(range_staleness)
 
-                if self.totalArms[key][1] == cur_time - 1:
-                    allloss[key] = self.totalArms[key][0]
-
                 clientDuration = self.totalArms[key][5]
-                if self.args.round_threshold != -1 and clientDuration > self.args.round_threshold:
+                if clientDuration > self.args.round_threshold:
                     sc *= ((float(self.args.round_threshold)/clientDuration) ** self.args.round_penalty)
+
+                if self.totalArms[key][1] == cur_time - 1:
+                    allloss[key] = sc
 
                 scores[key] = sc
 
@@ -102,12 +100,6 @@ class UCB(object):
         exploitLen = min(int(numOfSamples*(1.0 - self.exploration)), len(clientLakes))
 
         # static UCB, take the top-k
-
-        # self.pacer += self.pacer_delta
-        # self.pacer = max(0, min(self.pacer, len(scores) - exploitLen))
-
-        # pacer_from = int(self.pacer)
-        # pacer_to = min(pacer_from + exploitLen, len(scores))
         pickedClients = sorted(scores, key=scores.get, reverse=True)[:int(self.sample_window*exploitLen)]
         totalSc = float(sum([scores[key] for key in pickedClients]))
         pickedClients = list(np2.random.choice(pickedClients, exploitLen, p=[scores[key]/totalSc for key in pickedClients], replace=False))
@@ -125,7 +117,7 @@ class UCB(object):
                 init_reward[cl] = self.totalArms[cl][3]
                 clientDuration = self.totalArms[cl][5]
 
-                if self.args.round_threshold != -1 and clientDuration > self.args.round_threshold:
+                if clientDuration > self.args.round_threshold:
                     init_reward[cl] *= ((float(self.args.round_threshold)/clientDuration) ** self.args.round_penalty)
 
             # prioritize w/ some rewards (i.e., size)
@@ -154,8 +146,8 @@ class UCB(object):
         top_k_score.append(self.totalArms[last_exploit] + \
             [(self.totalArms[last_exploit][0] - min_reward)/float(range_reward), self.alpha*((cur_time-self.totalArms[last_exploit][1]) - min_staleness)/float(range_staleness)])
 
-        logging.info("====At time {}, UCB exploited {}, un-explored {}, top-k score is {}"
-            .format(cur_time, numOfExploited, len(self.totalArms) - numOfExploited, top_k_score))
+        logging.info("====At time {}, UCB exploited {}, exploreLen {}, un-explored {}, top-k score is {}"
+            .format(cur_time, numOfExploited, exploreLen, len(self.totalArms) - numOfExploited, top_k_score))
         logging.info("====At time {}, all rewards are {}".format(cur_time, allloss))
 
         return pickedClients

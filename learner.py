@@ -216,7 +216,14 @@ def run_forward_pass(model, test_data):
  
         if args.model != 'inception_v3':
             output = model(data)
-            loss = criterion(output, target)
+
+            if args.model == 'googlenet':
+                loss1 = criterion(output, target)
+                loss2 = criterion(aux1, target)
+                loss3 = criterion(aux2, target)
+                loss = loss1 + 0.3 * (loss2 + loss3)
+            else:
+                loss = criterion(output, target)
         else:
             output, aux_outputs = model(data)
             loss1 = criterion(output, target)
@@ -255,12 +262,19 @@ def run_backward_pass(model, test_data):
 
         if args.model != 'inception_v3':
             output = model(data)
-            loss = criterion(output, target)
+
+            if args.model == 'googlenet':
+                loss1 = criterion(output, target)
+                loss2 = criterion(aux1, target)
+                loss3 = criterion(aux2, target)
+                loss = loss1 + 0.3 * (loss2 + loss3)
+            else:
+                loss = criterion(output, target)
         else:
             output, aux_outputs = model(data)
             loss1 = criterion(output, target)
             loss2 = criterion(aux_outputs, target)
-            loss = loss1 + 0.3*loss2
+            loss = loss1 + 0.4*loss2
 
         test_loss += loss.data.item()
         test_len += len(target)
@@ -408,13 +422,20 @@ def run_client(clientId, cmodel, iters, learning_rate, argdicts = {}):
             #torch.nn.utils.clip_grad_norm_(cmodel.parameters(), args.max_grad_norm)
         else:
             if args.model != 'inception_v3':
-                output = cmodel(data)
-                loss = criterion(output, target)
+                if args.model == 'googlenet':
+                    output, aux1, aux2 = cmodel(data)
+                    loss1 = criterion(output, target)
+                    loss2 = criterion(aux1, target)
+                    loss3 = criterion(aux2, target)
+                    loss = loss1 + 0.3 * (loss2 + loss3)
+                else:
+                    output = cmodel(data)
+                    loss = criterion(output, target)
             else:
                 output, aux_outputs = cmodel(data)
                 loss1 = criterion(output, target)
                 loss2 = criterion(aux_outputs, target)
-                loss = loss1 + 0.3*loss2
+                loss = loss1 + 0.4*loss2
 
         # only measure the last epoch
         temp_loss = 0.
@@ -471,7 +492,10 @@ def run_client(clientId, cmodel, iters, learning_rate, argdicts = {}):
         global_data_iter[clientId] = [train_data_itr_list[0], curBatch, total_batch_size, argdicts['iters']]
     else:
         for loader in train_data_itr_list:
-            loader._shutdown_workers()
+            try:
+                loader._shutdown_workers()
+            except Exception as e:
+                pass
         del train_data_itr_list
         del global_data_iter[clientId]
 

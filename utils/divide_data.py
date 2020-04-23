@@ -154,8 +154,9 @@ class DataPartitioner(object):
             for index, clientId in enumerate(sampleIdToClient):
                 if clientNumSamples[clientId] < self.args.filter_less:
                     indicesToRm.append(index)
+
         except Exception as e:
-            logging.info("====Failed to generate indicesToRm")
+            logging.info("====Failed to generate indicesToRm, because of {}".format(e))
             #pass 
 
         return indicesToRm
@@ -466,10 +467,11 @@ def partition_dataset(partitioner, workers, partitionRatio=[], sequential=0, rat
 def select_dataset(rank: int, partition: DataPartitioner, batch_size: int, isTest=False, is_rank=0, collate_fn=None):
     partition = partition.use(rank - 1, isTest, is_rank-1)
     timeOut = 0 if isTest else 60
-    numOfThreads = args.num_loaders
+    numOfThreads = int(min(args.num_loaders, len(partition)/(batch_size+1)))
     dropLast = False if isTest else True
 
     if collate_fn is None:
         return DataLoader(partition, batch_size=batch_size, shuffle=True, pin_memory=False, num_workers=numOfThreads, drop_last=dropLast, timeout=timeOut)
     else:
         return DataLoader(partition, batch_size=batch_size, shuffle=True, pin_memory=False, num_workers=numOfThreads, drop_last=dropLast, timeout=timeOut, collate_fn=collate_fn)
+
