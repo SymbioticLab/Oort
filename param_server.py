@@ -277,6 +277,8 @@ def run(model, test_data, queue, param_q, stop_signal, clientSampler):
     pendingWorkers = {}
     test_results = {}
     virtualClientClock = {}
+    exploredPendingWorkers = []
+    avgUtilLastEpoch = 0.
 
     s_time = time.time()
     epoch_time = s_time
@@ -385,6 +387,8 @@ def run(model, test_data, queue, param_q, stop_signal, clientSampler):
                     if isSelected:
                         received_updates += 1
 
+                    avgUtilLastEpoch += ratioSample * clientUtility
+
                 logging.info("====Done handling rank {}, with ratio {}, now collected {} clients".format(rank_src, ratioSample, received_updates))
 
                 # aggregate the test results
@@ -438,8 +442,15 @@ def run(model, test_data, queue, param_q, stop_signal, clientSampler):
                         workersToSend.append(pworker)
 
                 if len(workersToSend) > 0:
+                    # assign avg reward to explored, but not ran workers
+                    for clientId in exploredPendingWorkers:
+                        clientSampler.registerScore(clientId, avgUtilLastEpoch,
+                                                time_stamp=epoch_count, duration=virtualClientClock[clientId]
+                                  )
+
                     workersToSend = sorted(workersToSend)
                     epoch_count += 1
+                    avgUtilLastEpoch = 0.
 
                     logging.info("====Epoch {} completes {} clients, sampled rewards are: \n {} \n=========="
                                 .format(epoch_count, len(clientsLastEpoch), {x:clientSampler.getScore(0, x) for x in sorted(clientsLastEpoch)}))
@@ -475,8 +486,10 @@ def run(model, test_data, queue, param_q, stop_signal, clientSampler):
                             virtualClientClock[virtualClient] = roundDuration
 
                         # get the top-k completions
-                        top_k_index = sorted(range(len(completionTimes)), key=lambda k:completionTimes[k])[:numToRealRun]
+                        sortedWorkersByCompletion = sorted(range(len(completionTimes)), key=lambda k:completionTimes[k])
+                        top_k_index = sortedWorkersByCompletion[:numToRealRun]
                         sampledClients = [sampledClientsReal[k] for k in top_k_index]
+                        exploredPendingWorkers = [sampledClientsReal[k] for k in sortedWorkersByCompletion[numToRealRun:]]
                         sampledClientSet = set(sampledClients)
                         round_duration = completionTimes[top_k_index[-1]]
 

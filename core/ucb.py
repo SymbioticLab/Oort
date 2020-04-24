@@ -121,10 +121,16 @@ class UCB(object):
                     init_reward[cl] *= ((float(self.args.round_threshold)/clientDuration) ** self.args.round_penalty)
 
             # prioritize w/ some rewards (i.e., size)
-            unexplored_by_rewards = sorted(_unexplored, reverse=True, key=lambda k:init_reward[k])
-            #self.rng.shuffle(_unexplored)
             exploreLen = min(len(_unexplored), numOfSamples - len(pickedClients))
-            pickedClients = pickedClients + unexplored_by_rewards[:exploreLen]
+            pickedUnexploredClients = sorted(init_reward, key=init_reward.get, reverse=True)[:min(int(self.sample_window*exploreLen), len(init_reward))]
+
+            unexploredSc = float(sum([init_reward[key] for key in pickedUnexploredClients]))
+            #sorted(_unexplored, reverse=True, key=lambda k:init_reward[k])
+            #self.rng.shuffle(_unexplored)
+            pickedUnexplored = list(np2.random.choice(pickedUnexploredClients, exploreLen, 
+                                p=[init_reward[key]/unexploredSc for key in pickedUnexploredClients], replace=False))
+
+            pickedClients = pickedClients + pickedUnexplored
         else:
             # no clients left for exploration
             self.exploration_min = 0.
