@@ -256,9 +256,9 @@ def run(model, test_data, queue, param_q, stop_signal, clientSampler):
 
     f_staleness = open(staleness_file, 'w')
     
-    if not args.load_model:
-        for idx, param in enumerate(model.parameters()):
-            dist.broadcast(tensor=(param.data.to(device=device)), src=0)
+    #if not args.load_model:
+    for idx, param in enumerate(model.parameters()):
+        dist.broadcast(tensor=(param.data.to(device=device)), src=0)
 
     workers = [int(v) for v in str(args.learners).split('-')]
 
@@ -328,66 +328,67 @@ def run(model, test_data, queue, param_q, stop_signal, clientSampler):
 
                 logging.info("====Start to merge models")
 
-                for i, clientId in enumerate(clientIds):
-                    gradients = None
-                    ranSamples = float(speed[i].split('_')[1])
+                if not args.test_only:
+                    for i, clientId in enumerate(clientIds):
+                        gradients = None
+                        ranSamples = float(speed[i].split('_')[1])
 
-                    epoch_train_loss += iteration_loss[i]
-                    data_size_epoch += trained_size[i]
+                        data_size_epoch += trained_size[i]
 
-                    # fraction of total samples on this specific node 
-                    ratioSample = clientSampler.getSampleRatio(clientId, rank_src, args.is_even_avg)
-                    delta_ws = delta_wss[i]
+                        # fraction of total samples on this specific node 
+                        ratioSample = clientSampler.getSampleRatio(clientId, rank_src, args.is_even_avg)
+                        delta_ws = delta_wss[i]
 
-                    isSelected = True if clientId in sampledClientSet else False
-                    # apply the update into the global model if the client is involved
-                    for idx, param in enumerate(model.parameters()):
-                        model_weight = torch.from_numpy(delta_ws[idx]).to(device=device)
+                        epoch_train_loss += ratioSample * iteration_loss[i]
+                        isSelected = True if clientId in sampledClientSet else False
+                        # apply the update into the global model if the client is involved
+                        for idx, param in enumerate(model.parameters()):
+                            model_weight = torch.from_numpy(delta_ws[idx]).to(device=device)
 
-                        # model_weight is the delta of last model
+                            # model_weight is the delta of last model
+                            if isSelected:
+                                # the first received client
+                                if received_updates == 0:
+                                    sumDeltaWeights.append(model_weight * ratioSample)
+                                else:
+                                    sumDeltaWeights[idx] += model_weight * ratioSample
+
+                            # if gradients is None:
+                            #     gradients = (model_weight - last_global_model[idx]).flatten()
+                            # else:
+                            #     gradients = torch.cat((gradients, (model_weight - last_global_model[idx]).flatten()))
+
+                        # bias term for global speed
+                        virtual_c = virtualClientClock[clientId] if clientId in virtualClientClock else 1.
+                        clientUtility = 1. 
+
+                        # register the score
+                        if args.score_mode == "loss":
+                            clientUtility = math.sqrt(iteration_loss[i]) * min(clientSampler.getClient(clientId).size, 
+                                                        args.upload_epoch*args.batch_size)
+                        # elif args.score_mode == "norm_model":
+                        #     clientSampler.registerScore(clientId, 
+                        #                                 gradients.norm(2).data.item() * min(clientSampler.getClient(clientId).size, 
+                        #                                 args.upload_epoch*args.batch_size), auxi=gradients.norm(2).data.item(), 
+                        #                                 time_stamp=epoch_count
+                        #                   )
+                        elif args.score_mode == "norm":
+                            clientUtility = math.sqrt(iteration_loss[i]) * min(clientSampler.getClient(clientId).size, 
+                                                        args.upload_epoch*args.batch_size)
+
+                        elif args.score_mode == "size":
+                            clientUtility = min(clientSampler.getClient(clientId).size, 
+                                                        args.upload_epoch*args.batch_size)
+                        else:
+                            clientUtility = (1.0 - clientSampler.getClient(clientId).distance)
+                            
+                        clientSampler.registerScore(clientId, clientUtility, auxi=math.sqrt(iteration_loss[i]),
+                                                    time_stamp=epoch_count, duration=virtual_c
+                                      )
                         if isSelected:
-                            # the first received client
-                            if received_updates == 0:
-                                sumDeltaWeights.append(model_weight * ratioSample)
-                            else:
-                                sumDeltaWeights[idx] += model_weight * ratioSample
+                            received_updates += 1
 
-                        # if gradients is None:
-                        #     gradients = (model_weight - last_global_model[idx]).flatten()
-                        # else:
-                        #     gradients = torch.cat((gradients, (model_weight - last_global_model[idx]).flatten()))
-
-                    # bias term for global speed
-                    virtual_c = virtualClientClock[clientId] if clientId in virtualClientClock else 1.
-                    clientUtility = 1. 
-
-                    # register the score
-                    if args.score_mode == "loss":
-                        clientUtility = math.sqrt(iteration_loss[i]) * min(clientSampler.getClient(clientId).size, 
-                                                    args.upload_epoch*args.batch_size)
-                    # elif args.score_mode == "norm_model":
-                    #     clientSampler.registerScore(clientId, 
-                    #                                 gradients.norm(2).data.item() * min(clientSampler.getClient(clientId).size, 
-                    #                                 args.upload_epoch*args.batch_size), auxi=gradients.norm(2).data.item(), 
-                    #                                 time_stamp=epoch_count
-                    #                   )
-                    elif args.score_mode == "norm":
-                        clientUtility = math.sqrt(iteration_loss[i]) * min(clientSampler.getClient(clientId).size, 
-                                                    args.upload_epoch*args.batch_size)
-
-                    elif args.score_mode == "size":
-                        clientUtility = min(clientSampler.getClient(clientId).size, 
-                                                    args.upload_epoch*args.batch_size)
-                    else:
-                        clientUtility = (1.0 - clientSampler.getClient(clientId).distance)
-                        
-                    clientSampler.registerScore(clientId, clientUtility, auxi=math.sqrt(iteration_loss[i]),
-                                                time_stamp=epoch_count, duration=virtual_c
-                                  )
-                    if isSelected:
-                        received_updates += 1
-
-                    avgUtilLastEpoch += ratioSample * clientUtility
+                        avgUtilLastEpoch += ratioSample * clientUtility
 
                 logging.info("====Done handling rank {}, with ratio {}, now collected {} clients".format(rank_src, ratioSample, received_updates))
 
@@ -404,10 +405,10 @@ def run(model, test_data, queue, param_q, stop_signal, clientSampler):
                     test_results[updateEpoch][-1] += 1
                     # have collected all ranks
                     if test_results[updateEpoch][-1] == len(workers):
-                        logging.info("====After aggregation in epoch: {}, virtual_clock: {}, top_1: {} % ({}), top_5: {} % ({}), test loss: {}"
+                        logging.info("====After aggregation in epoch: {}, virtual_clock: {}, top_1: {} % ({}), top_5: {} % ({}), test loss: {}, test len: {}"
                                 .format(updateEpoch, global_virtual_clock, round(test_results[updateEpoch][0]/test_results[updateEpoch][3]*100.0, 4), 
                                 test_results[updateEpoch][0], round(test_results[updateEpoch][1]/test_results[updateEpoch][3]*100.0, 4), 
-                                test_results[updateEpoch][1], test_results[updateEpoch][2]/test_results[updateEpoch][3]))
+                                test_results[updateEpoch][1], test_results[updateEpoch][2]/test_results[updateEpoch][3], test_results[updateEpoch][3]))
 
                 handlerDur = time.time() - handlerStart
                 global_update += 1
@@ -452,9 +453,10 @@ def run(model, test_data, queue, param_q, stop_signal, clientSampler):
                     epoch_count += 1
                     avgUtilLastEpoch = 0.
 
-                    logging.info("====Epoch {} completes {} clients, sampled rewards are: \n {} \n=========="
-                                .format(epoch_count, len(clientsLastEpoch), {x:clientSampler.getScore(0, x) for x in sorted(clientsLastEpoch)}))
+                    logging.info("====Epoch {} completes {} clients with loss {}, sampled rewards are: \n {} \n=========="
+                                .format(epoch_count, len(clientsLastEpoch), epoch_train_loss, {x:clientSampler.getScore(0, x) for x in sorted(clientsLastEpoch)}))
 
+                    epoch_train_loss = 0.
                     clientsLastEpoch = []
                     send_start = time.time()
 
@@ -463,7 +465,8 @@ def run(model, test_data, queue, param_q, stop_signal, clientSampler):
                         sumDeltaWeights = gradient_controller.update(sumDeltaWeights)
 
                     for idx, param in enumerate(model.parameters()):
-                        param.data += sumDeltaWeights[idx]
+                        if not args.test_only:
+                            param.data += sumDeltaWeights[idx]
                         dist.broadcast(tensor=(param.data.to(device=device)), src=0)
 
                     # resampling the clients if necessary
@@ -489,16 +492,16 @@ def run(model, test_data, queue, param_q, stop_signal, clientSampler):
                         sortedWorkersByCompletion = sorted(range(len(completionTimes)), key=lambda k:completionTimes[k])
                         top_k_index = sortedWorkersByCompletion[:numToRealRun]
                         sampledClients = [sampledClientsReal[k] for k in top_k_index]
+
+                        if args.test_only and epoch_count == 2:
+                            sampledClients = clientSampler.getAllClients()
+
                         exploredPendingWorkers = [sampledClientsReal[k] for k in sortedWorkersByCompletion[numToRealRun:]]
                         sampledClientSet = set(sampledClients)
                         round_duration = completionTimes[top_k_index[-1]]
 
                         logging.info("====Try to resample clients, and result is: \n{}\n while final takes: \n {} \n virtual duration is {}"
                                     .format(sampledClientsReal, sampledClients, virtualClientClock))
-
-                        # simulate the optimal
-                        if args.run_all:
-                            sampledClients = clientSampler.getAllClients()
 
                         allocateClientToWorker = {}
                         allocateClientDict = {rank:0 for rank in workers}

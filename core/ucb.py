@@ -20,6 +20,8 @@ class UCB(object):
         self.unexplored = set()
         self.score_mode = score_mode
         self.args = args
+        self.round_threshold = args.round_threshold
+        self.round_prefer_duration = 99999999999
 
         self.sample_window = self.args.sample_window
         np2.random.seed(sample_seed)
@@ -63,6 +65,9 @@ class UCB(object):
         exploreLen = 0
 
         orderedKeys = list(self.totalArms.keys())
+        if self.round_threshold < 100:
+            sortedDuration = sorted([self.totalArms[key][5] for key in orderedKeys])
+            self.round_prefer_duration = sortedDuration[min(int(len(sortedDuration) * self.round_threshold), len(sortedDuration))]
 
         moving_reward, staleness, allloss = [], [], {}
         expectation_reward = self.getExpectation()
@@ -87,8 +92,8 @@ class UCB(object):
                     + self.alpha*((cur_time-self.totalArms[key][1]) - min_staleness)/float(range_staleness)
 
                 clientDuration = self.totalArms[key][5]
-                if clientDuration > self.args.round_threshold:
-                    sc *= ((float(self.args.round_threshold)/clientDuration) ** self.args.round_penalty)
+                if clientDuration > self.round_prefer_duration:
+                    sc *= ((float(self.round_prefer_duration)/clientDuration) ** self.args.round_penalty)
 
                 if self.totalArms[key][1] == cur_time - 1:
                     allloss[key] = sc
@@ -117,8 +122,8 @@ class UCB(object):
                 init_reward[cl] = self.totalArms[cl][3]
                 clientDuration = self.totalArms[cl][5]
 
-                if clientDuration > self.args.round_threshold:
-                    init_reward[cl] *= ((float(self.args.round_threshold)/clientDuration) ** self.args.round_penalty)
+                if clientDuration > self.round_prefer_duration:
+                    init_reward[cl] *= ((float(self.round_prefer_duration)/clientDuration) ** self.args.round_penalty)
 
             # prioritize w/ some rewards (i.e., size)
             exploreLen = min(len(_unexplored), numOfSamples - len(pickedClients))

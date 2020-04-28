@@ -202,7 +202,6 @@ def run_forward_pass(model, test_data):
     test_loss = 0.
     test_len = 0.
     totalLoss = None
-
     # we want avg{Loss^2}
 
     model.eval()
@@ -307,20 +306,6 @@ def run_client(clientId, cmodel, iters, learning_rate, argdicts = {}):
         optimizer = MySGD(cmodel.parameters(), lr=learning_rate, momentum=0.9, weight_decay=5e-4)
     else:
         optimizer = torch.optim.SGD(cmodel.parameters(), lr=learning_rate, momentum=0.9, weight_decay=5e-4)
-    #     if clientId not in global_optimizers:
-    #         # Prepare optimizer and schedule (linear warmup and decay)
-    #         no_decay = ["bias", "LayerNorm.weight"]
-    #         optimizer_grouped_parameters = [
-    #             {
-    #                 "params": [p for n, p in cmodel.named_parameters() if not any(nd in n for nd in no_decay)],
-    #                 "weight_decay": 5e-4,
-    #             },
-    #             {"params": [p for n, p in cmodel.named_parameters() if any(nd in n for nd in no_decay)], "weight_decay": 0},
-    #         ]
-    #         optimizer = AdamW(optimizer_grouped_parameters, lr=learning_rate, eps=args.adam_epsilon)
-    #         global_optimizers[clientId] = optimizer
-    #     else:
-    #         optimizer = global_optimizers[clientId]
 
     criterion = torch.nn.CrossEntropyLoss(reduction='none').to(device=device) if args.task != 'tag' else torch.nn.BCELoss(reduction='none').to(device=device)
    
@@ -533,11 +518,11 @@ def run(rank, model, train_data, test_data, queue, param_q, stop_flag, client_cf
     # Fetch the initial parameters from the server side (we called it parameter_server)
     last_model_tensors = []
 
-    if not args.load_model:
-        for idx, param in enumerate(model.parameters()):
-            tmp_tensor = torch.zeros_like(param.data)
-            dist.broadcast(tensor=tmp_tensor, src=0)
-            param.data = tmp_tensor
+    #if not args.load_model:
+    for idx, param in enumerate(model.parameters()):
+        tmp_tensor = torch.zeros_like(param.data)
+        dist.broadcast(tensor=tmp_tensor, src=0)
+        param.data = tmp_tensor
     
     for idx, param in enumerate(model.parameters()): 
         last_model_tensors.append(copy.deepcopy(param.data))
@@ -570,47 +555,62 @@ def run(rank, model, train_data, test_data, queue, param_q, stop_flag, client_cf
 
             computeStart = time.time()
 
-            # dump a copy of model
-            with open(tempModelPath, 'wb') as fout:
-                pickle.dump(model, fout)
+            if not args.test_only:
+                # dump a copy of model
+                with open(tempModelPath, 'wb') as fout:
+                    pickle.dump(model, fout)
 
-            for nextClientId in nextClientIds:
-                # roll back to the global model for simulation
-                with open(tempModelPath, 'rb') as fin:
-                    model = pickle.load(fin)
-                    model = model.to(device=device)
+                for nextClientId in nextClientIds:
+                    # roll back to the global model for simulation
+                    with open(tempModelPath, 'rb') as fin:
+                        model = pickle.load(fin)
+                        model = model.to(device=device)
 
-                if args.score_mode == 'norm':
-                    # need to get the individual norm of samples
-                    backward_dataset = select_dataset(nextClientId, global_trainDB, batch_size=1, isTest=True)
-                    gradient_norm = run_backward_pass(model, backward_dataset)
-                    score = gradient_norm
+                    if args.score_mode == 'norm':
+                        # need to get the individual norm of samples
+                        backward_dataset = select_dataset(nextClientId, global_trainDB, batch_size=1, isTest=True)
+                        gradient_norm = run_backward_pass(model, backward_dataset)
+                        score = gradient_norm
 
-                _model_param, _loss, _trained_size, _speed, _time, _isSuccess = run_client(
-                            clientId=nextClientId, 
-                            cmodel=model, 
-                            learning_rate=learning_rate, 
-                            iters=args.upload_epoch,
-                            argdicts={'iters': epoch}
-                        )
+                    _model_param, _loss, _trained_size, _speed, _time, _isSuccess = run_client(
+                                clientId=nextClientId, 
+                                cmodel=model, 
+                                learning_rate=learning_rate, 
+                                iters=args.upload_epoch,
+                                argdicts={'iters': epoch}
+                            )
 
-                if _isSuccess is False:
-                    continue
+                    if _isSuccess is False:
+                        continue
 
-                score = -1
-                if args.forward_pass:
-                    forward_dataset = select_dataset(nextClientId, global_trainDB, batch_size=args.test_bsz, isTest=True)
-                    forward_loss = run_forward_pass(model, forward_dataset)
-                    score = forward_loss
+                    score = -1
+                    if args.forward_pass:
+                        forward_dataset = select_dataset(nextClientId, global_trainDB, batch_size=args.test_bsz, isTest=True)
+                        forward_loss = run_forward_pass(model, forward_dataset)
+                        score = forward_loss
 
-                trainedModels.append(_model_param)
-                preTrainedLoss.append(_loss if score == -1 else score)
-                trainedSize.append(_trained_size)
-                trainSpeed.append(_speed)
-                virtualClock.append(_time)
-                ranClients.append(nextClientId)
+                    trainedModels.append(_model_param)
+                    preTrainedLoss.append(_loss if score == -1 else score)
+                    trainedSize.append(_trained_size)
+                    trainSpeed.append(_speed)
+                    virtualClock.append(_time)
+                    ranClients.append(nextClientId)
 
-                gc.collect()
+                    gc.collect()
+            else:
+                if epoch != 1:
+                    logging.info('====Start test round {}'.format(epoch))
+                    testResults = [0., 0., 0., 0.]
+                    # designed for testing only
+                    for nextClientId in nextClientIds:
+                        client_dataset = select_dataset(nextClientId, global_trainDB, batch_size=args.test_bsz, isTest=True)
+                        test_loss, acc, acc_5, temp_testResults = test_model(rank, model, client_dataset, criterion=criterion, 
+                                                                                tokenizer=tokenizer)
+                        # merge test results
+                        for idx, item in enumerate(temp_testResults):
+                            testResults[idx] += item
+
+                uploadEpoch = epoch
 
             computeEnd = time.time() - computeStart
 
@@ -645,6 +645,7 @@ def run(rank, model, train_data, test_data, queue, param_q, stop_flag, client_cf
 
             receDur = time.time() - receStart
 
+            #logging.info("====Finish receiving ps")
             evalStart = time.time()
             # test the model if necessary
             if epoch % int(args.eval_interval) == 0:
