@@ -219,31 +219,29 @@ def init_dataset():
 
     logging.info("====Initialize the model")
 
-    # convert gradient tensor to numpy structure
+    if args.task == 'nlp':
+        # we should train from scratch
+        config = AutoConfig.from_pretrained(os.path.join(args.data_dir, 'albert-base-v2-config.json'))
+        model = AutoModelWithLMHead.from_config(config)
+    elif args.task == 'tag':
+        # Load LR model for tag prediction
+        model = LogisticRegression(args.vocab_token_size, args.vocab_tag_size)
+    else:
+        if args.model == 'mnasnet':
+            model = MnasNet(num_classes=outputClass[args.data_set])
+        else:
+            model = tormodels.__dict__[args.model](num_classes=outputClass[args.data_set])
+
+    #model.train()
+    model = model.to(device=device)
+
     if args.load_model:
         try:
-            with open(modelPath, 'rb') as fin:
-                model = pickle.load(fin)
-            
+            model.load_state_dict(torch.load(modelPath, map_location=lambda storage, loc: storage.cuda(deviceId)))
             logging.info("====Load model successfully\n")
         except Exception as e:
             logging.info("====Error: Failed to load model due to {}\n".format(str(e)))
             sys.exit(-1)
-    else:
-        if args.task == 'nlp':
-            # we should train from scratch
-            config = AutoConfig.from_pretrained(os.path.join(args.data_dir, 'albert-base-v2-config.json'))
-            model = AutoModelWithLMHead.from_config(config)
-        elif args.task == 'tag':
-            # Load LR model for tag prediction
-            model = LogisticRegression(args.vocab_token_size, args.vocab_tag_size)
-        else:
-            if args.model == 'mnasnet':
-                model = MnasNet(num_classes=outputClass[args.data_set])
-            else:
-                model = tormodels.__dict__[args.model](num_classes=outputClass[args.data_set])
-
-    model = model.to(device=device)
 
     logging.info("====Finish loading model")
 
@@ -258,7 +256,7 @@ def run(model, test_data, queue, param_q, stop_signal, clientSampler):
     
     #if not args.load_model:
     for idx, param in enumerate(model.parameters()):
-        dist.broadcast(tensor=(param.data.to(device=device)), src=0)
+        dist.broadcast(tensor=param.data, src=0)
 
     workers = [int(v) for v in str(args.learners).split('-')]
 
@@ -328,7 +326,7 @@ def run(model, test_data, queue, param_q, stop_signal, clientSampler):
 
                 logging.info("====Start to merge models")
 
-                if not args.test_only:
+                if not args.test_only or epoch_count == 1:
                     for i, clientId in enumerate(clientIds):
                         gradients = None
                         ranSamples = float(speed[i].split('_')[1])
@@ -446,7 +444,8 @@ def run(model, test_data, queue, param_q, stop_signal, clientSampler):
                     # assign avg reward to explored, but not ran workers
                     for clientId in exploredPendingWorkers:
                         clientSampler.registerScore(clientId, avgUtilLastEpoch,
-                                                time_stamp=epoch_count, duration=virtualClientClock[clientId]
+                                                time_stamp=epoch_count, duration=virtualClientClock[clientId],
+                                                success=False
                                   )
 
                     workersToSend = sorted(workersToSend)
@@ -547,16 +546,17 @@ def run(model, test_data, queue, param_q, stop_signal, clientSampler):
 
                     # dump the model into file for backup
                     if epoch_count % args.dump_epoch == 0:
-                        with open(logDir+'/'+str(args.model)+'_'+str(currentMinStep)+'.pth.tar', 'wb') as fout:
-                            pickle.dump(model.to(device='cpu'), fout)
+                        torch.save(model.state_dict(), logDir+'/'+str(args.model)+'_'+str(currentMinStep)+'.pth.tar')
+                        # with open(logDir+'/'+str(args.model)+'_'+str(currentMinStep)+'.pth.tar', 'wb') as fout:
+                        #     pickle.dump(model.to(device='cpu'), fout)
 
                         # dump sampler
-                        with open(logDir + '/sampler_' + str(currentMinStep), 'wb') as fout:
-                            pickle.dump(clientSampler, fout)
+                        # with open(logDir + '/sampler_' + str(currentMinStep), 'wb') as fout:
+                        #     pickle.dump(clientSampler, fout)
 
-                        # dump metrics
-                        with open(logDir + '/sampler_metrics_' + str(currentMinStep), 'wb') as fout:
-                            pickle.dump(clientSampler.getAllMetrics(), fout)
+                        # # dump metrics
+                        # with open(logDir + '/sampler_metrics_' + str(currentMinStep), 'wb') as fout:
+                        #     pickle.dump(clientSampler.getAllMetrics(), fout)
 
                         logging.info("====Dump model and sampler successfully")
                         model = model.to(device=device)

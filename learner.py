@@ -167,29 +167,28 @@ def init_dataset():
     logging.info("====Initialize the model")
 
     # convert gradient tensor to numpy structure
-    if args.load_model:
-        try:
-            with open(modelPath, 'rb') as fin:
-                model = pickle.load(fin)
-            logging.info("====Load model successfully\n")
-        except Exception as e:
-            logging.info("====Error: Failed to load model due to {}\n".format(str(e)))
-            sys.exit(-1)
+    # if args.load_model:
+    #     try:
+    #         with open(modelPath, 'rb') as fin:
+    #             model = pickle.load(fin)
+    #         logging.info("====Load model successfully\n")
+    #     except Exception as e:
+    #         logging.info("====Error: Failed to load model due to {}\n".format(str(e)))
+    #         sys.exit(-1)
+    # else:
+    if args.task == 'nlp':
+        # we should train from scratch
+        config = AutoConfig.from_pretrained(os.path.join(args.data_dir, 'albert-base-v2-config.json'))
+        model = AutoModelWithLMHead.from_config(config)
+    elif args.task == 'tag':
+        # Load LR model for tag prediction
+        model = LogisticRegression(args.vocab_token_size, args.vocab_tag_size)
     else:
-        if args.task == 'nlp':
-            # we should train from scratch
-            config = AutoConfig.from_pretrained(os.path.join(args.data_dir, 'albert-base-v2-config.json'))
-            model = AutoModelWithLMHead.from_config(config)
-        elif args.task == 'tag':
-            # Load LR model for tag prediction
-            model = LogisticRegression(args.vocab_token_size, args.vocab_tag_size)
+        if args.model == 'mnasnet':
+            model = MnasNet(num_classes=outputClass[args.data_set])
         else:
-            if args.model == 'mnasnet':
-                model = MnasNet(num_classes=outputClass[args.data_set])
-            else:
-                model = tormodels.__dict__[args.model](num_classes=outputClass[args.data_set])
+            model = tormodels.__dict__[args.model](num_classes=outputClass[args.data_set])
 
-    model = model.to(device=device)
     logging.info("====Initialize client configuration")
 
     # initiate the device information - normalized computation speed by enforcing sleeping, bandwidth
@@ -517,12 +516,11 @@ def run(rank, model, train_data, test_data, queue, param_q, stop_flag, client_cf
 
     # Fetch the initial parameters from the server side (we called it parameter_server)
     last_model_tensors = []
+    #model.train()
+    model = model.to(device=device)
 
-    #if not args.load_model:
     for idx, param in enumerate(model.parameters()):
-        tmp_tensor = torch.zeros_like(param.data)
-        dist.broadcast(tensor=tmp_tensor, src=0)
-        param.data = tmp_tensor
+        dist.broadcast(tensor=param.data, src=0)
     
     for idx, param in enumerate(model.parameters()): 
         last_model_tensors.append(copy.deepcopy(param.data))
@@ -555,7 +553,7 @@ def run(rank, model, train_data, test_data, queue, param_q, stop_flag, client_cf
 
             computeStart = time.time()
 
-            if not args.test_only:
+            if not args.test_only or epoch == 1:
                 # dump a copy of model
                 with open(tempModelPath, 'wb') as fout:
                     pickle.dump(model, fout)
@@ -598,17 +596,16 @@ def run(rank, model, train_data, test_data, queue, param_q, stop_flag, client_cf
 
                     gc.collect()
             else:
-                if epoch != 1:
-                    logging.info('====Start test round {}'.format(epoch))
-                    testResults = [0., 0., 0., 0.]
-                    # designed for testing only
-                    for nextClientId in nextClientIds:
-                        client_dataset = select_dataset(nextClientId, global_trainDB, batch_size=args.test_bsz, isTest=True)
-                        test_loss, acc, acc_5, temp_testResults = test_model(rank, model, client_dataset, criterion=criterion, 
-                                                                                tokenizer=tokenizer)
-                        # merge test results
-                        for idx, item in enumerate(temp_testResults):
-                            testResults[idx] += item
+                logging.info('====Start test round {}'.format(epoch))
+                testResults = [0., 0., 0., 0.]
+                # designed for testing only
+                for nextClientId in nextClientIds:
+                    client_dataset = select_dataset(nextClientId, global_trainDB, batch_size=args.test_bsz, isTest=True)
+                    test_loss, acc, acc_5, temp_testResults = test_model(rank, model, client_dataset, criterion=criterion, 
+                                                                            tokenizer=tokenizer)
+                    # merge test results
+                    for idx, item in enumerate(temp_testResults):
+                        testResults[idx] += item
 
                 uploadEpoch = epoch
 

@@ -8,7 +8,7 @@ class UCB(object):
 
     def __init__(self, sample_seed, score_mode, args):
         self.totalArms = OrderedDict()
-        self.numOfTrials = 0
+        self.training_round = 0
 
         self.exploration = 0.9
         self.decay_factor = 0.98
@@ -24,6 +24,12 @@ class UCB(object):
         self.round_prefer_duration = 99999999999
 
         self.sample_window = self.args.sample_window
+        self.exploitUtilHistory = []
+        self.exploreUtilHistory = []
+        self.exploitClients = []
+        self.exploreClients = []
+        self.successfullClients = set()
+
         np2.random.seed(sample_seed)
 
     def registerArm(self, armId, size, reward, duration):
@@ -36,7 +42,44 @@ class UCB(object):
         if armId in self.totalArms:
             self.totalArms[armId][5] = duration
 
-    def registerReward(self, armId, reward, auxi, time_stamp, duration):
+    def calculateSumUtil(self, clientList):
+        cnt = 0
+        cntUtil = 0.
+        for client in clientList:
+            if self.totalArms[client][1] == self.training_round - 1 and client in self.successfullClients:
+                cnt += 1
+                cntUtil += self.totalArms[client][0]
+
+        if cntUtil > 0:
+            return cntUtil/cnt
+
+        return 0
+        
+    def pacer(self):
+        # summarize utility in last epoch
+        lastExplorationUtil = self.calculateSumUtil(self.exploreClients)
+        lastExploitationUtil = self.calculateSumUtil(self.exploitClients)
+
+        self.exploreUtilHistory.append(lastExplorationUtil)
+        self.exploitUtilHistory.append(lastExploitationUtil)
+
+        self.successfullClients = set()
+
+        if self.training_round >= 2 * self.args.pacer_step and self.training_round % self.args.pacer_step == 0:
+            # if we notice the overall utility does not increase, we would expand by relaxing system constraints
+            #utilPenultimateRounds = sum(self.exploitUtilHistory[-3*self.args.pacer_step:-2*self.args.pacer_step])
+            utilLastPacerRounds = sum(self.exploitUtilHistory[-2*self.args.pacer_step:-self.args.pacer_step])
+            utilCurrentPacerRounds = sum(self.exploitUtilHistory[-self.args.pacer_step:])
+
+            if utilCurrentPacerRounds <= utilLastPacerRounds * 0.9:
+                self.round_threshold = min(100., self.round_threshold + self.args.pacer_delta)
+            elif utilCurrentPacerRounds >= utilLastPacerRounds * 1.1:
+                self.round_threshold = max(self.args.pacer_delta, self.round_threshold - self.args.pacer_delta)
+
+        logging.info("====Pacer {}: lastExploitationUtil {}, lastExplorationUtil {}".
+                        format(self.training_round, lastExploitationUtil, lastExplorationUtil))
+
+    def registerReward(self, armId, reward, auxi, time_stamp, duration, success=True):
         # [reward, time stamp]
         self.totalArms[armId][0] = reward
         self.totalArms[armId][1] = time_stamp
@@ -45,6 +88,9 @@ class UCB(object):
         self.totalArms[armId][5] = duration 
 
         self.unexplored.discard(armId)
+
+        if success:
+            self.successfullClients.add(armId)
 
     def getExpectation(self):
         sum_reward = 0.
@@ -58,7 +104,9 @@ class UCB(object):
         return sum_reward/sum_count
 
     def getTopK(self, numOfSamples, cur_time):
-        self.numOfTrials += 1
+        self.training_round = cur_time
+
+        self.pacer()
         # normalize the score of all arms: Avg + Confidence
         scores = {}
         numOfExploited = 0
@@ -67,7 +115,7 @@ class UCB(object):
         orderedKeys = list(self.totalArms.keys())
         if self.round_threshold < 100:
             sortedDuration = sorted([self.totalArms[key][5] for key in orderedKeys])
-            self.round_prefer_duration = sortedDuration[min(int(len(sortedDuration) * self.round_threshold), len(sortedDuration))]
+            self.round_prefer_duration = sortedDuration[min(int(len(sortedDuration) * self.round_threshold/100.), len(sortedDuration)-1)]
 
         moving_reward, staleness, allloss = [], [], {}
         expectation_reward = self.getExpectation()
@@ -89,7 +137,9 @@ class UCB(object):
                 numOfExploited += 1
 
                 sc = (creward - min_reward)/float(range_reward) \
-                    + self.alpha*((cur_time-self.totalArms[key][1]) - min_staleness)/float(range_staleness)
+                    + math.sqrt(0.1*math.log(cur_time)/self.totalArms[key][1]) # temporal-uncertainty
+
+                    #self.alpha*((cur_time-self.totalArms[key][1]) - min_staleness)/float(range_staleness)
 
                 clientDuration = self.totalArms[key][5]
                 if clientDuration > self.round_prefer_duration:
@@ -108,6 +158,7 @@ class UCB(object):
         pickedClients = sorted(scores, key=scores.get, reverse=True)[:int(self.sample_window*exploitLen)]
         totalSc = float(sum([scores[key] for key in pickedClients]))
         pickedClients = list(np2.random.choice(pickedClients, exploitLen, p=[scores[key]/totalSc for key in pickedClients], replace=False))
+        self.exploitClients = pickedClients
 
         # dynamic UCB, pick by probablity
         #totalSc = float(sum([scores[key] for key in clientLakes]))
@@ -135,6 +186,7 @@ class UCB(object):
             pickedUnexplored = list(np2.random.choice(pickedUnexploredClients, exploreLen, 
                                 p=[init_reward[key]/unexploredSc for key in pickedUnexploredClients], replace=False))
 
+            self.exploreClients = pickedUnexplored
             pickedClients = pickedClients + pickedUnexplored
         else:
             # no clients left for exploration
@@ -157,8 +209,8 @@ class UCB(object):
         top_k_score.append(self.totalArms[last_exploit] + \
             [(self.totalArms[last_exploit][0] - min_reward)/float(range_reward), self.alpha*((cur_time-self.totalArms[last_exploit][1]) - min_staleness)/float(range_staleness)])
 
-        logging.info("====At time {}, UCB exploited {}, exploreLen {}, un-explored {}, top-k score is {}"
-            .format(cur_time, numOfExploited, exploreLen, len(self.totalArms) - numOfExploited, top_k_score))
+        logging.info("====At time {}, UCB exploited {}, exploreLen {}, un-explored {}, round_threshold {}, top-k score is {}"
+            .format(cur_time, numOfExploited, exploreLen, len(self.totalArms) - numOfExploited, self.round_threshold, top_k_score))
         logging.info("====At time {}, all rewards are {}".format(cur_time, allloss))
 
         return pickedClients
@@ -175,7 +227,7 @@ class UCB(object):
         # _5th = aList[int(len(aList)*0.05)]
 
         # return _95th, _5th, max((_95th - _5th), thres)
-        _max = max(aList)
+        _max = max(aList)*0.95
         _min = min(aList)*0.999
         _range = max(_max - _min, thres)
         _avg = sum(aList)/float(len(aList))
