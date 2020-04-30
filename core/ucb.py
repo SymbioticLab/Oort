@@ -67,20 +67,23 @@ class UCB(object):
         self.successfullClients = set()
 
         if self.training_round >= 2 * self.args.pacer_step and self.training_round % self.args.pacer_step == 0:
+        #if self.training_round >= self.last_util_record + 2*self.args.pacer_step: 
             # if we notice the overall utility does not increase, we would expand by relaxing system constraints
             
             #utilPenultimateRounds = sum(self.exploitUtilHistory[-3*self.args.pacer_step:-2*self.args.pacer_step])
-            utilLastPacerRounds = sum(self.exploitUtilHistory[last_util_record:last_util_record+self.args.pacer_step])
+            #utilLastPacerRounds = sum(self.exploitUtilHistory[self.last_util_record:self.last_util_record+self.args.pacer_step])
+            utilLastPacerRounds = sum(self.exploitUtilHistory[-2*self.args.pacer_step:-self.args.pacer_step])
             utilCurrentPacerRounds = sum(self.exploitUtilHistory[-self.args.pacer_step:])
 
-            if utilCurrentPacerRounds <= utilLastPacerRounds * 0.99:
+            if utilCurrentPacerRounds <= utilLastPacerRounds * 1.05:
                 self.round_threshold = min(100., self.round_threshold + self.args.pacer_delta)
                 self.last_util_record = self.training_round -self.args.pacer_step
             elif utilCurrentPacerRounds >= utilLastPacerRounds * 1.15:
                 self.round_threshold = max(self.args.pacer_delta, self.round_threshold - self.args.pacer_delta)
                 self.last_util_record = self.training_round -self.args.pacer_step
 
-            logging.info("====utilLastPacerRounds {}, utilCurrentPacerRounds {}".format(utilLastPacerRounds, utilCurrentPacerRounds))
+            logging.info("====utilLastPacerRounds {}, utilCurrentPacerRounds {} in round {}, last_util_record {}"
+                .format(utilLastPacerRounds, utilCurrentPacerRounds, self.training_round, self.last_util_record))
 
         logging.info("====Pacer {}: lastExploitationUtil {}, lastExplorationUtil {}, last_util_record {}".
                         format(self.training_round, lastExploitationUtil, lastExplorationUtil, self.last_util_record))
@@ -119,7 +122,7 @@ class UCB(object):
         exploreLen = 0
 
         orderedKeys = list(self.totalArms.keys())
-        if self.round_threshold < 100:
+        if self.round_threshold < 101:
             sortedDuration = sorted([self.totalArms[key][5] for key in orderedKeys])
             self.round_prefer_duration = sortedDuration[min(int(len(sortedDuration) * self.round_threshold/100.), len(sortedDuration)-1)]
 

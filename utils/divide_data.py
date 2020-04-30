@@ -471,7 +471,7 @@ def select_dataset(rank: int, partition: DataPartitioner, batch_size: int, isTes
     dropLast = False if isTest else True
 
     if collate_fn is None:
-        return DataLoader(partition, batch_size=batch_size, shuffle=True, pin_memory=False, num_workers=numOfThreads, drop_last=dropLast, timeout=timeOut)
+        return DataLoader(partition, batch_size=batch_size, shuffle=True, pin_memory=False, num_workers=numOfThreads, drop_last=dropLast, timeout=timeOut, worker_init_fn=np.random.seed(12))
     else:
-        return DataLoader(partition, batch_size=batch_size, shuffle=True, pin_memory=False, num_workers=numOfThreads, drop_last=dropLast, timeout=timeOut, collate_fn=collate_fn)
+        return DataLoader(partition, batch_size=batch_size, shuffle=True, pin_memory=False, num_workers=numOfThreads, drop_last=dropLast, timeout=timeOut, collate_fn=collate_fn, worker_init_fn=np.random.seed(12))
 

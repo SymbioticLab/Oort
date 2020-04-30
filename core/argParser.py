@@ -14,7 +14,7 @@ parser.add_argument('--data_mapfile', type=str, default=None)
 parser.add_argument('--to_device', type=str, default='cuda')
 parser.add_argument('--time_stamp', type=str, default='logs')
 parser.add_argument('--task', type=str, default='cv')
-parser.add_argument('--pacer_delta', type=float, default=5)
+parser.add_argument('--pacer_delta', type=float, default=10)
 parser.add_argument('--pacer_step', type=int, default=9999999999)
 
 # The configuration of model and dataset
@@ -39,8 +39,8 @@ parser.add_argument('--max_iter_store', type=int, default=100)
 parser.add_argument('--overcommit', type=float, default=1.0)
 parser.add_argument('--model_size', type=float, default=0)
 parser.add_argument('--sample_window', type=float, default=5.0)
-parser.add_argument('--round_threshold', type=float, default=100)
-parser.add_argument('--round_penalty', type=float, default=2)
+parser.add_argument('--round_threshold', type=float, default=101)
+parser.add_argument('--round_penalty', type=float, default=0.5)
 parser.add_argument('--test_only', type=bool, default=False)
 
 # The configuration of different hyper-parameters for training
