@@ -67,20 +67,24 @@ class UCB(object):
         self.successfullClients = set()
 
         if self.training_round >= 2 * self.args.pacer_step and self.training_round % self.args.pacer_step == 0:
-            # if we notice the overall utility does not increase, we would expand by relaxing system constraints
-            
-            #utilPenultimateRounds = sum(self.exploitUtilHistory[-3*self.args.pacer_step:-2*self.args.pacer_step])
-            utilLastPacerRounds = sum(self.exploitUtilHistory[last_util_record:last_util_record+self.args.pacer_step])
+
+            utilLastPacerRounds = sum(self.exploitUtilHistory[-2*self.args.pacer_step:-self.args.pacer_step])
             utilCurrentPacerRounds = sum(self.exploitUtilHistory[-self.args.pacer_step:])
 
-            if utilCurrentPacerRounds <= utilLastPacerRounds * 0.99:
+            # become flat -> we need a bump
+            if abs(utilCurrentPacerRounds - utilLastPacerRounds) <= utilLastPacerRounds * 0.1:
                 self.round_threshold = min(100., self.round_threshold + self.args.pacer_delta)
-                self.last_util_record = self.training_round -self.args.pacer_step
-            elif utilCurrentPacerRounds >= utilLastPacerRounds * 1.15:
-                self.round_threshold = max(self.args.pacer_delta, self.round_threshold - self.args.pacer_delta)
-                self.last_util_record = self.training_round -self.args.pacer_step
+                self.last_util_record = self.training_round - self.args.pacer_step
+                logging.info("====Pacer changes at {} to {}".format(self.training_round, self.round_threshold))
 
-            logging.info("====utilLastPacerRounds {}, utilCurrentPacerRounds {}".format(utilLastPacerRounds, utilCurrentPacerRounds))
+            # change sharply -> we decrease the pacer step
+            elif abs(utilCurrentPacerRounds - utilLastPacerRounds) >= utilLastPacerRounds * 0.3:
+                self.round_threshold = max(self.args.pacer_delta, self.round_threshold - self.args.pacer_delta)
+                self.last_util_record = self.training_round - self.args.pacer_step
+                logging.info("====Pacer changes at {} to {}".format(self.training_round, self.round_threshold))
+
+            logging.info("====utilLastPacerRounds {}, utilCurrentPacerRounds {} in round {}"
+                .format(utilLastPacerRounds, utilCurrentPacerRounds, self.training_round))
 
         logging.info("====Pacer {}: lastExploitationUtil {}, lastExplorationUtil {}, last_util_record {}".
                         format(self.training_round, lastExploitationUtil, lastExplorationUtil, self.last_util_record))
@@ -119,7 +123,7 @@ class UCB(object):
         exploreLen = 0
 
         orderedKeys = list(self.totalArms.keys())
-        if self.round_threshold < 100:
+        if self.round_threshold < 101:
             sortedDuration = sorted([self.totalArms[key][5] for key in orderedKeys])
             self.round_prefer_duration = sortedDuration[min(int(len(sortedDuration) * self.round_threshold/100.), len(sortedDuration)-1)]
 
@@ -229,7 +233,7 @@ class UCB(object):
         # _5th = aList[int(len(aList)*0.05)]
 
         # return _95th, _5th, max((_95th - _5th), thres)
-        _max = max(aList)*0.95
+        _max = max(aList)
         _min = min(aList)*0.999
         _range = max(_max - _min, thres)
         _avg = sum(aList)/float(len(aList))
