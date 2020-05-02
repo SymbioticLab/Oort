@@ -72,7 +72,7 @@ class stackoverflow():
 
 
         # load data and targets
-        self.raw_data, self.raw_targets, self.dict = self.load_file(self.root)
+        self.raw_data, self.raw_targets, self.dict = self.load_file(self.root, self.train)
 
         # we can't enumerate the raw data, thus generating artificial data to cheat the divide_data_loader
         self.data = [0 for i in range(len(self.raw_data))]
@@ -137,7 +137,7 @@ class stackoverflow():
             tokens = pickle.load(f)
         return tokens[:vocab_size]
 
-    def load_file(self, path):
+    def load_file(self, path, is_train):
 
         # First, get the token and tag dict
         vocab_tokens = self.create_token_vocab(self.vocab_tokens_size, path)
@@ -181,7 +181,12 @@ class stackoverflow():
                 count += 1
             
             clientCount += 1
-            if clientCount > 100:
-                break
+            if is_train:
+                if clientCount > 5000:
+                    break
+            else:
+                if clientCount > 500:
+                    break
+
             
         return text, target_tags, mapping_dict

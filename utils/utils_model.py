@@ -99,24 +99,26 @@ def test_model(rank, model, test_data, criterion=nn.NLLLoss(), tokenizer=None):
 
     model.eval()
     for data, target in test_data:
-        if args.task == 'tag':
+        # if args.task == 'tag':
+        #     data, target = Variable(data).cuda(), Variable(target).cuda()
+
+        #     output = model(data)
+        #     loss = criterion(output, target)
+            
+        #     test_loss += loss.data.item()  # Variable.data
+        #     _, predicted = torch.max(output.data, 1)
+
+        #     _, label = torch.max(target, 1)
+        #     correct += torch.eq(predicted,label).sum().item()
+
+        if args.task != 'nlp':
             data, target = Variable(data).cuda(), Variable(target).cuda()
 
             output = model(data)
             loss = criterion(output, target)
-            
-            test_loss += loss.data.item()  # Variable.data
-            _, predicted = torch.max(output.data, 1)
-
-            _, label = torch.max(target, 1)
-            correct += torch.eq(predicted,label).sum().item()
-
-        elif args.task != 'nlp':
-            data, target = Variable(data).cuda(), Variable(target).cuda()
-
-            output = model(data)
-            loss = criterion(output, target)
-            
+            if args.task == 'tag':
+                _, target = torch.max(target, 1)
+                
             test_loss += loss.data.item()  # Variable.data
             acc = accuracy(output, target, topk=(1, 5))
 
