@@ -1,5 +1,44 @@
 import pickle
 import numpy as np 
+from pulp import *
+
+
+def lp_solver(datas, systems, budget, cost):
+
+    data_trans_size = 5
+    num_of_clients = len(datas)
+    prob = LpProblem("Client_selection", LpMinimize)
+    
+    
+    qlist = []
+    for idx, data in datas:
+        for i in range(len(datas[0])):
+            qlist.append((idx, i))
+
+
+    quantity = LpVariable.dicts("Quantity",
+                                     qlist,
+                                     lowBound=0,
+                                     cat='Integer')
+
+    status = LpVariable.dicts("selection_status",
+                                     [i for i in range(num_of_clients)],
+                                     cat='Binary')
+
+
+    # Objective
+    prob += max([lpSum()/ + data_trans_size/bw[i] for i in ranage(num_of_clients)])
+
+
+    # Preference Constraint
+    prob += 
+
+    # Capacity Constraint
+
+
+    # Budget Constraint
+    prob +=lpSum([cost[i] * status[i] for i in range(num_of_clients)]) <= budget 
+
 
 def load_profiles(datafile, sysfile):
     # load user data information
