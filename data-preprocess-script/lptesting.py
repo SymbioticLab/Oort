@@ -3,7 +3,7 @@ import numpy as np
 from pulp import *
 
 
-def lp_solver(datas, systems, budget, cost, preference, data_trans_size):
+def lp_solver(datas, systems, budget, cost, preference, bw, data_trans_size):
 
     num_of_clients = len(datas)
     num_of_class = len(datas[0])
@@ -11,7 +11,7 @@ def lp_solver(datas, systems, budget, cost, preference, data_trans_size):
     
     
     qlist = []
-    for idx, data in datas:
+    for idx, data in enumerate(datas):
         for i in range(len(datas[0])):
             qlist.append((idx, i))
 
@@ -25,14 +25,20 @@ def lp_solver(datas, systems, budget, cost, preference, data_trans_size):
                                      [i for i in range(num_of_clients)],
                                      cat='Binary')
 
+    slowest = LpVariable("slowest", 0)
 
     # Objective
-    prob += max([lpSum([quantity[(i, j)] for j in range(num_of_class)])/systems[i] + data_trans_size/bw[i] for i in ranage(num_of_clients)])
+    # prob += max([(lpSum([quantity[(i, j)] for j in range(num_of_class)])/systems[i] + data_trans_size/bw[i]) for i in range(num_of_clients) if status[i] == 1])
+    time_list = [(sum([quantity[(i, j)] for j in range(num_of_class)])/systems[i] + data_trans_size/bw[i]) for i in range(num_of_clients) if status[i] == 1]
+    prob += slowest
+
+    for t in time_list:
+        prob += slowest >= t
 
 
     # Preference Constraint
     for i in range(num_of_class):
-        prob += lpSum([quantity[(client, i)] for client in range(num_of_clients)]) >= preference(i)
+        prob += lpSum([quantity[(client, i)] for client in range(num_of_clients)]) >= preference[i]
 
     # Capacity Constraint
     for i in qlist:
@@ -41,7 +47,11 @@ def lp_solver(datas, systems, budget, cost, preference, data_trans_size):
     # Budget Constraint
     prob +=lpSum([cost[i] * status[i] for i in range(num_of_clients)]) <= budget 
 
-    problem.solve()
+    prob.solve()
+    print(LpStatus[prob.status])
+    for v in prob.variables():
+        if v.varValue>0:
+            print(v.name, "=", v.varValue)
 
 
 def load_profiles(datafile, sysfile):
