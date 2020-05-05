@@ -3,10 +3,10 @@ import numpy as np
 from pulp import *
 
 
-def lp_solver(datas, systems, budget, cost):
+def lp_solver(datas, systems, budget, cost, preference, data_trans_size):
 
-    data_trans_size = 5
     num_of_clients = len(datas)
+    num_of_class = len(datas[0])
     prob = LpProblem("Client_selection", LpMinimize)
     
     
@@ -27,17 +27,21 @@ def lp_solver(datas, systems, budget, cost):
 
 
     # Objective
-    prob += max([lpSum()/ + data_trans_size/bw[i] for i in ranage(num_of_clients)])
+    prob += max([lpSum([quantity[(i, j)] for j in range(num_of_class)])/systems[i] + data_trans_size/bw[i] for i in ranage(num_of_clients)])
 
 
     # Preference Constraint
-    prob += 
+    for i in range(num_of_class):
+        prob += lpSum([quantity[(client, i)] for client in range(num_of_clients)]) >= preference(i)
 
     # Capacity Constraint
-
+    for i in qlist:
+        prob += quantity[i] <= datas[i[0]][i[1]]
 
     # Budget Constraint
     prob +=lpSum([cost[i] * status[i] for i in range(num_of_clients)]) <= budget 
+
+    problem.solve()
 
 
 def load_profiles(datafile, sysfile):
