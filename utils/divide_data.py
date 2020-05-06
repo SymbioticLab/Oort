@@ -210,7 +210,7 @@ class DataPartitioner(object):
         base = 0
         numOfClients = 0
 
-        if self.args.data_set == 'stackoverflow':
+        if self.args.task == 'tag':
             numOfLabels = self.args.num_class
             for index, cId in enumerate(self.data.dict.keys()):
                 clientId = cId
@@ -255,7 +255,7 @@ class DataPartitioner(object):
     def partitionDataByDefault(self, sizes, sequential, ratioOfClassWorker, filter_class, _args):
         if self.is_trace and not self.args.enforce_random:
             # use the real trace, thus no need to partition
-            if self.task != 'nlp':
+            if self.task != 'nlp' and self.task != 'tag':
                 # read the serialized sampleToClient file
                 dataToClient = OrderedDict()
 
