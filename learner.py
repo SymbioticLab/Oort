@@ -421,30 +421,37 @@ def run_client(clientId, cmodel, iters, learning_rate, argdicts = {}):
                 loss2 = criterion(aux_outputs, target)
                 loss = loss1 + 0.4*loss2
 
-        # only measure the last epoch
         temp_loss = 0.
-        if args.task == 'tag':
-            if itr >= (iters - total_batch_size - 1):
-                for l in loss.tolist():
-                    for i in l:
-                        temp_loss += i**2
+
+        if args.task != 'nlp':
+            if args.task == 'tag':
+                if itr >= (iters - total_batch_size - 1):
+                    for l in loss.tolist():
+                        for i in l:
+                            temp_loss += i**2
+            else:
+                if itr >= (iters - total_batch_size - 1):
+                    for l in loss.tolist():
+                        temp_loss += l**2
         else:
-            if itr >= (iters - total_batch_size - 1):
-                for l in loss.tolist():
-                    temp_loss += l**2
+            temp_loss = loss.item()
 
         temp_loss = temp_loss/float(len(target))
-        if epoch_train_loss is None:
-            epoch_train_loss = temp_loss
-        else:
-            epoch_train_loss = (1. - args.loss_decay) * epoch_train_loss + args.loss_decay * temp_loss
+
+        # only measure the loss of the first epoch
+        if itr < total_batch_size:
+            if epoch_train_loss is None:
+                epoch_train_loss = temp_loss
+            else:
+                epoch_train_loss = (1. - args.loss_decay) * epoch_train_loss + args.loss_decay * temp_loss
+
         count += len(target)
 
         # ========= Define the backward loss ==============
-        loss = torch.mean(loss)
-        loss.backward()
-
         if args.task != 'nlp':
+            loss = torch.mean(loss)
+            loss.backward()
+
             delta_w = optimizer.get_delta_w(learning_rate)
 
             if not args.proxy_avg:
@@ -452,8 +459,10 @@ def run_client(clientId, cmodel, iters, learning_rate, argdicts = {}):
                     param.data -= delta_w[idx].to(device=device)
             else:
                 for idx, param in enumerate(cmodel.parameters()):
-                    param.data -= (delta_w[idx].to(device=device) + learning_rate * args.proxy_mu * (param.data - last_model_tensors[idx]))
+                    param.data -= delta_w[idx].to(device=device)
+                    param.data += learning_rate * args.proxy_mu * (last_model_tensors[idx] - param.data)
         else:
+            loss.backward()
             optimizer.step()
             cmodel.zero_grad()
 
