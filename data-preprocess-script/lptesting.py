@@ -24,12 +24,13 @@ def lp_solver(datas, systems, budget, cost, preference, bw, data_trans_size):
     status = LpVariable.dicts("selection_status",
                                      [i for i in range(num_of_clients)],
                                      cat='Binary')
-
+    print(type(status))
     slowest = LpVariable("slowest", 0)
 
     # Objective
     # prob += max([(lpSum([quantity[(i, j)] for j in range(num_of_class)])/systems[i] + data_trans_size/bw[i]) for i in range(num_of_clients) if status[i] == 1])
-    time_list = [(sum([quantity[(i, j)] for j in range(num_of_class)])/systems[i] + data_trans_size/bw[i]) for i in range(num_of_clients) if status[i] == 1]
+    # time_list = [(sum([quantity[(i, j)] for j in range(num_of_class)])/systems[i] + data_trans_size/bw[i]) for i in range(num_of_clients) if status[i] == 1]
+    time_list = [((lpSum([quantity[(i, j)] for j in range(num_of_class)])/systems[i])) for i in range(num_of_clients)]
     prob += slowest
 
     for t in time_list:
@@ -45,12 +46,22 @@ def lp_solver(datas, systems, budget, cost, preference, bw, data_trans_size):
         prob += quantity[i] <= datas[i[0]][i[1]]
 
     # Budget Constraint
-    prob +=lpSum([cost[i] * status[i] for i in range(num_of_clients)]) <= budget 
+    # print([status[i] for i in status])
+    # prob += lpSum([status[i] for i in range(num_of_clients)]) <= 2
+    # count_list = []
+    # for i in range(num_of_clients):
+    #     count = 0
+    #     for j in range(num_of_class):
+            
+    #     count_list.append(count)
+
+    # prob += lpSum(count_list) <= 2
+
 
     prob.solve()
     print(LpStatus[prob.status])
     for v in prob.variables():
-        if v.varValue>0:
+        if v.varValue > 0:
             print(v.name, "=", v.varValue)
 
 
