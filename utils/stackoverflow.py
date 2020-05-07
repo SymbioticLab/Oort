@@ -7,6 +7,7 @@ import time
 import pickle
 import h5py as h5
 import torch.nn.functional as F
+import logging
 
 class stackoverflow():
     """
@@ -146,47 +147,69 @@ class stackoverflow():
         vocab_tokens_dict = {k: v for v, k in enumerate(vocab_tokens)}
         vocab_tags_dict = {k: v for v, k in enumerate(vocab_tags)}
 
-        # Load the traning data
-        if self.train:
-            train_file = h5.File(path + self.train_file, "r")
-        else:
-            train_file = h5.File(path + self.test_file, "r")
-        print(self.train)
         text, target_tags = [], []
-
-        # Mapping from sample id to target tag
         mapping_dict = {}
-        count = 0
-        clientCount = 0
 
-        client_list = list(train_file['examples'])
+        file_name = self.train_file if self.train else self.test_file
 
-        for clientId, client in enumerate(client_list):
-            tags_list = list(train_file['examples'][client]['tags'])
-            tokens_list = list(train_file['examples'][client]['tokens'])
+        # check whether we have generated the cache file before
+        cache_path = os.path.join(path, file_name + '_cache')
 
-            title = str(train_file['examples'][client]['title'])
-            for tags, tokens in zip(tags_list, tokens_list):
-                tokens_list = [s for s in tokens.decode("utf-8").split() if s in vocab_tokens_dict]
-                tags_list = [s for s in tags.decode("utf-8").split('|') if s in vocab_tags_dict]
-                if not tokens_list or not tags_list:
-                    continue
+        if os.path.exists(cache_path):
+            # dump the cache
+            with open(cache_path, 'rb') as fin:
+                text = pickle.load(fin)
+                target_tags = pickle.load(fin)
+                mapping_dict = pickle.load(fin)
 
-                mapping_dict[count] = clientId
-                tokens = [vocab_tokens_dict[i] for i in tokens_list]
-                tags = [vocab_tags_dict[i] for i in tags_list]
-                text.append(tokens)
-                target_tags.append(tags)
-
-                count += 1
+        else:
+            # Mapping from sample id to target tag
             
-            clientCount += 1
-            if is_train:
-                if clientCount > 5000:
-                    break
+            # Load the traning data
+            if self.train:
+                train_file = h5.File(path + self.train_file, "r")
             else:
-                if clientCount > 500:
-                    break
+                train_file = h5.File(path + self.test_file, "r")
+            print(self.train)
 
+            count = 0
+            clientCount = 0
+            client_list = list(train_file['examples'])
+
+            for clientId, client in enumerate(client_list):
+                tags_list = list(train_file['examples'][client]['tags'])
+                tokens_list = list(train_file['examples'][client]['tokens'])
+
+                #title = str(train_file['examples'][client]['title'])
+                for tags, tokens in zip(tags_list, tokens_list):
+                    tokens_list = [s for s in tokens.decode("utf-8").split() if s in vocab_tokens_dict]
+                    tags_list = [s for s in tags.decode("utf-8").split('|') if s in vocab_tags_dict]
+                    if not tokens_list or not tags_list:
+                        continue
+
+                    mapping_dict[count] = clientId
+                    tokens = [vocab_tokens_dict[i] for i in tokens_list]
+                    tags = [vocab_tags_dict[i] for i in tags_list]
+                    text.append(tokens)
+                    target_tags.append(tags)
+
+                    count += 1
+                
+                clientCount += 1
+
+                if is_train:
+                    if clientCount > 5000:
+                        break
+                else:
+                    if clientCount > 500:
+                        break
+                        
+                logging.info("====In loading data, remains {} clients".format(len(client_list) - clientCount))
             
+            # dump the cache
+            with open(cache_path, 'wb') as fout:
+                pickle.dump(text, fout)
+                pickle.dump(target_tags, fout)
+                pickle.dump(mapping_dict, fout)
+
         return text, target_tags, mapping_dict
