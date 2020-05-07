@@ -58,28 +58,36 @@ def parse_clients(infilename, flag, dirname):
 
             cnt += 1
 
-            if cnt % 1000 == 0:
+            if cnt % 50000 == 0:
                 print ('current ... {}'.format(cnt))
 
                 # Dump
-                filename = dirname + infilename + "_" + str(cnt)
+                if not os.path.exists('clientdata'):
+                    os.mkdir(clientdata)
+                    
+                tokenPath = './clientdata/'
 
-                outfile = open(filename,'wb')
-                pickle.dump(tempDic, outfile)
-                outfile.close()
+                for clientId in tempDic.keys():
+                    filePath = os.join(tokenPath, str(clientId))
+
+                    if os.path.exists(filePath):
+                        outfile = open(filePath,'a+')
+                        pickle.dump(tempDic[clientId], outfile)
+                        outfile.close()
+                    else:
+                        outfile = open(filePath,'wb')
+                        pickle.dump(tempDic[clientId], outfile)
+                        outfile.close()
 
                 del tempDic
                 tempDic = {}
                 gc.collect()
                 #break
 
-            clientInfo_out = 'clientInfo'
-            outfile = open(clientInfo_out, 'wb')
-            pickle.dump(clientInfo_dict, outfile)
-            outfile.close()
-
-
-
+        clientInfo_out = 'clientInfo'
+        outfile = open(clientInfo_out, 'wb')
+        pickle.dump(clientInfo_dict, outfile)
+        outfile.close()
 
 parse_clients('RC_2017-12', True, "./RC_201712/")
 parse_clients('RC_2018-01', False, "./RC_201801/")
