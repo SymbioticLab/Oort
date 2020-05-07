@@ -63,17 +63,25 @@ def parse_clients(infilename, flag, dirname):
 
                 # Dump
                 if not os.path.exists('clientdata'):
-                    os.mkdir(clientdata)
-                    
+                    os.mkdir('clientdata')
+
                 tokenPath = './clientdata/'
 
                 for clientId in tempDic.keys():
-                    filePath = os.join(tokenPath, str(clientId))
+                    filePath = os.path.join(tokenPath, str(clientId))
+
+
 
                     if os.path.exists(filePath):
-                        outfile = open(filePath,'a+')
-                        pickle.dump(tempDic[clientId], outfile)
+                        # Load data first
+                        infile = open(filePath,'rb')
+                        tempList = pickle.load(infile)
+                        tempList.extend(tempDic[clientId])
+
+                        outfile = open(filePath,'wb')
+                        pickle.dump(tempList, outfile)
                         outfile.close()
+
                     else:
                         outfile = open(filePath,'wb')
                         pickle.dump(tempDic[clientId], outfile)
@@ -82,7 +90,7 @@ def parse_clients(infilename, flag, dirname):
                 del tempDic
                 tempDic = {}
                 gc.collect()
-                #break
+                # break
 
         clientInfo_out = 'clientInfo'
         outfile = open(clientInfo_out, 'wb')
