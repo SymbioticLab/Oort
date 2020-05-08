@@ -73,11 +73,19 @@ class stackoverflow():
 
 
         # load data and targets
-        self.raw_data, self.raw_targets, self.dict = self.load_file(self.root, self.train)
+        self.raw_data, self.raw_targets, self.dict, self.client_list = self.load_file(self.root, self.train)
 
         # we can't enumerate the raw data, thus generating artificial data to cheat the divide_data_loader
         self.data = [0 for i in range(len(self.raw_data))]
         self.targets = [0 for i in range(len(self.raw_targets))]
+
+
+        # First, get the token and tag dict
+        self.vocab_tokens = self.create_token_vocab(self.vocab_tokens_size, self.root)
+        self.vocab_tags = self.create_tag_vocab(self.vocab_tags_size, self.root)
+
+        self.vocab_tokens_dict = {k: v for v, k in enumerate(self.vocab_tokens)}
+        self.vocab_tags_dict = {k: v for v, k in enumerate(self.vocab_tags)}
 
     def __getitem__(self, index):
         """
@@ -88,13 +96,39 @@ class stackoverflow():
             tuple: (text, tags)
         """
 
+        # get mapping
+
+        [clientId, idx, clientLen] = self.raw_data[index]
+
+        tokens = None
+        tags = None
+        failures = 0
+        inFetch = True
+
+        while inFetch:
+            sample = self.client_list['examples'][clientId]
+            token = sample['tokens'][idx]
+            title = sample['title'][idx]
+            tag = sample['tags'][idx]
+
+            tokens = [self.vocab_tokens_dict[s] for s in (token.decode("utf-8").split() + title.decode("utf-8").split()) if s in self.vocab_tokens_dict]
+            tags = [self.vocab_tags_dict[s] for s in tag.decode("utf-8").split('|') if s in self.vocab_tags_dict]
+
+            if not tokens or not tags:
+                failures += 1
+                idx = (idx + 1) % clientLen
+            else:
+                inFetch = False
+
+            if failures == 5:
+                logging.info("====To many failures, system exit")
+                system.exit(-1)
+
         # Lookup tensor
-        tokens = self.raw_data[index]
         tokens = torch.tensor(tokens, dtype=torch.long)
         tokens = F.one_hot(tokens, self.vocab_tokens_size).float()
         tokens = tokens.mean(0)
 
-        tags = self.raw_targets[index]
         tags = torch.tensor(tags, dtype=torch.long)
         tags = F.one_hot(tags, self.vocab_tags_size).float()
         tags = tags.sum(0)
@@ -140,76 +174,29 @@ class stackoverflow():
 
     def load_file(self, path, is_train):
 
-        # First, get the token and tag dict
-        vocab_tokens = self.create_token_vocab(self.vocab_tokens_size, path)
-        vocab_tags = self.create_tag_vocab(self.vocab_tags_size, path)
-
-        vocab_tokens_dict = {k: v for v, k in enumerate(vocab_tokens)}
-        vocab_tags_dict = {k: v for v, k in enumerate(vocab_tags)}
-
         text, target_tags = [], []
         mapping_dict = {}
 
         file_name = self.train_file if self.train else self.test_file
-
-        # check whether we have generated the cache file before
-        cache_path = os.path.join(path, file_name + '_cache')
-
-        if os.path.exists(cache_path):
-            # dump the cache
-            with open(cache_path, 'rb') as fin:
-                text = pickle.load(fin)
-                target_tags = pickle.load(fin)
-                mapping_dict = pickle.load(fin)
-
+        
+        # Load the traning data
+        if self.train:
+            train_file = h5.File(path + self.train_file, "r")
         else:
-            # Mapping from sample id to target tag
-            
-            # Load the traning data
-            if self.train:
-                train_file = h5.File(path + self.train_file, "r")
-            else:
-                train_file = h5.File(path + self.test_file, "r")
-            print(self.train)
+            train_file = h5.File(path + self.test_file, "r")
 
-            count = 0
-            clientCount = 0
-            client_list = list(train_file['examples'])
+        count = 0
+        clientCount = 0
+        client_list = list(train_file['examples'])
 
-            for clientId, client in enumerate(client_list):
-                tags_list = list(train_file['examples'][client]['tags'])
-                tokens_list = list(train_file['examples'][client]['tokens'])
+        for clientId, client in enumerate(client_list):
+            tags_list = list(train_file['examples'][client]['tags'])
 
-                #title = str(train_file['examples'][client]['title'])
-                for tags, tokens in zip(tags_list, tokens_list):
-                    tokens_list = [s for s in tokens.decode("utf-8").split() if s in vocab_tokens_dict]
-                    tags_list = [s for s in tags.decode("utf-8").split('|') if s in vocab_tags_dict]
-                    if not tokens_list or not tags_list:
-                        continue
+            for idx in range(len(tags_list)):
+                text.append([clientId, idx, len(tags_list)])
+                target_tags.append(0)
+                mapping_dict[count] = clientId
 
-                    mapping_dict[count] = clientId
-                    tokens = [vocab_tokens_dict[i] for i in tokens_list]
-                    tags = [vocab_tags_dict[i] for i in tags_list]
-                    text.append(tokens)
-                    target_tags.append(tags)
+                count += 1
 
-                    count += 1
-                
-                clientCount += 1
-
-                if is_train:
-                    if clientCount > 5000:
-                        break
-                else:
-                    if clientCount > 500:
-                        break
-                        
-                logging.info("====In loading data, remains {} clients".format(len(client_list) - clientCount))
-            
-            # dump the cache
-            with open(cache_path, 'wb') as fout:
-                pickle.dump(text, fout)
-                pickle.dump(target_tags, fout)
-                pickle.dump(mapping_dict, fout)
-
-        return text, target_tags, mapping_dict
+        return text, target_tags, mapping_dict, client_list
