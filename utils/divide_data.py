@@ -107,11 +107,11 @@ class DataPartitioner(object):
     # Caculates Jensen-Shannon Divergence for each worker
     def get_JSD(self, dataDistr, tempClassPerWorker, sizes):
         for worker in range(len(sizes)):
-            tempDataSize = sum(tempClassPerWorker[worker])
-            if tempDataSize == 0:
-                continue
-            tempDistr =np.array([c / float(tempDataSize) for c in tempClassPerWorker[worker]])
-            self.workerDistance.append(self.js_distance(dataDistr, tempDistr))
+            # tempDataSize = sum(tempClassPerWorker[worker])
+            # if tempDataSize == 0:
+            #     continue
+            # tempDistr =np.array([c / float(tempDataSize) for c in tempClassPerWorker[worker]])
+            self.workerDistance.append(0)#self.js_distance(dataDistr, tempDistr))
 
     # Generates a distance matrix for EMD
     def generate_distance_matrix(self, size):
@@ -474,4 +474,5 @@ def select_dataset(rank: int, partition: DataPartitioner, batch_size: int, isTes
         return DataLoader(partition, batch_size=batch_size, shuffle=True, pin_memory=False, num_workers=numOfThreads, drop_last=dropLast, timeout=timeOut)#, worker_init_fn=np.random.seed(12))
     else:
         return DataLoader(partition, batch_size=batch_size, shuffle=True, pin_memory=False, num_workers=numOfThreads, drop_last=dropLast, timeout=timeOut, collate_fn=collate_fn)#, worker_init_fn=np.random.seed(12))
+
 
