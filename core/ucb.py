@@ -179,8 +179,8 @@ class UCB(object):
                 init_reward[cl] = self.totalArms[cl][3]
                 clientDuration = self.totalArms[cl][5]
 
-                #if clientDuration > self.round_prefer_duration:
-                #    init_reward[cl] *= ((float(self.round_prefer_duration)/clientDuration) ** self.args.round_penalty)
+                if clientDuration > self.round_prefer_duration:
+                    init_reward[cl] *= ((float(self.round_prefer_duration)/clientDuration) ** self.args.round_penalty)
 
             # prioritize w/ some rewards (i.e., size)
             exploreLen = min(len(_unexplored), numOfSamples - len(pickedClients))
