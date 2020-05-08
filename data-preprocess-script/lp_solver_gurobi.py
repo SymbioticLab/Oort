@@ -1,35 +1,91 @@
+import pickle
+import numpy as np
 import gurobipy as gp
-from gurobipy import GRB
+from gurobipy import *
 
-try:
+def load_profiles(datafile, sysfile):
+    # load user data information
+    datas = pickle.load(open(datafile, 'rb'))
+
+    # load user system information
+    systems = None #pickle.load(open(sysfile, 'rb'))
+
+    return datas, systems
+
+def lp_solver(datas, systems, budget, cost, preference, bw, data_trans_size):
+
+    num_of_clients = len(datas)
+    num_of_class = len(datas[0])
 
     # Create a new model
-    m = gp.Model("mip1")
+    m = gp.Model("client_selection")
 
-    # Create variables
-    x = m.addVar(vtype=GRB.BINARY, name="x")
-    y = m.addVar(vtype=GRB.BINARY, name="y")
-    z = m.addVar(vtype=GRB.BINARY, name="z")
+    qlist = []
+    for idx, _ in enumerate(datas):
+        for i in range(len(datas[0])):
+            qlist.append((idx, i))
 
-    # Set objective
-    m.setObjective(x + y + 2 * z, GRB.MAXIMIZE)
+    slowest = m.addVar(vtype=GRB.CONTINUOUS, name="slowest", lb = 0.0)
+    quantity = m.addVars(qlist, vtype=GRB.INTEGER, name="quantity", lb = 0)
+    time_list = [((sum([quantity[(i, j)] for j in range(num_of_class)])/systems[i]) + data_trans_size/bw[i]) for i in range(num_of_clients)]
 
-    # Add constraint: x + 2 y + 3 z <= 4
-    m.addConstr(x + 2 * y + 3 * z <= 4, "c0")
 
-    # Add constraint: x + y >= 1
-    m.addConstr(x + y >= 1, "c1")
+    # The objective is to minimize the slowest
+    m.setObjective(slowest, GRB.MINIMIZE)
 
-    # Optimize model
+    # Minimize the slowest
+    for t in time_list:
+         m.addConstr(slowest >= t, name='slow')
+
+    # Preference Constraint
+    for i in range(num_of_class):
+        m.addConstr(sum([quantity[(client, i)] for client in range(num_of_clients)]) >= preference[i], name='preference_' + str(i))
+
+    # Capacity Constraint
+    for i in qlist:
+        m.addConstr(quantity[i] <= datas[i[0]][i[1]], name='capacity_'+str(i))
+
     m.optimize()
 
-    for v in m.getVars():
-        print('%s %g' % (v.varName, v.x))
+    # Print Solution
+    if m.status == GRB.OPTIMAL:
+        print('Found solution')
+        pointx = m.getAttr('x', quantity)
+        for i in qlist:
+            if quantity[i].x > 0.0001:
+                print(i, pointx[i])
+    else:
+        print('No solution')
 
-    print('Obj: %g' % m.objVal)
 
-except gp.GurobiError as e:
-    print('Error code ' + str(e.errno) + ': ' + str(e))
 
-except AttributeError:
-    print('Encountered an attribute error')
+# datas = [[10, 20, 10, 1], [0, 19, 1, 5], [7, 0, 10, 9], [0, 0, 1, 10]]
+# system = [14, 10, 17, 10]
+# bw = [2, 5, 5, 10]
+# data_trans_size = 5
+# cost = [1, 1, 1, 1]
+# budget = 2
+# preference = [10, 20, 15, 20]
+# lp_solver(datas, system, budget, cost, preference, bw, data_trans_size)
+
+def lp_heuristic():
+    datas, systems = load_profiles('openImg_size.txt', '')
+
+
+    # randomly generating preference
+    pref = [100, 100, 100, 100, 100]
+    p = [0] *6065
+
+    #pred = [ 0 for i in range(len(datas[0])-5)]
+    pref = pref + p
+    print(len(pref))
+    system = [i+1 for i in range(len(datas[0]))]
+    bw = []
+    budget = 5
+    data_trans_size = 5
+    cost = [1 for i in range(len(datas[0]))]
+    print(len(datas))
+    print(type(datas[0]))
+    lp_solver(datas[:100], system, budget, cost, pref, bw, data_trans_size)
+
+lp_heuristic()
