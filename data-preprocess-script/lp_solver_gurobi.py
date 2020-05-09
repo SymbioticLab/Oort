@@ -29,7 +29,7 @@ def lp_solver(datas, systems, budget, cost, preference, bw, data_trans_size):
     quantity = m.addVars(qlist, vtype=GRB.INTEGER, name="quantity", lb = 0) # # of example for each class
     status = m.addVars([i for i in range(num_of_clients)], vtype = GRB.BINARY, name = 'status') # Binary var indicates the selection status
 
-    time_list = [((sum([quantity[(i, j)] for j in range(num_of_class)])/systems[i]) + data_trans_size/bw[i]) for i in range(num_of_clients)]
+    time_list = [((gp.quicksum([quantity[(i, j)] for j in range(num_of_class)])/systems[i]) + data_trans_size/bw[i]) for i in range(num_of_clients)]
 
     # The objective is to minimize the slowest
     m.setObjective(slowest, GRB.MINIMIZE)
@@ -40,16 +40,16 @@ def lp_solver(datas, systems, budget, cost, preference, bw, data_trans_size):
 
     # Preference Constraint
     for i in range(num_of_class):
-        m.addConstr(sum([quantity[(client, i)] for client in range(num_of_clients)]) >= preference[i], name='preference_' + str(i))
+        m.addConstr(gp.quicksum([quantity[(client, i)] for client in range(num_of_clients)]) >= preference[i], name='preference_' + str(i))
 
     # Capacity Constraint
     m.addConstrs((quantity[i] <= datas[i[0]][i[1]] for i in qlist), name='capacity_'+str(i))
 
     # Budget Constraint
     for i in range(num_of_clients):
-        m.addGenConstrIndicator(status[i], False, sum([quantity[(i, j)] for j in range(num_of_class)]) ==  0.0)
+        m.addGenConstrIndicator(status[i], False, gp.quicksum([quantity[(i, j)] for j in range(num_of_class)]) ==  0.0)
 
-    m.addConstr(sum([status[i] for i in range(num_of_clients)]) <= budget, name = 'budget')
+    m.addConstr(gp.quicksum([status[i] for i in range(num_of_clients)]) <= budget, name = 'budget')
 
     m.optimize()
 
@@ -70,8 +70,8 @@ system = [10, 10, 17, 10]
 bw = [2, 5, 5, 10]
 data_trans_size = 5
 cost = [1, 1, 1, 1]
-budget = 3
-preference = [10, 39, 11, 10]
+budget = 2
+preference = [10, 39, 10, 1]
 lp_solver(datas, system, budget, cost, preference, bw, data_trans_size)
 
 # def lp_heuristic():
