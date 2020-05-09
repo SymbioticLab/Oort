@@ -11,13 +11,13 @@ def load_profiles(datafile, sysfile, distrfile):
     # load user system information
     systems = pickle.load(open(sysfile, 'rb'))
 
+    # Load global data distribution 
     distr = pickle.load(open(distrfile, 'rb'))
 
     return datas, systems, distr
 
 
 #################### Heuristic #######################
-
 
 def sum_interest_columns(datas, cols):
     sum_of_cols = datas[:, cols[0]]
@@ -176,12 +176,11 @@ def run_heuristic():
 #run_heuristic()
 
 #################### LP ##############################
-def lp_solver(datas, systems, budget, preference, data_trans_size):
+
+def lp_solver(datas, systems, budget, preference, data_trans_size, init_values = None):
 
     num_of_clients = len(datas)
     num_of_class = len(datas[0])
-    #num_of_clients = 596
-    num_of_class = 596
 
     # Create a new model
     m = gp.Model("client_selection")
@@ -215,28 +214,29 @@ def lp_solver(datas, systems, budget, preference, data_trans_size):
     # Budget Constraint
     for i in range(num_of_clients):
         m.addGenConstrIndicator(status[i], False, gp.quicksum([quantity[(i, j)] for j in range(num_of_class)]) ==  0.0)
-
     m.addConstr(gp.quicksum([status[i] for i in range(num_of_clients)]) <= budget, name = 'budget')
 
-    start_time = time.time()
-    m.optimize()
 
-    print('optimize is {}'.format(time.time() - start_time))
+    # Initialize variables if init_values is provided
+    if init_values: 
+        for k, v in init_values.items():
+            quantity[k].Start = v
+
+    m.optimize()
+    print(f'Optimization took {m.Runtime}')
+
+    # Process the solution
     result = [[0] * num_of_class for _ in range(num_of_clients)]
-    # Print Solution
     if m.status == GRB.OPTIMAL:
-        print('Found solution')
+        print('Found optimal solution')
         pointx = m.getAttr('x', quantity)
         for i in qlist:
             if quantity[i].x > 0.0001:
                 #print(i, pointx[i])
                 result[i[0]][i[1]] = pointx[i]
     else:
-        print('No solution')
+        print('No optimal solution')
 
-    finish_time = time.time()
-
-    print('Duration is {}'.format(finish_time - start_time))
     return result
 
 def preprocess(data):
@@ -265,7 +265,7 @@ def run_lp():
     result = lp_solver(data, sys_prof, budget, preference, data_trans_size)
     finish_time = time.time()
 
-    print("LP solver takes {} sec".format(finish_time - start_time))
+    print(f"LP solver took {finish_time - start_time} sec")
 
     temp = [0] * len(data[0])
     count = 0
