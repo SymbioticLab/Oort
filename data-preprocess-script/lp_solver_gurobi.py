@@ -1,4 +1,4 @@
-import pickle, math
+import pickle, math, time
 import numpy as np
 import gurobipy as gp
 from gurobipy import *
@@ -16,9 +16,9 @@ def load_profiles(datafile, sysfile, distrfile):
 
 def lp_solver(datas, systems, budget, preference, data_trans_size):
 
-    #num_of_clients = len(datas)
+    num_of_clients = len(datas)
     #num_of_class = len(datas[0])
-    num_of_clients = 596
+    #num_of_clients = 596
     num_of_class = 596
 
     # Create a new model
@@ -90,13 +90,16 @@ def run_lp():
 
     sys_prof = [systems[i+1] for i in range(len(data))] # id -> speed, bw
     preference = [math.floor(i * 0.1) for i in distr]
-    budget = 1000
-    print(preference[:596])
+    budget = 300
     data_trans_size = 10000
 
-
+    start = time.time()
     result = lp_solver(data, sys_prof, budget, preference[:596], data_trans_size)
+    end = time.time()
+    print("lp solver took " + str(end - start) + " seconds")
+    #temp = [0] * len(data[0])
     temp = [0] * 596
+
     count = 0
     for i in result:
         if sum(i) >= 1:
