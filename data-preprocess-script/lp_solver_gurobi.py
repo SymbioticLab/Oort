@@ -4,9 +4,12 @@ import gurobipy as gp
 from gurobipy import *
 import time, sys
 from queue import PriorityQueue
+from numpy import *
+
+sys.stdout.flush()
 
 data_trans_size = 100663 # size of mobilenet, 12 MB
-budget = 200
+budget = 1000
 
 def load_profiles(datafile, sysfile, distrfile):
     # load user data information
@@ -326,16 +329,21 @@ def preprocess(data):
 
     return None
 
-def run_lp():
+def run_lp(requirement):
     global budget, data_trans_size
 
     data, systems, distr = load_profiles('openImg_size.txt', 'clientprofile', 'openImg_global_distr')
-
     num_of_class = 596 #len(data[0])
-    data = data[:, :num_of_class]
+    num_of_clients = len(data)
+    distr = distr[:num_of_class]
+    sum_distr = sum(distr)
+
+    data = data[:num_of_clients, :num_of_class]
+
+    preference = [math.floor((i/float(sum_distr)) * requirement) for i in distr]
 
     sys_prof = [systems[i+1] for i in range(len(data))] # id -> speed, bw
-    preference = [math.floor(i * 0.1) for i in distr[:num_of_class]]
+    #preference = [math.floor(i * 0.4) for i in distr[:num_of_class]]
 
     start_time = time.time()
     result = lp_solver(data, sys_prof, budget, preference, data_trans_size)
@@ -359,22 +367,34 @@ def run_lp():
 
     if flag:
         print("Perfect")
+        return True
+    else:
+        return False
 
 
-def run_heuristic():
+def run_heuristic(requirement):
     global budget, data_trans_size
 
     data, systems, distr = load_profiles('openImg_size.txt', 'clientprofile', 'openImg_global_distr')
     num_of_class = 596 #len(data[0])
     num_of_clients = len(data)
+    distr = distr[:num_of_class]
+    sum_distr = sum(distr)
 
     data = data[:num_of_clients, :num_of_class]
 
-    preference = [math.floor(i * 0.1) for i in distr[:num_of_class]]
+    raw_data = np.copy(data)
+
+
+    preference = [math.floor((i/float(sum_distr)) * requirement) for i in distr]
     preference_dict = {idx:p for idx, p in enumerate(preference)}
     avg_of_pref_samples = sum(preference)/float(budget)
     sys_prof = [systems[i+1] for i in range(num_of_clients)] # id -> speed, bw
     
+    # cap the data by preference
+    pref_matrix = tile(array(preference), (num_of_clients, 1))
+    data = np.minimum(data, pref_matrix)
+
     # sort clients by # of samples
     sum_sample_per_client = data[:, list(preference_dict.keys())].sum(axis=1) #sum_interest_columns(np.copy(data), list(preference_dict.keys()))
     top_clients = sorted(range(num_of_clients), reverse=True, key=lambda k:np.sum(sum_sample_per_client[k])) #sorted(range(num_of_clients), key=lambda k:est_dur[k])
@@ -382,7 +402,7 @@ def run_heuristic():
     # random.shuffle(top_clients)
 
     # decide the cut-off
-    cut_off_clients = int(1 * num_of_clients)
+    cut_off_clients = int(0.5 * num_of_clients + 1)
     select_clients = None
 
     start_time = time.time()
@@ -404,6 +424,8 @@ def run_heuristic():
                         break
             break
         else:
+            if cut_off_clients == num_of_clients:
+                return False
             cut_off_clients = min(cut_off_clients * 2, num_of_clients)
             print("====Augment the cut_off_clients to {}".format(cut_off_clients))
 
@@ -412,7 +434,7 @@ def run_heuristic():
     #=================== Stage 2: pass to LP ===================#
 
     select_client_list = list(select_clients.keys())
-    tempdata = data[select_client_list, :]
+    tempdata = raw_data[select_client_list, :]
     tempsys = [sys_prof[i] for i in select_client_list]
 
     # load initial value
@@ -451,6 +473,18 @@ def run_heuristic():
 
     print(f'\# of class {num_of_class}, \# of clients {num_of_clients}')
 
-run_heuristic()
+    return True
+
+requirements = [1000, 2000, 4000, 8000, 10000, 20000, 40000, 80000, 160000, 320000, 640000, 1280000]
+
+for i in requirements:
+    print(f"====Start to run {i} requirements")
+    is_success = run_heuristic(i)
+    #is_success = run_lp(i)
+
+    if not is_success:
+        print(f"====Terminate with {i}")
+        break
+
 #run_lp()
 
