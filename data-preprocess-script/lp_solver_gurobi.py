@@ -166,7 +166,8 @@ def select_by_sorted_num(datas, pref, budget):
         # recompute the top-k clients
         if interestChanged:
             listOfInterest = list(preference.keys())
-            sum_of_cols = sum_interest_columns(np.copy(datas), listOfInterest)
+            #sum_of_cols = sum_interest_columns(np.copy(datas), listOfInterest)
+            sum_of_cols = datas[:, listOfInterest].sum(axis=1)
 
         # start greedy until exceeds budget or interestChanged
 
@@ -207,16 +208,16 @@ def select_by_sorted_num(datas, pref, budget):
     # check preference 
     is_success = (len(preference) == 0 and len(clientsTaken) <= budget)
 
-    checkPref = {k:0 for k in pref}
+    # checkPref = {k:0 for k in pref}
 
-    for client in clientsTaken:
-        for cl in clientsTaken[client]:
-            assert(clientsTaken[client][cl] <= data_copy[client][cl])
-            checkPref[cl] += clientsTaken[client][cl]
+    # for client in clientsTaken:
+    #     for cl in clientsTaken[client]:
+    #         assert(clientsTaken[client][cl] <= data_copy[client][cl])
+    #         checkPref[cl] += clientsTaken[client][cl]
 
-    if is_success:
-        for cl in sorted(pref.keys()):
-            assert(pref[cl] == checkPref[cl])
+    # if is_success:
+    #     for cl in sorted(pref.keys()):
+    #         assert(pref[cl] == checkPref[cl])
 
     print("Picked {} clients".format(len(clientsTaken)))
     return clientsTaken, is_success
@@ -374,16 +375,8 @@ def run_heuristic():
     avg_of_pref_samples = sum(preference)/float(budget)
     sys_prof = [systems[i+1] for i in range(num_of_clients)] # id -> speed, bw
     
-    # sort the client by speed
-    # est_dur = []
-    # for idx in range(num_of_clients):
-    #     #est_dur.append(avg_of_pref_samples * sys_prof[idx][0]+data_trans_size/sys_prof[idx][1])
-    #     est_dur.append(1./sys_prof[idx][0]*sys_prof[idx][1])
-
-    #top_clients = sorted(range(num_of_clients), key=lambda k:est_dur[k])
-
     # sort clients by # of samples
-    sum_sample_per_client = sum_interest_columns(np.copy(data), list(preference_dict.keys()))
+    sum_sample_per_client = data[:, list(preference_dict.keys())].sum(axis=1) #sum_interest_columns(np.copy(data), list(preference_dict.keys()))
     top_clients = sorted(range(num_of_clients), reverse=True, key=lambda k:np.sum(sum_sample_per_client[k])) #sorted(range(num_of_clients), key=lambda k:est_dur[k])
     
     # random.shuffle(top_clients)
@@ -455,6 +448,8 @@ def run_heuristic():
 
     if flag:
         print("Perfect")
+
+    print(f'\# of class {num_of_class}, \# of clients {num_of_clients}')
 
 run_heuristic()
 #run_lp()

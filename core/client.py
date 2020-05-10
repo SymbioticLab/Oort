@@ -16,5 +16,5 @@ class Client(object):
         self.score = reward
 
     def getCompletionTime(self, batch_size, upload_epoch, model_size):
-        #return (3.0 * batch_size * upload_epoch/float(self.compute_speed) + model_size/float(self.bandwidth))
-        return (5.0 * batch_size * upload_epoch*float(self.compute_speed)/1000. + model_size/float(self.bandwidth))
+        return (3.0 * batch_size * upload_epoch/float(self.compute_speed) + model_size/float(self.bandwidth))
+        #return (5.0 * batch_size * upload_epoch*float(self.compute_speed)/1000. + model_size/float(self.bandwidth))
