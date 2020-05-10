@@ -3,6 +3,7 @@ import numpy as np
 import gurobipy as gp
 from gurobipy import *
 import time
+import os
 
 def load_profiles(datafile, sysfile, distrfile):
     # load user data information
@@ -177,7 +178,7 @@ def run_heuristic():
 
 #################### LP ##############################
 
-def lp_solver(datas, systems, budget, preference, data_trans_size, init_values = None):
+def lp_solver(datas, systems, budget, preference, data_trans_size, init_values = None, time_limit = None, read_flag = False, write_flag = False):
 
     num_of_clients = len(datas)
     num_of_class = len(datas[0])
@@ -222,8 +223,18 @@ def lp_solver(datas, systems, budget, preference, data_trans_size, init_values =
         for k, v in init_values.items():
             quantity[k].Start = v
 
+    # Set a 'time_limit' second time limit
+    if time_limit:
+        m.Params.timeLimit = time_limit
+
+    m.update()
+    if read_flag:
+        if os.path.exists('temp.mst'):
+            m.read('temp.mst')
+
     m.optimize()
     print(f'Optimization took {m.Runtime}')
+    print(f'Gap between current and optimal is {m.MIPGap}')
 
     # Process the solution
     result = [[0] * num_of_class for _ in range(num_of_clients)]
@@ -236,6 +247,9 @@ def lp_solver(datas, systems, budget, preference, data_trans_size, init_values =
                 result[i[0]][i[1]] = pointx[i]
     else:
         print('No optimal solution')
+    
+    if write_flag:
+        m.write('temp.mst')
 
     return result
 
@@ -274,7 +288,7 @@ def run_lp():
             count += 1
         temp = [sum(x) for x in zip(temp, i)]
 
-    print(count)
+    print(f'Selected {count} clients')
     flag = True
     for i, j in zip(temp, preference):
         if i < j:
