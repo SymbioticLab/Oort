@@ -265,7 +265,7 @@ def pickSubset(clientSampleList, numOfSample):
 
 def openImgFull():
     # 507
-    clientSampleList, allSamples, totalClients = read_client_samples("openImgFull_size.txt", skip=2, sumT = 50)
+    clientSampleList, allSamples, totalClients = read_client_samples("openImgFull_size.txt")#, skip=2, sumT = 50)
 
     dis = []
     sampleRs = []
@@ -282,7 +282,7 @@ def openImgFull():
 
 def openImg(nclass=99999999):
     # 507
-    clientSampleList, allSamples, totalClients = read_openImg("openImg_size.txt", sumT=0, nclass=nclass)
+    clientSampleList, allSamples, totalClients = read_openImg("openImg_size.txt")#, sumT=0, nclass=nclass)
 
     dis = [allSamples]
     sampleRs = [totalClients]
@@ -312,7 +312,7 @@ def quickDraw():
     return dis, sampleRs
 
 def blog(nclass=99999999):
-    clientSampleList, allSamples, totalClients = readFromSerialized("blog_data_dist.txt", sumT=50, nclass=nclass)
+    clientSampleList, allSamples, totalClients = readFromSerialized("blog_data_dist.txt")#, sumT=50, nclass=nclass)
 
     dis = [allSamples]
     sampleRs = [totalClients]
@@ -325,6 +325,22 @@ def blog(nclass=99999999):
     #distances, sampleRatios = draw_ss(clientSampleList, allSamples, totalClients)
     return dis, sampleRs
     #plot_line([distances], [sampleRatios], [''], "Ratio of Clients Sampled", "Divergence to Overall", "diffallBlog.pdf")
+
+def stackoverflow():
+    clientSampleList, allSamples, totalClients = readFromSerialized("so_data_sort")#, sumT=50, nclass=nclass)
+
+    dis = [allSamples]
+    sampleRs = [totalClients]
+    for i in range(numOfTries):
+        print('...current stackoverflow trial ' + str(i))
+        distances, sampleRatios = draw_rs(clientSampleList, allSamples, totalClients)
+        dis.append(distances)
+        sampleRs.append(sampleRatios)
+
+    #distances, sampleRatios = draw_ss(clientSampleList, allSamples, totalClients)
+    return dis, sampleRs
+    #plot_line([distances], [sampleRatios], [''], "Ratio of Clients Sampled", "Divergence to Overall", "diffallBlog.pdf")
+
 
 def email():
     clientSampleList, allSamples, totalClients = readFromSerialized("email_data_dist.txt")
@@ -387,7 +403,7 @@ def draw_rs(clientSampleList, allSamples, totalClients, figCaption="diffall.pdf"
 
     #numOfSamples = [i for i in range(int(totalClients*0.01), int(totalClients * 0.4), int(totalClients*0.02))]
 
-    _numOfSamples = [10, 50] + [100 * i for i in range(1, 10)] + [1000*i for i in range(1, 6)]
+    _numOfSamples = [10, 50] + [100 * i for i in range(1, 10)] + [500*i for i in range(2, 20)]
 
     numOfSamples = []
 
@@ -430,17 +446,19 @@ ss = []
 #     print('...current quickDraw trial ' + str(i))
 
 
-# dE, sE = blog(1000)
+blogSample, blogSampleSize = blog()
 # dE2, sE2 = blog(10000)
 #dB, sB = blog()
-dE, sE = openImg(300)
-dE2, sE2 = openImg(596)
+ImgSample, ImgSampleSize = openImg()
+soSample, soSampleSize = stackoverflow()
+
+# dE2, sE2 = openImg(596)
 
 # ds.append([dO, dO2])
 # ss.append([sO, sO2])
 
-ds.append([dE, dE2])
-ss.append([sE, sE2])
+ds.append([blogSample, ImgSample, soSample])
+ss.append([blogSampleSize, ImgSampleSize, soSampleSize])
 
 #dQ, sQ = quickDraw()
 #dOF, sOF = openImgFull()
@@ -448,7 +466,7 @@ ss.append([sE, sE2])
 # ds.append([dE, dB, dO, dQ, dOF])
 # ss.append([sE, sB, sO, sQ, sOF])
 
-with open("MultiRsOpenImg_Abs_full", 'wb') as fout:
+with open("SampleResults", 'wb') as fout:
     pickle.dump(ds, fout)
     pickle.dump(ss, fout)
 

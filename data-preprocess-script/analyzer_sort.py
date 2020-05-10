@@ -43,20 +43,23 @@ def read_img_clients():
     return clientToImg
 
 def sort_data():
-    with open('blog_data_dist.txt', 'rb') as fin:
+    with open('so_tags_data_size', 'rb') as fin:
         temp = pickle.load(fin)
 
+    keysets = sorted(list(temp.keys()))
     nclients = len(temp)
-    nclass = len(temp[0])
+    nclass = len(temp[keysets[0]])
 
     print('nclass: {}, nclients: {}'.format(nclass, nclients))
     
     clientClass = np.zeros([nclients, nclass])
 
     stime = time.time()
+
     for row in range(nclients):
+        key = keysets[row]
         for col in range(nclass):
-            clientClass[row][col] = temp[row][col]
+            clientClass[row][col] = temp[key][col]
 
     print('assign clientClass takes {} s'.format(time.time() - stime))
 
@@ -78,7 +81,7 @@ def sort_data():
 
     print('Assign tempClientClass takes {} s'.format(time.time() - stime))
 
-    with open('blog_data_dist_sort.txt', 'wb') as fout:
+    with open('so_data_sort', 'wb') as fout:
         pickle.dump(tempClientClass, fout, protocol=4)
 
 def analyze():
@@ -147,3 +150,4 @@ def load_data():
 
 #load_data()
 sort_data()
+

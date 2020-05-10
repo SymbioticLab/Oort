@@ -1,7 +1,7 @@
 import sys, os, time, datetime, random
 
 
-paramsCmd = ' --ps_ip=10.255.11.92 --model=mnasnet --epochs=20000 --upload_epoch=20  --dump_epoch=10000 --learning_rate=0.04 --decay_epoch=5 --model_avg=True --batch_size=32 '
+paramsCmd = ' --ps_ip=10.255.11.92 --model=shufflenet_v2_x2_0 --epochs=20000 --upload_epoch=20  --dump_epoch=1000 --decay_epoch=5 --model_avg=True --batch_size=32 '
 
 
 os.system("bhosts > vms")
@@ -16,7 +16,7 @@ with open('quotas', 'r') as fin:
         items = v.strip().split()
         quotalist[items[0]] = int(items[1])
 
-threadQuota = 10
+threadQuota = 5
 
 with open('vms', 'r') as fin:
     lines = fin.readlines()
