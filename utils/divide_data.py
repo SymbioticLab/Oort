@@ -50,8 +50,14 @@ class DataPartitioner(object):
         self.totalSamples = 0
         self.data_len = len(self.data)
         self.task = args.task
+        self.skip_partition = True if self.data.targets[0] is -1 else False
 
-        if splitConfFile is None:
+        if self.skip_partition:
+            logging.info("====Warning: skip_partition is True")
+
+        if self.skip_partition:
+            pass
+        elif splitConfFile is None:
             # categarize the samples
             for index, label in enumerate(self.labels):
                 if label not in self.targets:
@@ -274,11 +280,13 @@ class DataPartitioner(object):
         data_len = self.getDataLen()
 
         usedSamples = 100000
+
         keyDir = {key:int(key) for i, key in enumerate(targets.keys())}
         keyLength = [0] * numOfLabels
 
-        for key in keyDir.keys():
-            keyLength[keyDir[key]] = len(targets[key])
+        if not self.skip_partition:
+            for key in keyDir.keys():
+                keyLength[keyDir[key]] = len(targets[key])
 
         # classPerWorker -> Rows are workers and cols are classes
         tempClassPerWorker = np.zeros([len(sizes), numOfLabels])
@@ -289,16 +297,18 @@ class DataPartitioner(object):
 
             # may need to filter ...
             indicesToRm = set()
+            indexes = None
             if self.args.filter_less != 0:
                 if self.task != 'nlp':
                     indicesToRm = set(self.loadFilterInfo())
                 else:
                     indicesToRm = set(self.loadFilterInfoNLP())
 
+                indexes = [x for x in range(0, data_len) if x not in indicesToRm]
                 # we need to remove those with less than certain number of samples
                 logging.info("====Try to remove clients w/ less than {} samples, and remove {} samples".format(self.args.filter_less, len(indicesToRm)))
-            
-            indexes = [x for x in range(0, data_len) if x not in indicesToRm]
+            else:
+                indexes = [x for x in range(data_len)]
 
             self.rng.shuffle(indexes)
             realDataLen = len(indexes)
@@ -308,9 +318,10 @@ class DataPartitioner(object):
                 self.partitions.append(indexes[0:part_len])
                 indexes = indexes[part_len:]
 
-            for id, partition in enumerate(self.partitions):
-                for index in partition:
-                    tempClassPerWorker[id][self.indexToLabel[index]] += 1
+            if not self.skip_partition:
+                for id, partition in enumerate(self.partitions):
+                    for index in partition:
+                        tempClassPerWorker[id][self.indexToLabel[index]] += 1
         else:
             logging.info('========= Start of Class/Worker =========\n')
 
@@ -398,7 +409,7 @@ class DataPartitioner(object):
             self.classPerWorker = np.concatenate((self.classPerWorker, tempClassPerWorker), axis=0)
 
         # Calculates statistical distances
-        totalDataSize = sum(keyLength)
+        totalDataSize = max(sum(keyLength), 1)
         # Overall data distribution
         dataDistr = np.array([key / float(totalDataSize) for key in keyLength])
         self.get_JSD(dataDistr, tempClassPerWorker, sizes)

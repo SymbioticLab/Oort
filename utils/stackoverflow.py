@@ -1,13 +1,13 @@
 from __future__ import print_function
 import warnings
-import os, sys
+import os
 import os.path
 import torch
 import time
 import pickle
 import h5py as h5
 import torch.nn.functional as F
-import logging
+#import logging
 
 class stackoverflow():
     """
@@ -51,43 +51,27 @@ class stackoverflow():
     def __init__(self, root, train=True):
         self.train = train  # training set or test set
         self.root = root
-        #self.transform = transform
-        #self.target_transform = target_transform
-        """
-        if self.train:
-            self.data_file = self.training_file
-        else:
-            self.data_file = self.test_file
-
-        if not self._check_exists():
-            raise RuntimeError('Dataset not found.' +
-                               ' You have to download it')
-        """
-
+        
         self.train_file = 'stackoverflow_train.h5'
         self.test_file = 'stackoverflow_test.h5'
         self.train = train
 
         self.vocab_tokens_size = 10000
         self.vocab_tags_size = 500
-        self.taken = 100000
 
         # load data and targets
-        self.raw_data, self.raw_targets, self.dict, self.train_file = self.load_file(self.root, self.train)
-        self.raw_data = self.raw_data[:self.taken]
-        self.raw_targets = self.raw_targets[:self.taken]
+        self.raw_data, self.raw_targets, self.dict = self.load_file(self.root, self.train)
+
+        if not self.train:
+            self.raw_data = self.raw_data[:100000]
+            self.raw_targets = self.raw_targets[:100000]
+        else:
+            self.raw_data = self.raw_data[:30000000]
+            self.raw_targets = self.raw_targets[:30000000]
 
         # we can't enumerate the raw data, thus generating artificial data to cheat the divide_data_loader
-        self.data = [0 for i in range(len(self.raw_data))]
-        self.targets = [0 for i in range(len(self.raw_targets))]
-
-
-        # First, get the token and tag dict
-        self.vocab_tokens = self.create_token_vocab(self.vocab_tokens_size, self.root)
-        self.vocab_tags = self.create_tag_vocab(self.vocab_tags_size, self.root)
-
-        self.vocab_tokens_dict = {k: v for v, k in enumerate(self.vocab_tokens)}
-        self.vocab_tags_dict = {k: v for v, k in enumerate(self.vocab_tags)}
+        self.data = [-1, len(self.dict)]
+        self.targets = [-1, len(self.dict)]
 
     def __getitem__(self, index):
         """
@@ -98,43 +82,14 @@ class stackoverflow():
             tuple: (text, tags)
         """
 
-        # get mapping
-
-        [clientId, idx, clientLen] = self.raw_data[index]
-
-        tokens = None
-        tags = None
-        failures = 0
-        inFetch = True
-
-        while inFetch:
-            client = list(self.train_file['examples'])[clientId]
-            _tokens = list(self.train_file['examples'][client]['tokens'])
-            token = _tokens[idx]
-            title = list(self.train_file['examples'][client]['title'])[idx]
-            tag = list(self.train_file['examples'][client]['tags'])[idx]
-
-            contents = token.decode("utf-8").split() + title.decode("utf-8").split()
-            tokens = [self.vocab_tokens_dict[s] for s in contents if s in self.vocab_tokens_dict]
-            tags = [self.vocab_tags_dict[s] for s in tag.decode("utf-8").split('|') if s in self.vocab_tags_dict]
-
-            if not tokens or not tags:
-                failures += 1
-                idx = (idx + 1) % clientLen
-                logging.info("====Failed {} times, contents: {}, tags: {}.".format(failures, len(contents), len(tags)))
-            else:
-                inFetch = False
-                logging.info("====Success ...")
-
-            if failures == len(_tokens):
-                logging.info("====To many failures, system exit")
-                sys.exit(-1)
-
         # Lookup tensor
+
+        tokens = self.raw_data[index]
         tokens = torch.tensor(tokens, dtype=torch.long)
         tokens = F.one_hot(tokens, self.vocab_tokens_size).float()
         tokens = tokens.mean(0)
 
+        tags = self.raw_targets[index]
         tags = torch.tensor(tags, dtype=torch.long)
         tags = F.one_hot(tags, self.vocab_tags_size).float()
         tags = tags.sum(0)
@@ -179,53 +134,84 @@ class stackoverflow():
         return tokens[:vocab_size]
 
     def load_file(self, path, is_train):
+        file_name = self.train_file if self.train else self.test_file
+
+        # check whether we have generated the cache file before
+        cache_path = os.path.join(path, file_name + '_cache')
 
         text, target_tags = [], []
         mapping_dict = {}
 
-        file_name = self.train_file if self.train else self.test_file
-        
-        # Load the traning data
-        if self.train:
-            train_file = h5.File(path + self.train_file, "r")
-        else:
-            train_file = h5.File(path + self.test_file, "r")
-
-        client_list = list(train_file['examples'])
-
-        file_name = self.train_file if self.train else self.test_file
-        cache_path = os.path.join(path, file_name + '_cache')
-
         if os.path.exists(cache_path):
+            print("====Load {} from cache".format(file_name))
+            # dump the cache
             with open(cache_path, 'rb') as fin:
                 text = pickle.load(fin)
                 target_tags = pickle.load(fin)
                 mapping_dict = pickle.load(fin)
         else:
+            print("====Load {} from scratch".format(file_name))
+            # Mapping from sample id to target tag
+            # First, get the token and tag dict
+            vocab_tokens = self.create_token_vocab(self.vocab_tokens_size, path)
+            vocab_tags = self.create_tag_vocab(self.vocab_tags_size, path)
+
+            vocab_tokens_dict = {k: v for v, k in enumerate(vocab_tokens)}
+            vocab_tags_dict = {k: v for v, k in enumerate(vocab_tags)}
+
+            # Load the traning data
+            if self.train:
+                train_file = h5.File(path + self.train_file, "r")
+            else:
+                train_file = h5.File(path + self.test_file, "r")
+            print(self.train)
+
             count = 0
             clientCount = 0
-
+            client_list = list(train_file['examples'])
             start_time = time.time()
 
-            for clientId in range(len(client_list)):
-                client = client_list[clientId]
-                numOfSamples = len(train_file['examples'][client]['tags'])
+            for clientId, client in enumerate(client_list):
+                tags_list = list(train_file['examples'][client]['tags'])
+                tokens_list = list(train_file['examples'][client]['tokens'])
+                title_list = list(train_file['examples'][client]['title'])
 
-                for idx in range(numOfSamples):
-                    text.append([clientId, idx, numOfSamples])
-                    target_tags.append(0)
+                for tags, tokens, title in zip(tags_list, tokens_list, title_list):
+                    tags_list = [vocab_tags_dict[s] for s in tags.decode("utf-8").split('|') if s in vocab_tags_dict]
+                    if not tags_list:
+                        continue
+                    
+                    tokens_list = [vocab_tokens_dict[s] for s in (tokens.decode("utf-8").split()+title.decode("utf-8").split()) if s in vocab_tokens_dict]
+                    if not tokens_list:
+                        continue
+
                     mapping_dict[count] = clientId
+                    text.append(tokens_list)
+                    target_tags.append(tags_list)
 
                     count += 1
+                
+                clientCount += 1
 
-                numOfRemain = len(client_list) - clientId
+                num_of_remains = len(client_list) - clientId
+                #print("====In loading data, remains {} clients, may take {} sec".format(num_of_remains, (time.time() - start_time)/clientCount * num_of_remains))
+                # logging.info("====In loading  data, remains {} clients".format(num_of_remains)
+                
+                if clientId % 5000 == 0:
+                    # dump the cache
+                    with open(cache_path, 'wb') as fout:
+                        pickle.dump(text, fout)
+                        pickle.dump(target_tags, fout)
+                        pickle.dump(mapping_dict, fout)
 
-                if clientId % 50000 == 0:
-                    logging.info("=====remains {} clients, may take {} sec".format(numOfRemain, (time.time() - start_time)/(clientId+1)*numOfRemain))
+                    #print("====Dump for {} clients".format(clientId))
 
+            # dump the cache
             with open(cache_path, 'wb') as fout:
                 pickle.dump(text, fout)
                 pickle.dump(target_tags, fout)
                 pickle.dump(mapping_dict, fout)
 
-        return text, target_tags, mapping_dict, train_file
+        return text, target_tags, mapping_dict
+
+#sp = stackoverflow('./', )
