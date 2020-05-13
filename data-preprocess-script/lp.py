@@ -5,6 +5,7 @@ from gurobipy import *
 import time, sys
 from queue import PriorityQueue
 from numpy import *
+from lp_solver import *
 
 sys.stdout.flush()
 
@@ -233,87 +234,6 @@ def cal_jct(clientsTaken, sys):
 
     return duration
 
-
-#run_heuristic()
-
-#################### LP ##############################
-
-
-def lp_solver(datas, systems, budget, preference, data_trans_size, init_values = None, time_limit = None, read_flag = False, write_flag = False, request_budget=True):
-
-    num_of_clients = len(datas)
-    num_of_class = len(datas[0])
-
-    # Create a new model
-    m = gp.Model("client_selection")
-
-    qlist = []
-    for i in range(num_of_clients):
-        for j in range(num_of_class):
-            qlist.append((i, j))
-
-    slowest = m.addVar(vtype=GRB.CONTINUOUS, name="slowest", lb = 0.0)
-    quantity = m.addVars(qlist, vtype=GRB.INTEGER, name="quantity", lb = 0) # # of example for each class
-
-    # Fan: sys[i][0] is the inference latency, so we should multiply, ms -> sec for inference latency
-    time_list = [((gp.quicksum([quantity[(i, j)] for j in range(num_of_class)])*systems[i][0])/1000. + data_trans_size/systems[i][1]) for i in range(num_of_clients)]
-
-    # The objective is to minimize the slowest
-    m.setObjective(slowest, GRB.MINIMIZE)
-
-    # Minimize the slowest
-    for t in time_list:
-        m.addConstr(slowest >= t, name='slow')
-
-    # Preference Constraint
-    for i in range(num_of_class):
-        m.addConstr(gp.quicksum([quantity[(client, i)] for client in range(num_of_clients)]) >= preference[i], name='preference_' + str(i))
-
-    # Capacity Constraint
-    m.addConstrs((quantity[i] <= datas[i[0]][i[1]] for i in qlist), name='capacity_'+str(i))
-
-    # Budget Constraint
-    if request_budget:
-        status = m.addVars([i for i in range(num_of_clients)], vtype = GRB.BINARY, name = 'status') # Binary var indicates the selection status
-        for i in range(num_of_clients):
-            m.addGenConstrIndicator(status[i], False, gp.quicksum([quantity[(i, j)] for j in range(num_of_class)]) ==  0.0)
-        m.addConstr(gp.quicksum([status[i] for i in range(num_of_clients)]) <= budget, name = 'budget')
-
-
-    # Initialize variables if init_values is provided
-    if init_values: 
-        for k, v in init_values.items():
-            quantity[k].Start = v
-
-    # Set a 'time_limit' second time limit
-    if time_limit:
-        m.Params.timeLimit = time_limit
-
-    m.update()
-    if read_flag:
-        if os.path.exists('temp.mst'):
-            m.read('temp.mst')
-
-    m.optimize()
-    print(f'Optimization took {m.Runtime}')
-    print(f'Gap between current and optimal is {m.MIPGap}')
-
-    # Process the solution
-    result = [[0] * num_of_class for _ in range(num_of_clients)]
-    if m.status == GRB.OPTIMAL:
-        print('Found optimal solution')
-        pointx = m.getAttr('x', quantity)
-        for i in qlist:
-            if quantity[i].x > 0.0001:
-                #print(i, pointx[i])
-                result[i[0]][i[1]] = pointx[i]
-    else:
-        print('No optimal solution')
-    
-    if write_flag:
-        m.write('temp.mst')
-
-    return result
 
 def preprocess(data):
     # Get the global distribution
