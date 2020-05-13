@@ -6,15 +6,15 @@ from gurobipy import *
 import time, sys
 
 
-def lp_solver(datas, systems, budget, preference, data_trans_size, init_values = None, time_limit = None, read_flag = False, write_flag = False, request_budget = True, solver = 'gurobi'):
+def lp_solver(datas, systems, budget, preference, data_trans_size, init_values = None, time_limit = None, read_flag = False, write_flag = False, request_budget = True, gap = None, solver = 'gurobi'):
     if solver == 'gurobi':
-        return lp_gurobi(datas, systems, budget, preference, data_trans_size, init_values, time_limit, read_flag, write_flag, request_budget)
+        return lp_gurobi(datas, systems, budget, preference, data_trans_size, init_values, time_limit, read_flag, write_flag, gap, request_budget)
     else:
-        return lp_cplex(datas, systems, budget, preference, data_trans_size, init_values, time_limit, read_flag, write_flag, request_budget)
+        return lp_cplex(datas, systems, budget, preference, data_trans_size, init_values, time_limit, read_flag, write_flag, gap, request_budget)
 
 
 
-def lp_gurobi(datas, systems, budget, preference, data_trans_size, init_values = None, time_limit = None, read_flag = False, write_flag = False, request_budget=True):
+def lp_gurobi(datas, systems, budget, preference, data_trans_size, init_values = None, time_limit = None, read_flag = False, write_flag = False, request_budget=True, gap = None), :
 
     num_of_clients = len(datas)
     num_of_class = len(datas[0])
@@ -66,6 +66,10 @@ def lp_gurobi(datas, systems, budget, preference, data_trans_size, init_values =
     if time_limit:
         m.Params.timeLimit = time_limit
 
+    # set the optimality gap
+    if gap:
+        m.Params.MIPgap = gap
+
     m.update()
     if read_flag:
         if os.path.exists('temp.mst'):
@@ -93,7 +97,7 @@ def lp_gurobi(datas, systems, budget, preference, data_trans_size, init_values =
     return result
 
 
-def lp_cplex(datas, systems, budget, preference, data_size, init_values = None, time_limit = None, read_flag = False, write_flag = False, request_budget=True):
+def lp_cplex(datas, systems, budget, preference, data_size, init_values = None, time_limit = None, read_flag = False, write_flag = False, request_budget=True, gap = None):
 
 
     num_of_clients = len(datas)
