@@ -425,18 +425,18 @@ def run_client(clientId, cmodel, iters, learning_rate, argdicts = {}):
 
         temp_loss = 0.
 
-        if args.task != 'nlp':
-            if args.task == 'tag':
-                if itr >= (iters - total_batch_size - 1):
-                    for l in loss.tolist():
-                        for i in l:
-                            temp_loss += i**2
-            else:
-                if itr >= (iters - total_batch_size - 1):
-                    for l in loss.tolist():
-                        temp_loss += l**2
+        # if args.task != 'nlp':
+        if args.task == 'tag':
+            if itr >= (iters - total_batch_size - 1):
+                for l in loss.tolist():
+                    for i in l:
+                        temp_loss += i**2
         else:
-            temp_loss = loss.item()
+            if itr >= (iters - total_batch_size - 1):
+                for l in loss.tolist():
+                    temp_loss += l**2
+        # else:
+        #     temp_loss = loss.item()
 
         temp_loss = temp_loss/float(len(target))
 
@@ -450,10 +450,9 @@ def run_client(clientId, cmodel, iters, learning_rate, argdicts = {}):
         count += len(target)
 
         # ========= Define the backward loss ==============
+        loss = torch.mean(loss)
+        loss.backward()
         if args.task != 'nlp':
-            loss = torch.mean(loss)
-            loss.backward()
-
             delta_w = optimizer.get_delta_w(learning_rate)
 
             if not args.proxy_avg:
@@ -464,7 +463,7 @@ def run_client(clientId, cmodel, iters, learning_rate, argdicts = {}):
                     param.data -= delta_w[idx].to(device=device)
                     param.data += learning_rate * args.proxy_mu * (last_model_tensors[idx] - param.data)
         else:
-            loss.backward()
+            # loss.backward()
             optimizer.step()
             cmodel.zero_grad()
 
@@ -569,7 +568,7 @@ def run(rank, model, train_data, test_data, queue, param_q, stop_flag, client_cf
                 with open(tempModelPath, 'wb') as fout:
                     pickle.dump(model, fout)
 
-                for nextClientId in nextClientIds:
+                for idx, nextClientId in enumerate(nextClientIds):
                     # roll back to the global model for simulation
                     with open(tempModelPath, 'rb') as fin:
                         model = pickle.load(fin)
@@ -605,7 +604,7 @@ def run(rank, model, train_data, test_data, queue, param_q, stop_flag, client_cf
                     virtualClock.append(_time)
                     ranClients.append(nextClientId)
 
-                    #gc.collect()
+                #gc.collect()
             else:
                 logging.info('====Start test round {}'.format(epoch))
                 testResults = [0., 0., 0., 0.]

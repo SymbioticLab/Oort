@@ -231,27 +231,28 @@ def _rotate_checkpoints(args, checkpoint_prefix="checkpoint", use_mtime=False) -
         shutil.rmtree(checkpoint)
 
 def invertBool(list):
-    size = list.size()
-    temp = torch.zeros(size, dtype=torch.bool)
-    for i in range(size[0]):
-        for j in range(size[1]):
-            temp[i][j] = False if list[i][j] else True
-    return temp
+    return abs(list-1)
+    # size = list.size()
+    # temp = torch.zeros(size, dtype=torch.bool).cuda()
+    # for i in range(size[0]):
+    #     for j in range(size[1]):
+    #         temp[i][j] = False if list[i][j] else True
+    # return temp
 
 def toBool(list):
-    size = list.size()
-    temp = torch.zeros(size, dtype=torch.bool)
-    for i in range(size[0]):
-        for j in range(size[1]):
-            temp[i][j] = True if list[i][j] else False
-    return temp
+    # size = list.size()
+    # temp = torch.zeros(size, dtype=torch.bool)
+    # for i in range(size[0]):
+    #     for j in range(size[1]):
+    #         temp[i][j] = True if list[i][j] else False
+    return list
 
 def boolAnd(list1, list2):
     size = list1.size()
     temp = torch.zeros(size, dtype=torch.bool)
     for i in range(size[0]):
         for j in range(size[1]):
-            temp[i][j] = True if list1[i][j] and list2[i][j] else False
+            temp[i][j] = list1[i][j] & list2[i][j]
     return temp
 
 def mask_tokens(inputs: torch.Tensor, tokenizer: PreTrainedTokenizer, args) -> Tuple[torch.Tensor, torch.Tensor]:
@@ -262,27 +263,29 @@ def mask_tokens(inputs: torch.Tensor, tokenizer: PreTrainedTokenizer, args) -> T
             "This tokenizer does not have a mask token which is necessary for masked language modeling. Remove the --mlm flag if you want to use this tokenizer."
         )
 
-    labels = inputs.clone()
+    labels = inputs.clone().cuda()
     # We sample a few tokens in each sequence for masked-LM training (with probability args.mlm_probability defaults to 0.15 in Bert/RoBERTa)
-    probability_matrix = torch.full(labels.shape, args.mlm_probability)
+    probability_matrix = torch.full(labels.shape, args.mlm_probability).cuda()
     special_tokens_mask = [
         tokenizer.get_special_tokens_mask(val, already_has_special_tokens=True) for val in labels.tolist()
     ]
-    probability_matrix.masked_fill_(torch.tensor(special_tokens_mask, dtype=torch.uint8), value=0.0)
+    probability_matrix.masked_fill_(torch.tensor(special_tokens_mask, dtype=torch.uint8).cuda(), value=0.0)
     if tokenizer._pad_token is not None:
         padding_mask = labels.eq(tokenizer.pad_token_id)
         probability_matrix.masked_fill_(padding_mask, value=0.0)
-    masked_indices = torch.tensor(torch.bernoulli(probability_matrix), dtype=torch.bool).detach()
-    labels[invertBool(masked_indices)] = -100  # We only compute loss on masked tokens
+    masked_indices = torch.tensor(torch.bernoulli(probability_matrix), dtype=torch.uint8).detach().cuda()
+    labels[toBool(~masked_indices)] = -100  # We only compute loss on masked tokens
 
     # 80% of the time, we replace masked input tokens with tokenizer.mask_token ([MASK])
-    indices_replaced = boolAnd(toBool(torch.bernoulli(torch.full(labels.shape, 0.8))), toBool(masked_indices))
+    indices_replaced = torch.tensor(torch.bernoulli(torch.full(labels.shape, 0.8)), dtype=torch.uint8).cuda() & masked_indices
     inputs[indices_replaced] = tokenizer.convert_tokens_to_ids(tokenizer.mask_token)
 
     # 10% of the time, we replace masked input tokens with random word
-    indices_random = boolAnd(boolAnd(toBool(torch.bernoulli(torch.full(labels.shape, 0.5))), toBool(masked_indices)), invertBool(indices_replaced))
+    #indices_random = boolAnd(boolAnd(toBool(torch.bernoulli(torch.full(labels.shape, 0.5))), toBool(masked_indices)), invertBool(indices_replaced))
+    indices_random = torch.tensor(torch.bernoulli(torch.full(labels.shape, 0.5)), dtype=torch.uint8).cuda() & masked_indices & ~indices_replaced
     random_words = torch.randint(len(tokenizer), labels.shape, dtype=torch.long)
-    inputs[indices_random] = random_words[indices_random]
+    bool_indices_random = toBool(indices_random)
+    inputs[bool_indices_random] = random_words[bool_indices_random]
 
     # The rest of the time (10% of the time) we keep the masked input tokens unchanged
     return inputs, labels
@@ -851,3 +854,5 @@ def main():
             results.update(result)
 
     return results
+
+

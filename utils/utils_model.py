@@ -131,8 +131,14 @@ def test_model(rank, model, test_data, criterion=nn.NLLLoss(), tokenizer=None):
             
             outputs = model(data, masked_lm_labels=target) if args.mlm else model(data, labels=target)
 
-            test_loss += outputs[0].item()
-            perplexity_loss += outputs[0].mean().item()
+            loss = criterion(outputs[1].view(-1, 30000), target.view(-1))
+            test_loss += loss.data.item()
+            perplexity_loss += loss.data.item()
+
+            acc = accuracy(outputs[1].view(-1, 30000), target.view(-1), topk=(1, 5))
+
+            correct += acc[0].item()
+            top_5 += acc[1].item()
 
         elif args.task == 'tag':
             data, target = Variable(data).cuda(), Variable(target).cuda()
@@ -173,11 +179,11 @@ def test_model(rank, model, test_data, criterion=nn.NLLLoss(), tokenizer=None):
     acc_5 = round(top_5 / test_len, 4)
     test_loss = round(test_loss, 4)
 
-    if args.task == 'nlp':
-        correct = math.exp(perplexity_loss) * test_len
-        acc = correct
+    # if args.task == 'nlp':
+    #     correct = math.exp(perplexity_loss) * test_len
+    #     acc = correct
 
-    elif args.task == 'tag':
+    if args.task == 'tag':
         # precision, recall, f1, sup = precision_recall_fscore_support(targets_list, preds, average='samples')
         top_5, correct, test_len = cal_accuracy(targets_list, preds)
 
