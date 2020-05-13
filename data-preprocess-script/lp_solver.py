@@ -31,29 +31,31 @@ def lp_gurobi(datas, systems, budget, preference, data_trans_size, init_values =
     quantity = m.addVars(qlist, vtype=GRB.INTEGER, name="quantity", lb = 0) # # of example for each class
 
     # Fan: sys[i][0] is the inference latency, so we should multiply, ms -> sec for inference latency
-    time_list = [((gp.quicksum([quantity[(i, j)] for j in range(num_of_class)])*systems[i][0])/1000. + data_trans_size/systems[i][1]) for i in range(num_of_clients)]
+    time_list = [(gp.quicksum([quantity[(i, j)] for j in range(num_of_class)])*systems[i][0])/1000. for i in range(num_of_clients)]
+    comm_time_list = [data_trans_size/float(systems[i][1]) for i in range(num_of_clients)]
 
+    #time_list = [((gp.quicksum([quantity[(i, j)] for j in range(num_of_class)])*systems[i][0])/1000. + data_trans_size/systems[i][1]) for i in range(num_of_clients)]
     # The objective is to minimize the slowest
     m.setObjective(slowest, GRB.MINIMIZE)
 
-    # Minimize the slowest
-    for t in time_list:
-        m.addConstr(slowest >= t, name='slow')
-
     # Preference Constraint
     for i in range(num_of_class):
-        m.addConstr(gp.quicksum([quantity[(client, i)] for client in range(num_of_clients)]) >= preference[i], name='preference_' + str(i))
+        m.addConstr(gp.quicksum([quantity[(client, i)] for client in range(num_of_clients)]) == preference[i], name='preference_' + str(i))
 
     # Capacity Constraint
-    m.addConstrs((quantity[i] <= datas[i[0]][i[1]] for i in qlist), name='capacity_'+str(i))
+    m.addConstrs((quantity[i] <= datas[i[0]][i[1]] for i in quantity), name='capacity_'+str(i))
+    
+    status = m.addVars([i for i in range(num_of_clients)], vtype = GRB.BINARY, name = 'status') # Binary var indicates the selection status
+    for i in range(num_of_clients):
+        m.addGenConstrIndicator(status[i], False, gp.quicksum([quantity[(i, j)] for j in range(num_of_class)]) ==  0.0)
 
     # Budget Constraint
     if request_budget:
-        status = m.addVars([i for i in range(num_of_clients)], vtype = GRB.BINARY, name = 'status') # Binary var indicates the selection status
-        for i in range(num_of_clients):
-            m.addGenConstrIndicator(status[i], False, gp.quicksum([quantity[(i, j)] for j in range(num_of_class)]) ==  0.0)
         m.addConstr(gp.quicksum([status[i] for i in range(num_of_clients)]) <= budget, name = 'budget')
 
+    # Minimize the slowest
+    for idx, t in enumerate(time_list):
+        m.addConstr(slowest >= t + status[i] * comm_time_list[idx], name='slow')
 
     # Initialize variables if init_values is provided
     if init_values: 
@@ -182,3 +184,4 @@ def lp_cplex(datas, systems, budget, preference, data_size, init_values = None, 
                 # print(f"Client {i} Class {j} : {values[quantity[i][j]]}")
     
     return result
+

@@ -175,47 +175,47 @@ def init_dataset():
 
     outputClass = {'Mnist': 10, 'cifar10': 10, "imagenet": 1000, 'emnist': 47, 'openImg': 596}
 
-    if args.data_set == 'Mnist':
-        train_transform, test_transform = get_data_transform('mnist')
+    # if args.data_set == 'Mnist':
+    #     train_transform, test_transform = get_data_transform('mnist')
 
-        train_dataset = datasets.MNIST(args.data_dir, train=True, download=False,
-                                       transform=train_transform)
-        test_dataset = datasets.MNIST(args.data_dir, train=False, download=False,
-                                      transform=test_transform)
+    #     train_dataset = datasets.MNIST(args.data_dir, train=True, download=False,
+    #                                    transform=train_transform)
+    #     test_dataset = datasets.MNIST(args.data_dir, train=False, download=False,
+    #                                   transform=test_transform)
 
-    elif args.data_set == 'cifar10':
-        train_transform, test_transform = get_data_transform('cifar')
-        train_dataset = datasets.CIFAR10(args.data_dir, train=True, download=True,
-                                         transform=train_transform)
-        test_dataset = datasets.CIFAR10(args.data_dir, train=False, download=True,
-                                        transform=test_transform)
+    # elif args.data_set == 'cifar10':
+    #     train_transform, test_transform = get_data_transform('cifar')
+    #     train_dataset = datasets.CIFAR10(args.data_dir, train=True, download=True,
+    #                                      transform=train_transform)
+    #     test_dataset = datasets.CIFAR10(args.data_dir, train=False, download=True,
+    #                                     transform=test_transform)
 
-    elif args.data_set == "imagenet":
-        train_transform, test_transform = get_data_transform('imagenet')
-        train_dataset = datasets.ImageNet(args.data_dir, split='train', download=False, transform=train_transform)
-        test_dataset = datasets.ImageNet(args.data_dir, split='val', download=False, transform=test_transform)
+    # elif args.data_set == "imagenet":
+    #     train_transform, test_transform = get_data_transform('imagenet')
+    #     train_dataset = datasets.ImageNet(args.data_dir, split='train', download=False, transform=train_transform)
+    #     test_dataset = datasets.ImageNet(args.data_dir, split='val', download=False, transform=test_transform)
 
-    elif args.data_set == 'emnist':
-        test_dataset = datasets.EMNIST(args.data_dir, split='balanced', train=False, download=True, transform=transforms.ToTensor())
-        train_dataset = datasets.EMNIST(args.data_dir, split='balanced', train=True, download=True, transform=transforms.ToTensor())
+    # elif args.data_set == 'emnist':
+    #     test_dataset = datasets.EMNIST(args.data_dir, split='balanced', train=False, download=True, transform=transforms.ToTensor())
+    #     train_dataset = datasets.EMNIST(args.data_dir, split='balanced', train=True, download=True, transform=transforms.ToTensor())
 
-    elif args.data_set == 'openImg':
-        transformer_ns = 'openImg' if args.model != 'inception_v3' else 'openImgInception'
-        train_transform, test_transform = get_data_transform(transformer_ns) 
-        train_dataset = OPENIMG(args.data_dir, train=True, transform=train_transform)
-        test_dataset = OPENIMG(args.data_dir, train=False, transform=test_transform)
+    # elif args.data_set == 'openImg':
+    #     transformer_ns = 'openImg' if args.model != 'inception_v3' else 'openImgInception'
+    #     train_transform, test_transform = get_data_transform(transformer_ns) 
+    #     train_dataset = OPENIMG(args.data_dir, train=True, transform=train_transform)
+    #     test_dataset = OPENIMG(args.data_dir, train=False, transform=test_transform)
 
-    elif args.data_set == 'blog':
-        train_dataset = load_and_cache_examples(args, tokenizer, evaluate=False) 
-        test_dataset = load_and_cache_examples(args, tokenizer, evaluate=True)
+    # elif args.data_set == 'blog':
+    #     train_dataset = load_and_cache_examples(args, tokenizer, evaluate=False) 
+    #     test_dataset = load_and_cache_examples(args, tokenizer, evaluate=True)
 
-    elif args.data_set == 'stackoverflow':
-        train_dataset = stackoverflow(args.data_dir, train=True)
-        test_dataset = stackoverflow(args.data_dir, train=False)
+    # elif args.data_set == 'stackoverflow':
+    #     train_dataset = stackoverflow(args.data_dir, train=True)
+    #     test_dataset = stackoverflow(args.data_dir, train=False)
 
-    else:
-        print('DataSet must be {}!'.format(['Mnist', 'Cifar', 'openImg', 'blog']))
-        sys.exit(-1)
+    # else:
+    #     print('DataSet must be {}!'.format(['Mnist', 'Cifar', 'openImg', 'blog']))
+    #     sys.exit(-1)
 
     logging.info("====Initialize the model")
 
@@ -223,12 +223,14 @@ def init_dataset():
         # we should train from scratch
         config = AutoConfig.from_pretrained(os.path.join(args.data_dir, 'albert-base-v2-config.json'))
         model = AutoModelWithLMHead.from_config(config)
-    elif args.task == 'tag':
+    elif args.task == 'tag-one-sample':
         # Load LR model for tag prediction
         model = LogisticRegression(args.vocab_token_size, args.vocab_tag_size)
     else:
         if args.model == 'mnasnet':
             model = MnasNet(num_classes=outputClass[args.data_set])
+        elif args.model == "lr":
+            model = LogisticRegression(args.input_dim, outputClass[args.data_set])
         else:
             model = tormodels.__dict__[args.model](num_classes=outputClass[args.data_set])
 
@@ -245,7 +247,7 @@ def init_dataset():
 
     logging.info("====Finish loading model")
 
-    return model, train_dataset, test_dataset
+    return model, [], []
 
 def run(model, test_data, queue, param_q, stop_signal, clientSampler):
     global logDir, sampledClientSet
@@ -290,7 +292,7 @@ def run(model, test_data, queue, param_q, stop_signal, clientSampler):
     gradient_controller = None
     # initiate yogi if necessary
     if args.gradient_policy == 'yogi':
-        gradient_controller = YoGi(eta=args.yogi_eta, tau=args.yogi_tau, beta=args.yogi_beta)
+        gradient_controller = YoGi(eta=args.yogi_eta, tau=args.yogi_tau, beta=args.yogi_beta, beta2=args.yogi_beta2)
 
     clientInfoFile = logDir + 'clientInfoFile'
     # dump the client info
@@ -403,9 +405,16 @@ def run(model, test_data, queue, param_q, stop_signal, clientSampler):
                     test_results[updateEpoch][-1] += 1
                     # have collected all ranks
                     if test_results[updateEpoch][-1] == len(workers):
-                        logging.info("====After aggregation in epoch: {}, virtual_clock: {}, top_1: {} % ({}), top_5: {} % ({}), test loss: {}, test len: {}"
-                                .format(updateEpoch, global_virtual_clock, round(test_results[updateEpoch][0]/test_results[updateEpoch][3]*100.0, 4), 
-                                test_results[updateEpoch][0], round(test_results[updateEpoch][1]/test_results[updateEpoch][3]*100.0, 4), 
+                        top_1_str = 'top_1: '
+                        top_5_str = 'top_5: '
+
+                        if args.task == 'tag':
+                            top_1_str = 'all-or-nothing: '
+                            top_5_str = 'accuracy: '
+
+                        logging.info("====After aggregation in epoch: {}, virtual_clock: {}, {}: {} % ({}), {}: {} % ({}), test loss: {}, test len: {}"
+                                .format(updateEpoch, global_virtual_clock, top_1_str, round(test_results[updateEpoch][0]/test_results[updateEpoch][3]*100.0, 4), 
+                                test_results[updateEpoch][0], top_5_str, round(test_results[updateEpoch][1]/test_results[updateEpoch][3]*100.0, 4), 
                                 test_results[updateEpoch][1], test_results[updateEpoch][2]/test_results[updateEpoch][3], test_results[updateEpoch][3]))
 
                 handlerDur = time.time() - handlerStart
@@ -443,6 +452,7 @@ def run(model, test_data, queue, param_q, stop_signal, clientSampler):
                 if len(workersToSend) > 0:
                     # assign avg reward to explored, but not ran workers
                     for clientId in exploredPendingWorkers:
+                        assert (avgUtilLastEpoch > 0)
                         clientSampler.registerScore(clientId, avgUtilLastEpoch,
                                                 time_stamp=epoch_count, duration=virtualClientClock[clientId],
                                                 success=False
@@ -492,8 +502,8 @@ def run(model, test_data, queue, param_q, stop_signal, clientSampler):
                         top_k_index = sortedWorkersByCompletion[:numToRealRun]
                         sampledClients = [sampledClientsReal[k] for k in top_k_index]
 
-                        if args.test_only and epoch_count == 2:
-                            sampledClients = clientSampler.getAllClients()
+                        #if args.test_only and epoch_count == 2:
+                        #    sampledClients = clientSampler.getAllClients()
 
                         exploredPendingWorkers = [sampledClientsReal[k] for k in sortedWorkersByCompletion[numToRealRun:]]
                         sampledClientSet = set(sampledClients)
@@ -617,15 +627,16 @@ if __name__ == "__main__":
     stop_signal = manager.get_stop_signal()  # stop
 
     logging.info("====Start to initialize dataset")
+
     model, train_dataset, test_dataset = init_dataset()
     logging.info("====Len of train_dataset: {}, Len of test_dataset: {}".format(len(train_dataset), len(test_dataset)))
 
-    test_data = DataLoader(test_dataset, batch_size=args.test_bsz, shuffle=True)
+    test_data = []#DataLoader(test_dataset, batch_size=args.test_bsz, shuffle=True)
 
     world_size = len(str(args.learners).split('-')) + 1
     this_rank = args.this_rank
 
-    init_myprocesses(this_rank, world_size, model,test_data,
+    init_myprocesses(this_rank, world_size, model, test_data,
                                                   q, param_q, stop_signal, run, args.backend)
     #p = Process(target=init_myprocesses, args=(this_rank, world_size, model,test_data,
     #                                               q, param_q, stop_signal, run, "gloo"))

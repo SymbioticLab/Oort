@@ -85,12 +85,13 @@ parser.add_argument('--enforce_random', type=bool, default=False)
 parser.add_argument('--test_ratio', type=float, default=1.0)
 parser.add_argument('--min_learning_rate', type=float, default=1e-4)
 parser.add_argument('--loss_decay', type=float, default=0.2)
-
+parser.add_argument('--skip_partition', type=bool, default=False)
 # for yogi
 parser.add_argument('--gradient_policy', type=str, default='')
 parser.add_argument('--yogi_eta', type=float, default=5e-3)
 parser.add_argument('--yogi_tau', type=float, default=1e-3)
 parser.add_argument('--yogi_beta', type=float, default=0.999)
+parser.add_argument('--yogi_beta2', type=float, default=-1)
 
 # for albert
 
@@ -132,7 +133,7 @@ parser.add_argument(
     "--mlm", action="store_true", help="Train with masked-language modeling loss instead of language modeling."
 )
 parser.add_argument(
-    "--mlm_probability", type=float, default=0.1, help="Ratio of tokens to mask for masked language modeling loss"
+    "--mlm_probability", type=float, default=0.15, help="Ratio of tokens to mask for masked language modeling loss"
 )
 
 parser.add_argument(

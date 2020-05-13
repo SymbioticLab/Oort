@@ -496,9 +496,12 @@ class LogisticRegression(nn.Module):
     def __init__(self, input_dim, output_dim):
         super(LogisticRegression, self).__init__()
         self.linear = nn.Linear(input_dim, output_dim)
+        self.input_dim = input_dim
 
     def forward(self, x):
-        output = torch.sigmoid(self.linear(x))
+        x = x.reshape(-1, self.input_dim)
+        #output = torch.sigmoid(self.linear(x))
+        output = self.linear(x)
         return output
 
 # ============================= SVM ==============================
@@ -640,4 +643,3 @@ class MnasNet(nn.Module):
                 n = m.weight.size(1)
                 m.weight.data.normal_(0, 0.01)
                 m.bias.data.zero_()
-

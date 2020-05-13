@@ -49,7 +49,7 @@ class OPENIMG():
         warnings.warn("test_data has been renamed data")
         return self.data
 
-    def __init__(self, root, train=True, transform=None, target_transform=None):
+    def __init__(self, root, train=True, transform=None, target_transform=None, imgview=False):
         
         self.train = train  # training set or test set
         self.root = root
@@ -73,6 +73,8 @@ class OPENIMG():
         self.path = os.path.join(self.processed_folder, self.data_file)
         # load data and targets
         self.data, self.targets = self.load_file(self.path)
+
+        self.imgview = imgview
 
     def __getitem__(self, index):
         """

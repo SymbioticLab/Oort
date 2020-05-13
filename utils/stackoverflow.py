@@ -61,13 +61,36 @@ class stackoverflow():
 
         # load data and targets
         self.raw_data, self.raw_targets, self.dict = self.load_file(self.root, self.train)
+        # temp_raw_data, temp_raw_targets, temp_dict = self.load_file(self.root, self.train)
+
+        # self.raw_data, self.raw_targets, self.dict = [], [], {}
+
+        # count = 0
+        # # we only take the 1-tag samples
+        # for idx in range(len(temp_raw_data)):
+        #     if len(temp_raw_targets[idx]) == 1:
+        #         self.dict[count] = temp_dict[idx]
+        #         self.raw_data.append(temp_raw_data[idx])
+        #         self.raw_targets.append(temp_raw_targets[idx])
+
+        #         count += 1
+
+        # # dump the file
+        # file_name = self.train_file if self.train else self.test_file
+
+        # # check whether we have generated the cache file before
+        # cache_path = os.path.join(self.root, file_name + '_cache_1')
+        # with open(cache_path, 'wb') as fout:
+        #     pickle.dump(self.raw_data, fout)
+        #     pickle.dump(self.raw_targets, fout)
+        #     pickle.dump(self.dict, fout)
 
         if not self.train:
             self.raw_data = self.raw_data[:100000]
             self.raw_targets = self.raw_targets[:100000]
         else:
-            self.raw_data = self.raw_data[:30000000]
-            self.raw_targets = self.raw_targets[:30000000]
+            self.raw_data = self.raw_data[:10000000]
+            self.raw_targets = self.raw_targets[:10000000]
 
         # we can't enumerate the raw data, thus generating artificial data to cheat the divide_data_loader
         self.data = [-1, len(self.dict)]
@@ -89,10 +112,10 @@ class stackoverflow():
         tokens = F.one_hot(tokens, self.vocab_tokens_size).float()
         tokens = tokens.mean(0)
 
-        tags = self.raw_targets[index]
-        tags = torch.tensor(tags, dtype=torch.long)
-        tags = F.one_hot(tags, self.vocab_tags_size).float()
-        tags = tags.sum(0)
+        tags = self.raw_targets[index][0]
+        # tags = torch.tensor(tags, dtype=torch.long)
+        # tags = F.one_hot(tags, self.vocab_tags_size).float()
+        # tags = tags.sum(0)
 
         return tokens, tags
 
@@ -137,7 +160,7 @@ class stackoverflow():
         file_name = self.train_file if self.train else self.test_file
 
         # check whether we have generated the cache file before
-        cache_path = os.path.join(path, file_name + '_cache')
+        cache_path = os.path.join(path, file_name + '_cache_1')
 
         text, target_tags = [], []
         mapping_dict = {}
@@ -214,4 +237,4 @@ class stackoverflow():
 
         return text, target_tags, mapping_dict
 
-#sp = stackoverflow('./', )
+# sp = stackoverflow('./', )

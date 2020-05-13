@@ -126,9 +126,9 @@ def init_dataset():
     if args.data_set == 'Mnist':
         train_transform, test_transform = get_data_transform('mnist')
 
-        train_dataset = datasets.MNIST(args.data_dir, train=True, download=False,
+        train_dataset = datasets.MNIST(args.data_dir, train=True, download=True,
                                        transform=train_transform)
-        test_dataset = datasets.MNIST(args.data_dir, train=False, download=False,
+        test_dataset = datasets.MNIST(args.data_dir, train=False, download=True,
                                       transform=test_transform)
 
     elif args.data_set == 'cifar10':
@@ -166,26 +166,18 @@ def init_dataset():
 
     logging.info("====Initialize the model")
 
-    # convert gradient tensor to numpy structure
-    # if args.load_model:
-    #     try:
-    #         with open(modelPath, 'rb') as fin:
-    #             model = pickle.load(fin)
-    #         logging.info("====Load model successfully\n")
-    #     except Exception as e:
-    #         logging.info("====Error: Failed to load model due to {}\n".format(str(e)))
-    #         sys.exit(-1)
-    # else:
     if args.task == 'nlp':
         # we should train from scratch
         config = AutoConfig.from_pretrained(os.path.join(args.data_dir, 'albert-base-v2-config.json'))
         model = AutoModelWithLMHead.from_config(config)
-    elif args.task == 'tag':
+    elif args.task == 'tag-one-sample':
         # Load LR model for tag prediction
         model = LogisticRegression(args.vocab_token_size, args.vocab_tag_size)
     else:
         if args.model == 'mnasnet':
             model = MnasNet(num_classes=outputClass[args.data_set])
+        elif args.model == "lr":
+            model = LogisticRegression(args.input_dim, outputClass[args.data_set])
         else:
             model = tormodels.__dict__[args.model](num_classes=outputClass[args.data_set])
 
@@ -205,7 +197,7 @@ def run_forward_pass(model, test_data):
 
     model.eval()
 
-    criterion = torch.nn.CrossEntropyLoss(reduction='none').to(device=device) if args.task != 'tag' else torch.nn.BCELoss(reduction='none').to(device=device)
+    criterion = torch.nn.CrossEntropyLoss(reduction='none').to(device=device) if args.task != 'tag' else torch.nn.BCEWithLogitsLoss(reduction='none').to(device=device)
    
     gradientSamples = []
 
@@ -249,7 +241,7 @@ def run_backward_pass(model, test_data):
     gradient_norm = 0
 
     #model.eval()
-    criterion = torch.nn.CrossEntropyLoss().to(device=device) if args.task != 'tag' else torch.nn.BCELoss().to(device=device)
+    criterion = torch.nn.CrossEntropyLoss().to(device=device) if args.task != 'tag' else torch.nn.BCEWithLogitsLoss().to(device=device)
     optimizer = MySGD(model.parameters(), lr=learning_rate, momentum=0.9, weight_decay=5e-4)
 
     gradientSamples = []
@@ -304,9 +296,18 @@ def run_client(clientId, cmodel, iters, learning_rate, argdicts = {}):
     if args.task != 'nlp':
         optimizer = MySGD(cmodel.parameters(), lr=learning_rate, momentum=0.9, weight_decay=5e-4)
     else:
-        optimizer = torch.optim.SGD(cmodel.parameters(), lr=learning_rate, momentum=0.9, weight_decay=5e-4)
+        no_decay = ["bias", "LayerNorm.weight"]
+        optimizer_grouped_parameters = [
+            {
+                "params": [p for n, p in cmodel.named_parameters() if not any(nd in n for nd in no_decay)],
+                "weight_decay": args.weight_decay,
+            },
+            {"params": [p for n, p in cmodel.named_parameters() if any(nd in n for nd in no_decay)], "weight_decay": 0.0},
+        ]
+        optimizer = AdamW(optimizer_grouped_parameters, lr=learning_rate, eps=args.adam_epsilon)
+        #optimizer = torch.optim.SGD(cmodel.parameters(), lr=learning_rate, momentum=0.9, weight_decay=5e-4)
 
-    criterion = torch.nn.CrossEntropyLoss(reduction='none').to(device=device) if args.task != 'tag' else torch.nn.BCELoss(reduction='none').to(device=device)
+    criterion = torch.nn.CrossEntropyLoss(reduction='none').to(device=device) if args.task != 'tag' else torch.nn.BCEWithLogitsLoss(reduction='none').to(device=device)
    
     train_data_itr_list = []
 
@@ -396,11 +397,12 @@ def run_client(clientId, cmodel, iters, learning_rate, argdicts = {}):
         data, target = Variable(data).to(device=device), Variable(target).to(device=device)
         local_trained += len(target)
 
-        optimizer.zero_grad()
-
+        if args.task != 'nlp':
+            optimizer.zero_grad()
         comp_start = time.time()
 
         if args.task == 'nlp':
+            cmodel.train()
             outputs = cmodel(data, masked_lm_labels=target) if args.mlm else cmodel(data, labels=target)
             loss = outputs[0]
             #torch.nn.utils.clip_grad_norm_(cmodel.parameters(), args.max_grad_norm)
@@ -518,7 +520,7 @@ def run(rank, model, train_data, test_data, queue, param_q, stop_flag, client_cf
     logging.info("====Worker: Start running")
 
     global nextClientIds, global_trainDB, last_model_tensors
-    criterion = torch.nn.CrossEntropyLoss().to(device=device) if args.task != 'tag' else torch.nn.BCELoss().to(device=device)
+    criterion = torch.nn.CrossEntropyLoss().to(device=device) if args.task != 'tag' else torch.nn.BCEWithLogitsLoss().to(device=device)
    
     global_trainDB = train_data
     startTime = time.time()
@@ -603,7 +605,7 @@ def run(rank, model, train_data, test_data, queue, param_q, stop_flag, client_cf
                     virtualClock.append(_time)
                     ranClients.append(nextClientId)
 
-                    gc.collect()
+                    #gc.collect()
             else:
                 logging.info('====Start test round {}'.format(epoch))
                 testResults = [0., 0., 0., 0.]
@@ -627,6 +629,7 @@ def run(rank, model, train_data, test_data, queue, param_q, stop_flag, client_cf
             uploadEpoch = -1
             sendDur = time.time() - sendStart
 
+            logging.info("====Pushing takes {} s".format(sendDur))
             # wait for new models
             receStart = time.time()
 
@@ -713,7 +716,10 @@ if __name__ == "__main__":
     stop_signal = manager.get_stop_signal()  # stop
 
     logging.info("====Start to initialize dataset")
+
+    gc.disable()
     model, train_dataset, test_dataset, client_cfg = init_dataset()
+    gc.enable()
 
     splitTrainRatio = []
 

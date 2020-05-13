@@ -50,13 +50,14 @@ class DataPartitioner(object):
         self.totalSamples = 0
         self.data_len = len(self.data)
         self.task = args.task
-        self.skip_partition = True if self.data.targets[0] is -1 else False
+        self.skip_partition = True if self.data.targets[0] is -1 or args.skip_partition is True else False
 
         if self.skip_partition:
             logging.info("====Warning: skip_partition is True")
 
         if self.skip_partition:
             pass
+
         elif splitConfFile is None:
             # categarize the samples
             for index, label in enumerate(self.labels):
