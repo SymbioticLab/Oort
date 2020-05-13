@@ -7,10 +7,10 @@ import time, sys
 
 
 def lp_solver(datas, systems, budget, preference, data_trans_size, init_values = None, time_limit = None, read_flag = False, write_flag = False, request_budget = True, solver = 'gurobi'):
-    if solver == 'gurobi'
-        lp_gurobi(datas, systems, budget, preference, data_trans_size, init_values, time_limit, read_flag, write_flag, request_budget)
+    if solver == 'gurobi':
+        return lp_gurobi(datas, systems, budget, preference, data_trans_size, init_values, time_limit, read_flag, write_flag, request_budget)
     else:
-        lp_cplex(datas, systems, budget, preference, data_trans_size, init_values, time_limit, read_flag, write_flag, request_budget)
+        return lp_cplex(datas, systems, budget, preference, data_trans_size, init_values, time_limit, read_flag, write_flag, request_budget)
 
 
 
@@ -102,8 +102,8 @@ def lp_cplex(datas, systems, budget, preference, data_size, init_values = None, 
     prob.objective.set_sense(prob.objective.sense.minimize)
 
     # Time to transmit the data
-    #trans_time = [round(data_size/systems[i][1], 2) for i in range(num_of_clients)]
-    trans_time = [10 for i in range(num_of_clients)]
+    trans_time = [round(data_size/systems[i][1], 2) for i in range(num_of_clients)]
+    #trans_time = [10 for i in range(num_of_clients)]
 
     #print(trans_time)
     # System speeds
@@ -152,7 +152,7 @@ def lp_cplex(datas, systems, budget, preference, data_size, init_values = None, 
             prob.indicator_constraints.add(indvar=status[i],
                                            complemented=1,
                                            rhs=0.0,
-                                           sense="G",
+                                           sense="L",
                                            lin_expr=cplex.SparsePair(ind=ind, val=val),
                                            name=f"ind{i}")
         prob.linear_constraints.add(lin_expr=[cplex.SparsePair(ind=status, val=[1.0] * num_of_clients)],
