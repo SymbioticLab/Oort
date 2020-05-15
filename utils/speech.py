@@ -1,6 +1,5 @@
 from __future__ import print_function
 import warnings
-from PIL import Image
 import os
 import os.path
 import numpy as np
@@ -8,6 +7,7 @@ import torch
 import codecs
 import string
 import time
+import librosa
 
 
 CLASSES = ['up', 'two', 'sheila', 'zero', 'yes', 'five', 'one', 'happy', 'marvin', 'no', 'go', 'seven', 'eight', 'tree', 'stop', 'down', 'forward', 'learn', 'house', 'three', 'six', 'backward', 'dog', 'cat', 'wow', 'left', 'off', 'on', 'four', 'visual', 'nine', 'bird', 'right', 'follow', 'bed']
@@ -53,7 +53,7 @@ class SPEECH():
         warnings.warn("test_data has been renamed data")
         return self.data
 
-    def __init__(self, root, train=True, transform=None, target_transform=None, class=CLASSES):
+    def __init__(self, root, train=True, transform=None, target_transform=None, classes=CLASSES):
 
         
         
@@ -80,6 +80,8 @@ class SPEECH():
         self.path = os.path.join(self.processed_folder, self.data_file)
         # load data and targets
         self.data, self.targets = self.load_file(self.path)
+        print(self.data[:10])
+        print(self.targets[:10])
 
 
     def __getitem__(self, index):
@@ -122,7 +124,6 @@ class SPEECH():
                                             self.data_file)))
 
     def load_file(self, path):
-        time = time.time() 
         rawData, rawTags = [], []
 
         audioFiles = os.scandir(path)
@@ -131,9 +132,40 @@ class SPEECH():
             audio = audio.name
             classTag = audio.split('_')[0]
             if classTag in self.classMapping:
-                rawData.append(imgFile)
+                rawData.append(audio)
                 rawTags.append(self.classMapping[classTag])
+           
 
-        dtime = time.time() - stime
-        print(dtime)
         return rawData, rawTags
+
+
+class BackgroundNoiseDataset():
+    """Dataset for silence / background noise."""
+
+    def __init__(self, folder, transform=None, sample_rate=16000, sample_length=1):
+        audio_files = [d for d in os.listdir(folder) if d.endswith('.wav')]
+        samples = []
+        for f in audio_files:
+            path = os.path.join(folder, f)
+            s, sr = librosa.load(path, sample_rate)
+            samples.append(s)
+
+        samples = np.hstack(samples)
+        c = int(sample_rate * sample_length)
+        r = len(samples) // c
+        self.samples = samples[:r*c].reshape(-1, c)
+        self.sample_rate = sample_rate
+        self.classes = CLASSES
+        self.transform = transform
+        self.path = folder
+
+    def __len__(self):
+        return len(self.samples)
+
+    def __getitem__(self, index):
+        data = {'samples': self.samples[index], 'sample_rate': self.sample_rate, 'target': 1, 'path': self.path}
+
+        if self.transform is not None:
+            data = self.transform(data)
+
+        return data
