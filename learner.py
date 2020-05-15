@@ -15,6 +15,7 @@ import torch.distributed as dist
 from torch.autograd import Variable
 from torchvision import datasets, transforms
 import torchvision.models as tormodels
+from torch.utils.data.sampler import WeightedRandomSampler
 
 from utils.openImg import *
 from utils.divide_data import partition_dataset, select_dataset, DataPartitioner
@@ -25,6 +26,9 @@ from utils.crosslossprox import CrossEntropyLossProx
 from utils.nlp import *
 from utils.inception import *
 from utils.stackoverflow import *
+from utils.transforms_wav import *
+from utils.transforms_stft import *
+from utils.speech import *
 
 #device = torch.device(args.to_device)
 #torch.set_num_threads(int(args.threads))
@@ -121,7 +125,7 @@ def init_myprocesses(rank, size, model,
 def init_dataset():
     global tokenizer, device
 
-    outputClass = {'Mnist': 10, 'cifar10': 10, "imagenet": 1000, 'emnist': 47, 'openImg': 596}
+    outputClass = {'Mnist': 10, 'cifar10': 10, "imagenet": 1000, 'emnist': 47, 'openImg': 596, 'google_speech': 35}
 
     if args.data_set == 'Mnist':
         train_transform, test_transform = get_data_transform('mnist')
@@ -160,8 +164,29 @@ def init_dataset():
     elif args.data_set == 'stackoverflow':
         train_dataset = stackoverflow(args.data_dir, train=True)
         test_dataset = stackoverflow(args.data_dir, train=False)
+    
+    elif args.data_set == 'google_speech':
+        bkg = '_background_noise_'
+        data_aug_transform = Compose([ChangeAmplitude(), ChangeSpeedAndPitchAudio(), FixAudioLength(), ToSTFT(), StretchAudioOnSTFT(), TimeshiftAudioOnSTFT(), FixSTFTDimension()])
+        bg_dataset = BackgroundNoiseDataset(os.path.join(args.data_dir, bkg), data_aug_transform)
+        add_bg_noise = AddBackgroundNoiseOnSTFT(bg_dataset)
+        train_feature_transform = Compose([ToMelSpectrogramFromSTFT(n_mels=n_mels), DeleteSTFT(), ToTensor('mel_spectrogram', 'input')])
+        train_dataset = SPEECH(args.data_dir, train= True,
+                                transform=Compose([LoadAudio(),
+                                         data_aug_transform,
+                                         add_bg_noise,
+                                         train_feature_transform]))
+        valid_feature_transform = Compose([ToMelSpectrogram(n_mels=n_mels), ToTensor('mel_spectrogram', 'input')])
+        test_dataset = SPEECH('../speech', train=False,
+                                transform=Compose([LoadAudio(),
+                                         FixAudioLength(),
+                                         valid_feature_transform]))
+                
+
+
+
     else:
-        print('DataSet must be {}!'.format(['Mnist', 'Cifar', 'openImg', 'blog']))
+        print('DataSet must be {}!'.format(['Mnist', 'Cifar', 'openImg', 'blog', 'stackoverflow', 'speech']))
         sys.exit(-1)
 
     logging.info("====Initialize the model")
@@ -173,6 +198,24 @@ def init_dataset():
     elif args.task == 'tag-one-sample':
         # Load LR model for tag prediction
         model = LogisticRegression(args.vocab_token_size, args.vocab_tag_size)
+    elif args.task == 'speech':
+        
+        if args.model == 'mobilenet':
+            model = mobilenet_v2(num_classes=outputClass[args.data_set], inchannels=1)
+        elif args.model == "resnet18":
+            model = resnet18(num_classes=outputClass[args.data_set], inchannels=1)
+        elif model_name == "resnet34":
+            model = resnet34(num_classes=outputClass[args.data_set], in_channels=1)
+        elif model_name == "resnet50":
+            model = resnet50(num_classes=outputClass[args.data_set], in_channels=1)
+        elif model_name == "resnet101":
+            model = resnet101(num_classes=outputClass[args.data_set], in_channels=1)
+        elif model_name == "resnet152":
+            model = resnet152(num_classes=outputClass[args.data_set], in_channels=1)
+        else:
+            # Should not reach here
+            print('Model must be resnet or mobilenet')
+            sys.exit(-1)
     else:
         if args.model == 'mnasnet':
             model = MnasNet(num_classes=outputClass[args.data_set])

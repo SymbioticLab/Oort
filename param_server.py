@@ -173,7 +173,7 @@ def init_myprocesses(rank, size, model, test_data, queue, param_q, stop_signal, 
 def init_dataset():
     global tokenizer
 
-    outputClass = {'Mnist': 10, 'cifar10': 10, "imagenet": 1000, 'emnist': 47, 'openImg': 596}
+    outputClass = {'Mnist': 10, 'cifar10': 10, "imagenet": 1000, 'emnist': 47, 'openImg': 596, 'google_speech': 35}
 
     # if args.data_set == 'Mnist':
     #     train_transform, test_transform = get_data_transform('mnist')
@@ -226,6 +226,24 @@ def init_dataset():
     elif args.task == 'tag-one-sample':
         # Load LR model for tag prediction
         model = LogisticRegression(args.vocab_token_size, args.vocab_tag_size)
+    elif args.task == 'speech':
+
+        if args.model == 'mobilenet':
+            model = mobilenet_v2(num_classes=outputClass[args.data_set], inchannels=1)
+        elif args.model == "resnet18":
+            model = resnet18(num_classes=outputClass[args.data_set], inchannels=1)
+        elif model_name == "resnet34":
+            model = resnet34(num_classes=outputClass[args.data_set], in_channels=1)
+        elif model_name == "resnet50":
+            model = resnet50(num_classes=outputClass[args.data_set], in_channels=1)
+        elif model_name == "resnet101":
+            model = resnet101(num_classes=outputClass[args.data_set], in_channels=1)
+        elif model_name == "resnet152":
+            model = resnet152(num_classes=outputClass[args.data_set], in_channels=1)
+        else:
+            # Should not reach here
+            print('Model must be resnet or mobilenet')
+            sys.exit(-1)
     else:
         if args.model == 'mnasnet':
             model = MnasNet(num_classes=outputClass[args.data_set])

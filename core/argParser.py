@@ -235,6 +235,9 @@ parser.add_argument("--server_port", type=str, default="", help="For distant deb
 parser.add_argument("--vocab_token_size", type=int, default=10000, help="For vocab token size")
 parser.add_argument("--vocab_tag_size", type=int, default=500, help="For vocab tag size")
 
+# for speech
+parser.add_argument("--num_classes", type=int, default=35, help="For number of classes in speech")
+
 
 args = parser.parse_args()
 

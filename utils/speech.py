@@ -80,8 +80,8 @@ class SPEECH():
         self.path = os.path.join(self.processed_folder, self.data_file)
         # load data and targets
         self.data, self.targets = self.load_file(self.path)
-        print(self.data[:10])
-        print(self.targets[:10])
+        #print(self.data[:10])
+        #print(self.targets[:10])
 
 
     def __getitem__(self, index):
@@ -101,8 +101,8 @@ class SPEECH():
 
         if self.target_transform is not None:
             target = self.target_transform(target)
-
-        return data
+  
+        return data['input'], data['target']
 
     def __len__(self):
         return len(self.data)
@@ -127,13 +127,17 @@ class SPEECH():
         rawData, rawTags = [], []
 
         audioFiles = os.scandir(path)
-
-        for audio in audioFiles:
+        
+        clientMap = {}
+        for idx, audio in enumerate(audioFiles):
             audio = audio.name
             classTag = audio.split('_')[0]
             if classTag in self.classMapping:
-                rawData.append(audio)
+                rawData.append(os.path.join(path, audio))
                 rawTags.append(self.classMapping[classTag])
+            
+            
+        
            
 
         return rawData, rawTags
