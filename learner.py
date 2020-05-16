@@ -236,13 +236,13 @@ def init_dataset():
         data_aug_transform = transforms.Compose([ChangeAmplitude(), ChangeSpeedAndPitchAudio(), FixAudioLength(), ToSTFT(), StretchAudioOnSTFT(), TimeshiftAudioOnSTFT(), FixSTFTDimension()])
         bg_dataset = BackgroundNoiseDataset(os.path.join(args.data_dir, bkg), data_aug_transform)
         add_bg_noise = AddBackgroundNoiseOnSTFT(bg_dataset)
-        train_feature_transform = transforms.Compose([ToMelSpectrogramFromSTFT(n_mels=40), DeleteSTFT(), ToTensor('mel_spectrogram', 'input')])
+        train_feature_transform = transforms.Compose([ToMelSpectrogramFromSTFT(n_mels=32), DeleteSTFT(), ToTensor('mel_spectrogram', 'input')])
         train_dataset = SPEECH(args.data_dir, train= True,
                                 transform=transforms.Compose([LoadAudio(),
                                          data_aug_transform,
                                          add_bg_noise,
                                          train_feature_transform]))
-        valid_feature_transform = transforms.Compose([ToMelSpectrogram(n_mels=40), ToTensor('mel_spectrogram', 'input')])
+        valid_feature_transform = transforms.Compose([ToMelSpectrogram(n_mels=32), ToTensor('mel_spectrogram', 'input')])
         test_dataset = SPEECH(args.data_dir, train=False,
                                 transform=transforms.Compose([LoadAudio(),
                                          FixAudioLength(),
@@ -476,6 +476,8 @@ def run_client(clientId, cmodel, iters, learning_rate, argdicts = {}):
 
         data, target = Variable(data).to(device=device), Variable(target).to(device=device)
         local_trained += len(target)
+        if args.task == 'speech':
+            data = torch.unsqueeze(data, 1)
 
         if args.task != 'nlp':
             optimizer.zero_grad()
@@ -828,8 +830,10 @@ if __name__ == "__main__":
     # load data partitioner (entire_train_data)
     dataConf = os.path.join(args.data_dir, 'sampleConf') if args.data_set == 'imagenet' else None
 
+    logging.info("==== Starting training data partitioner =====")
     entire_train_data = DataPartitioner(data=train_dataset, splitConfFile=dataConf, 
                         numOfClass=args.num_class, dataMapFile=args.data_mapfile)
+    logging.info("==== Finished training data partitioner =====")
 
     dataDistribution = [int(x) for x in args.sequential.split('-')]
     distributionParam = [float(x) for x in args.zipf_alpha.split('-')]
@@ -842,7 +846,10 @@ if __name__ == "__main__":
     report_data_info(this_rank, q, entire_train_data)
     splitTestRatio = []
 
+    logging.info("==== Starting testing data partitioner =====")
     testsetPartitioner = DataPartitioner(data=test_dataset, isTest=True, numOfClass=args.num_class)
+    logging.info("==== Finished testing data partitioner =====")
+
     partition_dataset(testsetPartitioner, [i for i in range(world_size-1)], splitTestRatio)
     test_data = select_dataset(this_rank, testsetPartitioner, batch_size=args.test_bsz, isTest=True, collate_fn=collate if args.task=='nlp' else None)
 

@@ -153,11 +153,21 @@ def test_model(rank, model, test_data, criterion=nn.NLLLoss(), tokenizer=None):
                 targets_list += [target_index]
 
             test_loss += loss.data.item()
+        elif args.task == 'speech':
+            data, target = Variable(data).cuda(), Variable(target).cuda()
+            data = torch.unsqueeze(data, 1)
 
+            output = model(data) 
+            loss = criterion(output, target)
+                
+            test_loss += loss.data.item()  # Variable.data
+            acc = accuracy(output, target, topk=(1, 5))
+
+            correct += acc[0].item()
+            top_5 += acc[1].item()
         else:
             data, target = Variable(data).cuda(), Variable(target).cuda()
 
-            #output = model(data)
             output = model(data[None, ...]) 
             loss = criterion(output, target)
                 

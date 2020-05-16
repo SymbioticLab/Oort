@@ -7,6 +7,7 @@ import torch
 import codecs
 import string
 import time
+import logging
 import librosa
 from torch.utils.data import Dataset
 
@@ -99,9 +100,10 @@ class SPEECH():
         if self.transform is not None:
             data = self.transform(data)
 
-        if self.target_transform is not None:
-            target = self.target_transform(target)
-  
+        #if self.target_transform is not None:
+        #    target = self.target_transform(target)
+        #logging.info('====== data input shape is =====')
+        #logging.info(data['input'].shape)
         return data['input'], data['target']
 
     def __len__(self):
@@ -135,11 +137,6 @@ class SPEECH():
             if classTag in self.classMapping:
                 rawData.append(os.path.join(path, audio))
                 rawTags.append(self.classMapping[classTag])
-            
-            
-        
-           
-
         return rawData, rawTags
 
 
