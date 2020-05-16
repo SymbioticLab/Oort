@@ -18,7 +18,7 @@ from torch.multiprocessing import Process
 from torch.multiprocessing import Queue
 from torch.utils.data import DataLoader
 from torchvision import datasets, transforms
-from torchvision.transforms import *
+import torchvision.models as tormodels
 
 from utils.models import *
 from utils.utils_data import get_data_transform
