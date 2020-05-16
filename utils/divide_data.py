@@ -36,9 +36,10 @@ class DataPartitioner(object):
         self.rng.seed(seed)
         self.data = data
         self.labels = self.data.targets
-        self.is_trace = False
+        self.is_trace = False   
         self.dataMapFile = None
         self.args = args
+        self.isTest = isTest
 
         np.random.seed(seed)
 
@@ -304,7 +305,7 @@ class DataPartitioner(object):
             # may need to filter ...
             indicesToRm = set()
             indexes = None
-            if self.args.filter_less != 0:
+            if self.args.filter_less != 0 and self.isTest is False:
                 if self.task != 'nlp':
                     indicesToRm = set(self.loadFilterInfo())
                 else:

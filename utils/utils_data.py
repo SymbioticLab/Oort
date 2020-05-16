@@ -8,11 +8,17 @@ from torchvision import transforms
 def get_data_transform(data: str):
     if data == 'mnist':
         train_transform = transforms.Compose([
+            #transforms.Grayscale(num_output_channels=1),
+	    transforms.Resize((28,28)), 
+            transforms.RandomHorizontalFlip(),
             transforms.ToTensor(),
             transforms.Normalize((0.1307,), (0.3081,))
         ])
 
         test_transform = transforms.Compose([
+	    #transforms.Grayscale(num_output_channels=1),
+            transforms.Resize((28,28)), 
+            transforms.RandomHorizontalFlip(),
             transforms.ToTensor(),
             transforms.Normalize((0.1307,), (0.3081,))
         ])
@@ -80,7 +86,7 @@ def get_data_transform(data: str):
     elif data == 'openImg':
         train_transform = transforms.Compose([
             #transforms.RandomResizedCrop(64),
-        transforms.Resize((96,96)), 
+            transforms.Resize((96,96)), 
             transforms.RandomHorizontalFlip(),
             transforms.ToTensor(),
             #transforms.Resize(224),   # input arguments: length&width of a figure

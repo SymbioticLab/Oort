@@ -551,6 +551,11 @@ def run_client(clientId, cmodel, iters, learning_rate, argdicts = {}):
             optimizer.step()
             cmodel.zero_grad()
 
+            # proxy term 
+            if args.proxy_avg:
+                for idx, param in enumerate(cmodel.parameters()):
+                    param.data += learning_rate * args.proxy_mu * (last_model_tensors[idx] - param.data)
+
         comp_duration = (time.time() - comp_start)
     
         logging.info('For client {}, upload iter {}, epoch {}, Batch {}/{}, Loss:{} | TotalTime {} | Comptime: {} | epoch_train_loss {}\n'

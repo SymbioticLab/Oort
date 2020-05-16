@@ -59,9 +59,8 @@ class FEMNIST():
 
 
         # load data and targets
-        self.raw_data, self.targets = self.load_file(self.root)
-        self.data = [x.split('/')[-1].replace('.png', '') for x in self.raw_data]
-        print(len(self.data))
+        self.raw_data, self.data, self.targets = self.load_file(self.root)
+        #self.mapping = {idx:file for idx, file in enumerate(raw_data)}
 
         self.imgview = imgview
 
@@ -73,14 +72,12 @@ class FEMNIST():
         Returns:
             tuple: (image, target) where target is index of the target class.
         """
+
         img_path, target = self.raw_data[index], self.targets[index]
 
         # doing this so that it is consistent with all other datasets
         # to return a PIL Image
         img = Image.open(os.path.join(self.root, img_path))
-        
-        # avoid channel error
-        img = img.convert('RGB')
 
         if self.transform is not None:
             img = self.transform(img)
@@ -88,6 +85,7 @@ class FEMNIST():
         if self.target_transform is not None:
             target = self.target_transform(target)
 
+        print(img.shape, target)
         return img, target
 
     def __len__(self):
@@ -110,14 +108,17 @@ class FEMNIST():
         if self.train:
             with open(os.path.join(path, 'train_img_to_path'), 'rb') as f:
                 rawImg = pickle.load(f)
+                rawPath = pickle.load(f)
 
             with open(os.path.join(path, 'train_img_to_target'), 'rb') as f:
                 rawTags = pickle.load(f)
         else:
             with open(os.path.join(path, 'test_img_to_path'), 'rb') as f:
                 rawImg = pickle.load(f)
+                rawPath = pickle.load(f)
 
             with open(os.path.join(path, 'test_img_to_target'), 'rb') as f:
                 rawTags = pickle.load(f)
 
-        return rawImg, rawTags
+        return rawImg, rawPath, rawTags
+
