@@ -69,9 +69,9 @@ class SPEECH():
         else:
             self.data_file = self.test_file
 
-        if not self._check_exists():
-            raise RuntimeError('Dataset not found.' +
-                               ' You have to download it')
+        #if not self._check_exists():
+        #    raise RuntimeError('Dataset not found.' +
+        #                       ' You have to download it')
 
         # # load class information
         # with open(os.path.join(self.processed_folder, 'classTags'), 'r') as fin:

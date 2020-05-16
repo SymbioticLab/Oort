@@ -1,7 +1,7 @@
 import sys, os, time, datetime, random
 
 
-paramsCmd = ' --ps_ip=10.255.11.96 --epochs=20000 --upload_epoch=20  --dump_epoch=100 --learning_rate=0.04 --decay_epoch=5 --model_avg=True --batch_size=32 '
+paramsCmd = ' --ps_ip=10.255.11.92 --model=lr --epochs=20000 --upload_epoch=20  --dump_epoch=100 --learning_rate=0.04 --decay_epoch=5 --model_avg=True --batch_size=32 '
 
 
 os.system("bhosts > vms")
@@ -16,7 +16,7 @@ with open('quotas', 'r') as fin:
         items = v.strip().split()
         quotalist[items[0]] = int(items[1])
 
-threadQuota = 10
+threadQuota = 5
 
 with open('vms', 'r') as fin:
     lines = fin.readlines()
@@ -100,7 +100,7 @@ for w in range(1, numOfWorkers + 1):
 rawCmdPs = '\npython ~/DMFL/param_server.py ' + paramsCmd + ' --this_rank=0 ' + params
 
 with open('server.lsf', 'w') as fout:
-    scriptPS = template + '\n#BSUB -J server\n#BSUB -e server{}'.format(timeStamp) + '.e\n#BSUB -o server{}'.format(timeStamp) + '.o\n' + '#BSUB -m "gpu-cn006"\n\n' + rawCmdPs
+    scriptPS = template + '\n#BSUB -J server\n#BSUB -e server{}'.format(timeStamp) + '.e\n#BSUB -o server{}'.format(timeStamp) + '.o\n' + '#BSUB -m "gpu-cn002"\n\n' + rawCmdPs
     fout.writelines(scriptPS)
 
 # execute ps

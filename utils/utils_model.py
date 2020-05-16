@@ -157,7 +157,8 @@ def test_model(rank, model, test_data, criterion=nn.NLLLoss(), tokenizer=None):
         else:
             data, target = Variable(data).cuda(), Variable(target).cuda()
 
-            output = model(data)
+            #output = model(data)
+            output = model(data[None, ...]) 
             loss = criterion(output, target)
                 
             test_loss += loss.data.item()  # Variable.data
