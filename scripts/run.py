@@ -1,7 +1,7 @@
 import sys, os, time, datetime, random
 
 
-paramsCmd = ' --ps_ip=10.255.11.92 --model=lr --epochs=20000 --upload_epoch=20  --dump_epoch=1000 --decay_epoch=5 --model_avg=True --batch_size=32 '
+paramsCmd = ' --ps_ip=10.255.11.92 --model=lr --epochs=20000 --upload_epoch=20  --dump_epoch=100 --learning_rate=0.04 --decay_epoch=5 --model_avg=True --batch_size=32 '
 
 
 os.system("bhosts > vms")

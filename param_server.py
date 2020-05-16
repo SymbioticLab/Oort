@@ -28,6 +28,10 @@ from utils.nlp import *
 from utils.inception import *
 from utils.stackoverflow import *
 from utils.yogi import *
+from utils.transforms_wav import *
+from utils.transforms_stft import *
+from utils.speech import *
+from utils.resnet_speech import *
 
 #device = torch.device(args.to_device)
 
@@ -209,7 +213,7 @@ def init_dataset():
         if args.model == 'mobilenet':
             model = mobilenet_v2(num_classes=outputClass[args.data_set], inchannels=1)
         elif args.model == "resnet18":
-            model = resnet18(num_classes=outputClass[args.data_set], inchannels=1)
+            model = resnet18(num_classes=outputClass[args.data_set], in_channels=1)
         elif model_name == "resnet34":
             model = resnet34(num_classes=outputClass[args.data_set], in_channels=1)
         elif model_name == "resnet50":

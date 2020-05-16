@@ -26,9 +26,10 @@ from utils.crosslossprox import CrossEntropyLossProx
 from utils.nlp import *
 from utils.inception import *
 from utils.stackoverflow import *
-# from utils.transforms_wav import *
-# from utils.transforms_stft import *
-# from utils.speech import *
+from utils.transforms_wav import *
+from utils.transforms_stft import *
+from utils.speech import *
+from utils.resnet_speech import *
 from utils.femnist import *
 
 #device = torch.device(args.to_device)
@@ -164,7 +165,7 @@ def init_dataset():
         if args.model == 'mobilenet':
             model = mobilenet_v2(num_classes=outputClass[args.data_set], inchannels=1)
         elif args.model == "resnet18":
-            model = resnet18(num_classes=outputClass[args.data_set], inchannels=1)
+            model = resnet18(num_classes=outputClass[args.data_set], in_channels=1)
         elif model_name == "resnet34":
             model = resnet34(num_classes=outputClass[args.data_set], in_channels=1)
         elif model_name == "resnet50":
@@ -232,18 +233,18 @@ def init_dataset():
     
     elif args.data_set == 'google_speech':
         bkg = '_background_noise_'
-        data_aug_transform = Compose([ChangeAmplitude(), ChangeSpeedAndPitchAudio(), FixAudioLength(), ToSTFT(), StretchAudioOnSTFT(), TimeshiftAudioOnSTFT(), FixSTFTDimension()])
+        data_aug_transform = transforms.Compose([ChangeAmplitude(), ChangeSpeedAndPitchAudio(), FixAudioLength(), ToSTFT(), StretchAudioOnSTFT(), TimeshiftAudioOnSTFT(), FixSTFTDimension()])
         bg_dataset = BackgroundNoiseDataset(os.path.join(args.data_dir, bkg), data_aug_transform)
         add_bg_noise = AddBackgroundNoiseOnSTFT(bg_dataset)
-        train_feature_transform = Compose([ToMelSpectrogramFromSTFT(n_mels=n_mels), DeleteSTFT(), ToTensor('mel_spectrogram', 'input')])
+        train_feature_transform = transforms.Compose([ToMelSpectrogramFromSTFT(n_mels=40), DeleteSTFT(), ToTensor('mel_spectrogram', 'input')])
         train_dataset = SPEECH(args.data_dir, train= True,
-                                transform=Compose([LoadAudio(),
+                                transform=transforms.Compose([LoadAudio(),
                                          data_aug_transform,
                                          add_bg_noise,
                                          train_feature_transform]))
-        valid_feature_transform = Compose([ToMelSpectrogram(n_mels=n_mels), ToTensor('mel_spectrogram', 'input')])
-        test_dataset = SPEECH('../speech', train=False,
-                                transform=Compose([LoadAudio(),
+        valid_feature_transform = transforms.Compose([ToMelSpectrogram(n_mels=40), ToTensor('mel_spectrogram', 'input')])
+        test_dataset = SPEECH(args.data_dir, train=False,
+                                transform=transforms.Compose([LoadAudio(),
                                          FixAudioLength(),
                                          valid_feature_transform]))
     else:

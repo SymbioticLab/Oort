@@ -8,7 +8,7 @@ import codecs
 import string
 import time
 import librosa
-
+from torch.utils.data import Dataset
 
 CLASSES = ['up', 'two', 'sheila', 'zero', 'yes', 'five', 'one', 'happy', 'marvin', 'no', 'go', 'seven', 'eight', 'tree', 'stop', 'down', 'forward', 'learn', 'house', 'three', 'six', 'backward', 'dog', 'cat', 'wow', 'left', 'off', 'on', 'four', 'visual', 'nine', 'bird', 'right', 'follow', 'bed']
 
@@ -69,9 +69,9 @@ class SPEECH():
         else:
             self.data_file = self.test_file
 
-        if not self._check_exists():
-            raise RuntimeError('Dataset not found.' +
-                               ' You have to download it')
+        #if not self._check_exists():
+        #    raise RuntimeError('Dataset not found.' +
+        #                       ' You have to download it')
 
         # # load class information
         # with open(os.path.join(self.processed_folder, 'classTags'), 'r') as fin:
@@ -173,3 +173,4 @@ class BackgroundNoiseDataset():
             data = self.transform(data)
 
         return data
+
