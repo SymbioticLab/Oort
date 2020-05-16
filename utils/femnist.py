@@ -59,7 +59,8 @@ class FEMNIST():
 
 
         # load data and targets
-        self.data, self.targets = self.load_file(self.root)
+        self.raw_data, self.targets = self.load_file(self.root)
+        self.data = [x.split('/')[-1].replace('.png', '') for x in self.raw_data]
         print(len(self.data))
 
         self.imgview = imgview
@@ -72,7 +73,7 @@ class FEMNIST():
         Returns:
             tuple: (image, target) where target is index of the target class.
         """
-        img_path, target = self.data[index], self.targets[index]
+        img_path, target = self.raw_data[index], self.targets[index]
 
         # doing this so that it is consistent with all other datasets
         # to return a PIL Image

@@ -12,7 +12,7 @@ class UCB(object):
 
         self.exploration = 0.9
         self.decay_factor = 0.98
-        self.exploration_min = 0.2
+        self.exploration_min = args.exploration_min
         self.alpha = 0.3
 
         self.rng = Random()
@@ -164,8 +164,20 @@ class UCB(object):
         self.exploration = max(self.exploration*self.decay_factor, self.exploration_min)
         exploitLen = min(int(numOfSamples*(1.0 - self.exploration)), len(clientLakes))
 
-        # take the top-k, and then sample by probability
-        pickedClients = sorted(scores, key=scores.get, reverse=True)[:int(self.sample_window*exploitLen)]
+        # take the top-k, and then sample by probability, take 95% of the cut-off loss
+        sortedClientUtil = sorted(scores, key=scores.get, reverse=True)#int(self.sample_window*exploitLen)]
+
+        # take cut-off utility
+        cut_off_util = scores[sortedClientUtil[exploitLen]] * 0.95
+
+        pickedClients = []
+        for clientId in sortedClientUtil:
+            if scores[clientId] < cut_off_util:
+                break
+            pickedClients.append(clientId)
+
+        augment_factor = len(pickedClients)
+
         totalSc = float(sum([scores[key] for key in pickedClients]))
         pickedClients = list(np2.random.choice(pickedClients, exploitLen, p=[scores[key]/totalSc for key in pickedClients], replace=False))
         self.exploitClients = pickedClients
@@ -215,8 +227,8 @@ class UCB(object):
         top_k_score.append(self.totalArms[last_exploit] + \
             [(self.totalArms[last_exploit][0] - min_reward)/float(range_reward), self.alpha*((cur_time-self.totalArms[last_exploit][1]) - min_staleness)/float(range_staleness)])
 
-        logging.info("====At time {}, UCB exploited {}, exploreLen {}, un-explored {}, indeed un-explored {}, exploration {}, round_threshold {}, top-k score is {}"
-            .format(cur_time, numOfExploited, exploreLen, len(self.totalArms) - numOfExploited, len(self.unexplored), self.exploration, self.round_threshold, top_k_score))
+        logging.info("====At time {}, UCB exploited {}, augment_factor {}, exploreLen {}, un-explored {}, indeed un-explored {}, exploration {}, round_threshold {}, top-k score is {}"
+            .format(cur_time, numOfExploited, augment_factor/exploitLen, exploreLen, len(self.totalArms) - numOfExploited, len(self.unexplored), self.exploration, self.round_threshold, top_k_score))
         logging.info("====At time {}, all rewards are {}".format(cur_time, allloss))
 
         return pickedClients

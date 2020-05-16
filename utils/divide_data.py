@@ -231,21 +231,26 @@ class DataPartitioner(object):
             numOfClients = len(self.clientToData)
 
         else:
-            logging.info("====partitionTraceNLP slice_index is {}".format(self.data.slice_index))
+            #logging.info("====partitionTraceNLP slice_index is {}".format(self.data.slice_index))
 
             # data share the same index with labels
+            cut_off_clients = len(self.data.slice_index)
             for index, sample in enumerate(self.data.slice_index):
                 clientId = index
                 labelId = 0
 
                 if clientId not in clientToData:
+                    if base + sample > self.data_len:
+                        cut_off_clients = index - 1
+                        break
+
                     clientToData[clientId] = [base+i for i in range(sample)]
                     clientNumSamples[clientId] = [0] * numOfLabels
                     base += sample
 
                 clientNumSamples[clientId][labelId] += sample
 
-            numOfClients = len(self.data.slice_index)
+            numOfClients = cut_off_clients #len(self.data.slice_index)
 
         self.classPerWorker = np.zeros([numOfClients, numOfLabels])
 
@@ -486,5 +491,4 @@ def select_dataset(rank: int, partition: DataPartitioner, batch_size: int, isTes
         return DataLoader(partition, batch_size=batch_size, shuffle=True, pin_memory=False, num_workers=numOfThreads, drop_last=dropLast, timeout=timeOut)#, worker_init_fn=np.random.seed(12))
     else:
         return DataLoader(partition, batch_size=batch_size, shuffle=True, pin_memory=False, num_workers=numOfThreads, drop_last=dropLast, timeout=timeOut, collate_fn=collate_fn)#, worker_init_fn=np.random.seed(12))
-
 

@@ -26,9 +26,10 @@ from utils.crosslossprox import CrossEntropyLossProx
 from utils.nlp import *
 from utils.inception import *
 from utils.stackoverflow import *
-from utils.transforms_wav import *
-from utils.transforms_stft import *
-from utils.speech import *
+# from utils.transforms_wav import *
+# from utils.transforms_stft import *
+# from utils.speech import *
+from utils.femnist import *
 
 #device = torch.device(args.to_device)
 #torch.set_num_threads(int(args.threads))
@@ -39,25 +40,35 @@ modelDir = os.getcwd() + "/../../models/"  + args.model
 modelPath = modelDir+'/'+str(args.model)+'.pth.tar' if args.model_path is None else args.model_path
 
 def init_logging():
-    global logDir
+    global logDir, logging
 
     if not os.path.isdir(logDir):
         os.makedirs(logDir, exist_ok=True)
 
-    # files = [logFile, '/tmp/sampleDistribution']
-    # for file in files:
-    #     with open(file, "w") as fout:
-    #         pass
-
-init_logging()
-
-logging.basicConfig(format='%(asctime)s,%(msecs)d %(levelname)s %(message)s',
+    logging.basicConfig(format='%(asctime)s,%(msecs)d %(levelname)s %(message)s',
                     datefmt='%H:%M:%S',
                     level=logging.INFO,
                     handlers=[
                         logging.FileHandler(logFile, mode='a'),
                         logging.StreamHandler()
                     ])
+
+def get_ps_ip():
+    global args
+
+    ip_file = logDir + '../server/ip'
+    ps_ip = None
+    while not os.path.exists(ip_file):
+        time.sleep(1)
+
+    with open(ip_file, 'rb') as fin:
+        ps_ip = pickle.load(fin)
+
+    args.ps_ip = ps_ip
+    logging.info('====Config ps_ip on {}, args.ps_ip is {}'.format(ps_ip, args.ps_ip))
+
+init_logging()
+get_ps_ip()
 
 entire_train_data = None
 os.environ['MASTER_ADDR'] = args.ps_ip
@@ -68,22 +79,35 @@ os.environ['GLOO_SOCKET_IFNAME'] = 'vlan260'
 # os.environ['MKL_NUM_THREADS'] = args.threads
 
 # try to pick the right gpus
-cudaPrefix = 'cuda:'
-deviceId = None
-device = torch.device(args.to_device)
+# cudaPrefix = 'cuda'
+# logging.info("====CUDA_VISIBLE_DEVICES is {}, {}".format(os.environ["CUDA_VISIBLE_DEVICES"], torch.cuda.device_count()))
 
+# deviceId = int(os.environ["CUDA_VISIBLE_DEVICES"])
+# torch.cuda.set_device(0)
+# device = torch.device(cudaPrefix)#+str(0))
+
+# logging.info("====Pick gpu {}, {}".format(deviceId, device))
+
+device = None
+deviceId = None
+sampledClientSet = set()
+
+# try to pick the right gpus
+cudaPrefix = 'cuda:'
 for i in range(4):
     try:
         device = torch.device(cudaPrefix+str(i))
         torch.cuda.set_device(i)
-        logging.info(torch.rand(1).to(device=device))
         deviceId = i
+        logging.info(torch.rand(1).to(device=device))
         break
     except Exception as e:
         # no gpus available
         if i == 4:
             logging.info(e)
-            sys.exit(-1)
+            deviceId = None
+            logging.info('Turn to CPU device ...')
+            device = 'cpu'
         else:
             continue
 
@@ -125,7 +149,43 @@ def init_myprocesses(rank, size, model,
 def init_dataset():
     global tokenizer, device
 
-    outputClass = {'Mnist': 10, 'cifar10': 10, "imagenet": 1000, 'emnist': 47, 'openImg': 596, 'google_speech': 35}
+    outputClass = {'Mnist': 10, 'cifar10': 10, "imagenet": 1000, 'emnist': 47, 'openImg': 596, 'google_speech': 35, 'femnist': 62}
+
+    logging.info("====Initialize the model")
+
+    if args.task == 'nlp':
+        # we should train from scratch
+        config = AutoConfig.from_pretrained(os.path.join(args.data_dir, 'albert-base-v2-config.json'))
+        model = AutoModelWithLMHead.from_config(config)
+    elif args.task == 'tag-one-sample':
+        # Load LR model for tag prediction
+        model = LogisticRegression(args.vocab_token_size, args.vocab_tag_size)
+    elif args.task == 'speech':
+        if args.model == 'mobilenet':
+            model = mobilenet_v2(num_classes=outputClass[args.data_set], inchannels=1)
+        elif args.model == "resnet18":
+            model = resnet18(num_classes=outputClass[args.data_set], inchannels=1)
+        elif model_name == "resnet34":
+            model = resnet34(num_classes=outputClass[args.data_set], in_channels=1)
+        elif model_name == "resnet50":
+            model = resnet50(num_classes=outputClass[args.data_set], in_channels=1)
+        elif model_name == "resnet101":
+            model = resnet101(num_classes=outputClass[args.data_set], in_channels=1)
+        elif model_name == "resnet152":
+            model = resnet152(num_classes=outputClass[args.data_set], in_channels=1)
+        else:
+            # Should not reach here
+            print('Model must be resnet or mobilenet')
+            sys.exit(-1)
+    else:
+        if args.model == 'mnasnet':
+            model = MnasNet(num_classes=outputClass[args.data_set])
+        elif args.model == "lr":
+            model = LogisticRegression(args.input_dim, outputClass[args.data_set])
+        else:
+            model = tormodels.__dict__[args.model](num_classes=outputClass[args.data_set])
+
+    model = model.to(device=device)
 
     if args.data_set == 'Mnist':
         train_transform, test_transform = get_data_transform('mnist')
@@ -150,6 +210,11 @@ def init_dataset():
     elif args.data_set == 'emnist':
         test_dataset = datasets.EMNIST(args.data_dir, split='balanced', train=False, download=True, transform=transforms.ToTensor())
         train_dataset = datasets.EMNIST(args.data_dir, split='balanced', train=True, download=True, transform=transforms.ToTensor())
+
+    elif args.data_set == 'femnist':
+        train_transform, test_transform = get_data_transform('mnist') 
+        train_dataset = FEMNIST(args.data_dir, train=True, transform=train_transform)
+        test_dataset = FEMNIST(args.data_dir, train=False, transform=test_transform)
 
     elif args.data_set == 'openImg':
         transformer_ns = 'openImg' if args.model != 'inception_v3' else 'openImgInception'
@@ -181,48 +246,9 @@ def init_dataset():
                                 transform=Compose([LoadAudio(),
                                          FixAudioLength(),
                                          valid_feature_transform]))
-                
-
-
-
     else:
         print('DataSet must be {}!'.format(['Mnist', 'Cifar', 'openImg', 'blog', 'stackoverflow', 'speech']))
         sys.exit(-1)
-
-    logging.info("====Initialize the model")
-
-    if args.task == 'nlp':
-        # we should train from scratch
-        config = AutoConfig.from_pretrained(os.path.join(args.data_dir, 'albert-base-v2-config.json'))
-        model = AutoModelWithLMHead.from_config(config)
-    elif args.task == 'tag-one-sample':
-        # Load LR model for tag prediction
-        model = LogisticRegression(args.vocab_token_size, args.vocab_tag_size)
-    elif args.task == 'speech':
-        
-        if args.model == 'mobilenet':
-            model = mobilenet_v2(num_classes=outputClass[args.data_set], inchannels=1)
-        elif args.model == "resnet18":
-            model = resnet18(num_classes=outputClass[args.data_set], inchannels=1)
-        elif model_name == "resnet34":
-            model = resnet34(num_classes=outputClass[args.data_set], in_channels=1)
-        elif model_name == "resnet50":
-            model = resnet50(num_classes=outputClass[args.data_set], in_channels=1)
-        elif model_name == "resnet101":
-            model = resnet101(num_classes=outputClass[args.data_set], in_channels=1)
-        elif model_name == "resnet152":
-            model = resnet152(num_classes=outputClass[args.data_set], in_channels=1)
-        else:
-            # Should not reach here
-            print('Model must be resnet or mobilenet')
-            sys.exit(-1)
-    else:
-        if args.model == 'mnasnet':
-            model = MnasNet(num_classes=outputClass[args.data_set])
-        elif args.model == "lr":
-            model = LogisticRegression(args.input_dim, outputClass[args.data_set])
-        else:
-            model = tormodels.__dict__[args.model](num_classes=outputClass[args.data_set])
 
     logging.info("====Initialize client configuration")
 
@@ -400,24 +426,34 @@ def run_client(clientId, cmodel, iters, learning_rate, argdicts = {}):
                     fetchSuccess = True
                 except Exception:
                     try:
-                        train_data_itr_list[0]._shutdown_workers()
-                        del train_data_itr_list[0]
+                        if args.num_loaders > 0:
+                            train_data_itr_list[0]._shutdown_workers()
+                            del train_data_itr_list[0]
                     except Exception as e:
                         logging.info("====Error {}".format(e))
 
-                    # reload data after finishing the epoch
-                    numToWarmUp = numOfPreWarmUp - len(train_data_itr_list)
-
-                    for i in range(numToWarmUp):
-                        tempData = select_dataset(
+                    tempData = select_dataset(
                             clientId, global_trainDB, 
                             batch_size=args.batch_size, 
                             collate_fn=collate if args.task =='nlp' else None
                         )
-                        train_data_itr_list.append(iter(tempData))
+
+                    train_data_itr_list = [iter(tempData)]
+
+                    # # reload data after finishing the epoch
+                    # numToWarmUp = numOfPreWarmUp - len(train_data_itr_list)
+
+                    # for i in range(numToWarmUp):
+                    #     tempData = select_dataset(
+                    #         clientId, global_trainDB, 
+                    #         batch_size=args.batch_size, 
+                    #         collate_fn=collate if args.task =='nlp' else None
+                    #     )
+                    #     train_data_itr_list.append(iter(tempData))
 
                     if args.task == 'nlp':
-                        (data, _) = next(train_data_itr_list[0])
+                        tempItr = train_data_itr_list[0]
+                        (data, _) = next(tempItr)
                         data, target = mask_tokens(data, tokenizer, args) if args.mlm else (data, data)
                     else:
                         (data, target) = next(train_data_itr_list[0])
@@ -467,24 +503,29 @@ def run_client(clientId, cmodel, iters, learning_rate, argdicts = {}):
                 loss = loss1 + 0.4*loss2
 
         temp_loss = 0.
-
+        loss_cnt = 1.
         # if args.task != 'nlp':
         if args.task == 'tag':
             if itr >= (iters - total_batch_size - 1):
                 for l in loss.tolist():
                     for i in l:
                         temp_loss += i**2
+                        loss_cnt += 1
+                loss_cnt -= 1
         else:
             if itr >= (iters - total_batch_size - 1):
                 for l in loss.tolist():
                     temp_loss += l**2
+                    loss_cnt += 1
+
+                loss_cnt -= 1
         # else:
         #     temp_loss = loss.item()
 
-        temp_loss = temp_loss/float(len(target))
+        temp_loss = temp_loss/float(loss_cnt)
 
-        # only measure the loss of the first epoch
-        if itr < total_batch_size:
+        # only measure the loss of the last epoch
+        if itr >= (iters - total_batch_size - 1):
             if epoch_train_loss is None:
                 epoch_train_loss = temp_loss
             else:
@@ -512,10 +553,10 @@ def run_client(clientId, cmodel, iters, learning_rate, argdicts = {}):
 
         comp_duration = (time.time() - comp_start)
     
-        logging.info('For client {}, upload iter {}, epoch {}, Batch {}/{}, Loss:{} | TotalTime {} | Comptime: {} \n'
+        logging.info('For client {}, upload iter {}, epoch {}, Batch {}/{}, Loss:{} | TotalTime {} | Comptime: {} | epoch_train_loss {}\n'
                     .format(clientId, argdicts['iters'], int(curBatch/total_batch_size),
                     (curBatch % total_batch_size), total_batch_size, round(loss.data.item(), 4), 
-                    round(time.time() - it_start, 4), round(comp_duration, 4)))
+                    round(time.time() - it_start, 4), round(comp_duration, 4), epoch_train_loss))
 
     # remove the one with LRU
     if len(global_client_profile) > args.max_iter_store:
@@ -525,14 +566,15 @@ def run_client(clientId, cmodel, iters, learning_rate, argdicts = {}):
         del global_data_iter[rmClient]
 
     # save the state of this client if # of batches > iters, since we want to pass over all samples at least one time
-    if total_batch_size > iters and len(train_data_itr_list) > 0:
+    if total_batch_size > iters * 1.5 and len(train_data_itr_list) > 0 and args.task != 'nlp':
         global_data_iter[clientId] = [train_data_itr_list[0], curBatch, total_batch_size, argdicts['iters']]
     else:
-        for loader in train_data_itr_list:
-            try:
-                loader._shutdown_workers()
-            except Exception as e:
-                pass
+        if args.num_loaders > 0:
+            for loader in train_data_itr_list:
+                try:
+                    loader._shutdown_workers()
+                except Exception as e:
+                    pass
         del train_data_itr_list
         del global_data_iter[clientId]
 
@@ -716,6 +758,7 @@ def run(rank, model, train_data, test_data, queue, param_q, stop_flag, client_cf
 
                 uploadEpoch = epoch
                 last_test = time.time()
+                gc.collect()
 
         except Exception as e:
             exc_type, exc_obj, exc_tb = sys.exc_info()
@@ -762,6 +805,7 @@ if __name__ == "__main__":
     gc.disable()
     model, train_dataset, test_dataset, client_cfg = init_dataset()
     gc.enable()
+    gc.collect()
 
     splitTrainRatio = []
 

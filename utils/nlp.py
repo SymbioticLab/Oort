@@ -854,5 +854,3 @@ def main():
             results.update(result)
 
     return results
-
-

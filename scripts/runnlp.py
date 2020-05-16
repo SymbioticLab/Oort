@@ -1,7 +1,7 @@
 import sys, os, time, datetime, random
 
 
-paramsCmd = ' --ps_ip=10.255.11.92 --model=albert-base-v2 --epochs=20000 --upload_epoch=20  --dump_epoch=1000 --learning_rate=0.1 --min_learning_rate=1e-4 --decay_epoch=10 --model_avg=True '
+paramsCmd = ' --model=albert-base-v2 --epochs=20000 --upload_epoch=20  --dump_epoch=1000 --learning_rate=5e-5 --min_learning_rate=1e-6 --decay_epoch=15 --model_avg=True '
 
 
 os.system("bhosts > vms")
@@ -100,7 +100,7 @@ for w in range(1, numOfWorkers + 1):
 rawCmdPs = '\npython ~/DMFL/param_server.py ' + paramsCmd + ' --this_rank=0 ' + params
 
 with open('server.lsf', 'w') as fout:
-    scriptPS = template + '\n#BSUB -J server\n#BSUB -e server{}'.format(timeStamp) + '.e\n#BSUB -o server{}'.format(timeStamp) + '.o\n' + '#BSUB -m "gpu-cn002"\n\n' + rawCmdPs
+    scriptPS = template + '\n#BSUB -J server\n#BSUB -e server{}'.format(timeStamp) + '.e\n#BSUB -o server{}'.format(timeStamp) + '.o\n' + rawCmdPs+ '\n#BSUB -m gpu-cn002\n'
     fout.writelines(scriptPS)
 
 # execute ps
@@ -112,7 +112,7 @@ os.system('rm vms')
 vmSets = set()
 for w in range(1, numOfWorkers + 1):
     # avoid gpu contention on the same machine
-    if assignedVMs[w-1] in vmSets:
-        time.sleep(1)
+    #if assignedVMs[w-1] in vmSets:
+    #time.sleep(1)
     vmSets.add(assignedVMs[w-1])
     os.system('bsub < learner' + str(w) + '.lsf')

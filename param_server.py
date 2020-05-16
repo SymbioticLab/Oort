@@ -4,7 +4,7 @@ from core.argParser import args
 import os, shutil, pickle
 import random, math
 import numpy as np
-import sys
+import sys, socket
 import time
 import datetime
 import logging
@@ -54,7 +54,19 @@ def init_logging():
                             logging.StreamHandler()
                         ])
 
+def dump_ps_ip():
+    hostname_map = {}
+    with open('ipmapping', 'rb') as fin:
+        hostname_map = pickle.load(fin)
+
+    ps_ip = str(hostname_map[str(socket.gethostname())])
+    args.ps_ip = ps_ip
+
+    with open(logDir+'ip', 'wb') as fout:
+        pickle.dump(ps_ip, fout)
+
 init_logging()
+dump_ps_ip()
 
 entire_train_data = None
 sample_size_dic = {}
@@ -65,6 +77,13 @@ os.environ['MASTER_ADDR'] = args.ps_ip
 os.environ['MASTER_PORT'] = args.ps_port
 os.environ['NCCL_SOCKET_IFNAME'] = 'ib0'
 os.environ['GLOO_SOCKET_IFNAME'] = 'vlan260'
+
+# cudaPrefix = 'cuda'
+# logging.info("====CUDA_VISIBLE_DEVICES is {}, {}".format(os.environ["CUDA_VISIBLE_DEVICES"], torch.cuda.device_count()))
+# deviceId = int(os.environ["CUDA_VISIBLE_DEVICES"])
+# torch.cuda.set_device(0)
+# device = torch.device(cudaPrefix)#+str(0))
+# logging.info("====Pick gpu {}, {}".format(torch.cuda.current_device(), device))
 
 device = None
 deviceId = None
@@ -89,13 +108,14 @@ for i in range(4):
         else:
             continue
 
+
 # os.environ['OMP_NUM_THREADS'] = args.threads
 # os.environ['MKL_NUM_THREADS'] = args.threads
 
 #torch.set_num_threads(int(args.threads))
 #torch.cuda.set_device(args.gpu_device)
 
-
+sampledClientSet = set()
 # initiate for nlp
 tokenizer = AlbertTokenizer.from_pretrained('albert-base-v2') if args.task =='nlp' else None
 
@@ -173,49 +193,7 @@ def init_myprocesses(rank, size, model, test_data, queue, param_q, stop_signal, 
 def init_dataset():
     global tokenizer
 
-    outputClass = {'Mnist': 10, 'cifar10': 10, "imagenet": 1000, 'emnist': 47, 'openImg': 596, 'google_speech': 35}
-
-    # if args.data_set == 'Mnist':
-    #     train_transform, test_transform = get_data_transform('mnist')
-
-    #     train_dataset = datasets.MNIST(args.data_dir, train=True, download=False,
-    #                                    transform=train_transform)
-    #     test_dataset = datasets.MNIST(args.data_dir, train=False, download=False,
-    #                                   transform=test_transform)
-
-    # elif args.data_set == 'cifar10':
-    #     train_transform, test_transform = get_data_transform('cifar')
-    #     train_dataset = datasets.CIFAR10(args.data_dir, train=True, download=True,
-    #                                      transform=train_transform)
-    #     test_dataset = datasets.CIFAR10(args.data_dir, train=False, download=True,
-    #                                     transform=test_transform)
-
-    # elif args.data_set == "imagenet":
-    #     train_transform, test_transform = get_data_transform('imagenet')
-    #     train_dataset = datasets.ImageNet(args.data_dir, split='train', download=False, transform=train_transform)
-    #     test_dataset = datasets.ImageNet(args.data_dir, split='val', download=False, transform=test_transform)
-
-    # elif args.data_set == 'emnist':
-    #     test_dataset = datasets.EMNIST(args.data_dir, split='balanced', train=False, download=True, transform=transforms.ToTensor())
-    #     train_dataset = datasets.EMNIST(args.data_dir, split='balanced', train=True, download=True, transform=transforms.ToTensor())
-
-    # elif args.data_set == 'openImg':
-    #     transformer_ns = 'openImg' if args.model != 'inception_v3' else 'openImgInception'
-    #     train_transform, test_transform = get_data_transform(transformer_ns) 
-    #     train_dataset = OPENIMG(args.data_dir, train=True, transform=train_transform)
-    #     test_dataset = OPENIMG(args.data_dir, train=False, transform=test_transform)
-
-    # elif args.data_set == 'blog':
-    #     train_dataset = load_and_cache_examples(args, tokenizer, evaluate=False) 
-    #     test_dataset = load_and_cache_examples(args, tokenizer, evaluate=True)
-
-    # elif args.data_set == 'stackoverflow':
-    #     train_dataset = stackoverflow(args.data_dir, train=True)
-    #     test_dataset = stackoverflow(args.data_dir, train=False)
-
-    # else:
-    #     print('DataSet must be {}!'.format(['Mnist', 'Cifar', 'openImg', 'blog']))
-    #     sys.exit(-1)
+    outputClass = {'Mnist': 10, 'cifar10': 10, "imagenet": 1000, 'emnist': 47, 'openImg': 596, 'google_speech': 35, 'femnist': 62}
 
     logging.info("====Initialize the model")
 
@@ -252,7 +230,6 @@ def init_dataset():
         else:
             model = tormodels.__dict__[args.model](num_classes=outputClass[args.data_set])
 
-    #model.train()
     model = model.to(device=device)
 
     if args.load_model:
@@ -661,3 +638,4 @@ if __name__ == "__main__":
     #p.start()
     #p.join()
     manager.shutdown()
+
