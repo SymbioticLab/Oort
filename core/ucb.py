@@ -168,7 +168,7 @@ class UCB(object):
         sortedClientUtil = sorted(scores, key=scores.get, reverse=True)#int(self.sample_window*exploitLen)]
 
         # take cut-off utility
-        cut_off_util = scores[sortedClientUtil[exploitLen]] * 0.95
+        cut_off_util = scores[sortedClientUtil[exploitLen]] * self.args.cut_off_util
 
         pickedClients = []
         for clientId in sortedClientUtil:

@@ -146,7 +146,6 @@ def init_myprocesses(rank, size, model,
                    fn, backend, client_cfg):
     print("====Worker: init_myprocesses")
     fn(rank, model, train_dataset, test_dataset, q, param_q, stop_flag, client_cfg)
-
 def init_dataset():
     global tokenizer, device
 
@@ -475,9 +474,10 @@ def run_client(clientId, cmodel, iters, learning_rate, argdicts = {}):
         curBatch = curBatch + 1
 
         data, target = Variable(data).to(device=device), Variable(target).to(device=device)
-        local_trained += len(target)
         if args.task == 'speech':
             data = torch.unsqueeze(data, 1)
+
+        local_trained += len(target)
 
         if args.task != 'nlp':
             optimizer.zero_grad()
@@ -509,21 +509,20 @@ def run_client(clientId, cmodel, iters, learning_rate, argdicts = {}):
         loss_cnt = 1.
         # if args.task != 'nlp':
         if args.task == 'tag':
-            if itr >= (iters - total_batch_size - 1):
-                for l in loss.tolist():
-                    for i in l:
-                        temp_loss += i**2
-                        loss_cnt += 1
-                loss_cnt -= 1
-        else:
-            if itr >= (iters - total_batch_size - 1):
-                for l in loss.tolist():
-                    temp_loss += l**2
+            #if itr >= (iters - total_batch_size - 1):
+            for l in loss.tolist():
+                for i in l:
+                    temp_loss += i**2
                     loss_cnt += 1
+            loss_cnt -= 1
+        else:
+            #if itr >= (iters - total_batch_size - 1):
+            loss_list = loss.tolist()
+            for l in loss_list:
+                temp_loss += l**2
 
-                loss_cnt -= 1
-        # else:
-        #     temp_loss = loss.item()
+            loss_cnt = len(loss_list)
+
 
         temp_loss = temp_loss/float(loss_cnt)
 
@@ -550,14 +549,20 @@ def run_client(clientId, cmodel, iters, learning_rate, argdicts = {}):
                     param.data -= delta_w[idx].to(device=device)
                     param.data += learning_rate * args.proxy_mu * (last_model_tensors[idx] - param.data)
         else:
-            # loss.backward()
-            optimizer.step()
-            cmodel.zero_grad()
-
             # proxy term 
+            temp_weights = []
             if args.proxy_avg:
                 for idx, param in enumerate(cmodel.parameters()):
-                    param.data += learning_rate * args.proxy_mu * (last_model_tensors[idx] - param.data)
+                    temp_weights.append(learning_rate * args.proxy_mu * (last_model_tensors[idx] - param.data))
+
+            # loss.backward()
+            optimizer.step()
+            
+            if args.proxy_avg:
+                for idx, param in enumerate(cmodel.parameters()):
+                    param.data += temp_weights[idx]
+
+            cmodel.zero_grad()
 
         comp_duration = (time.time() - comp_start)
     

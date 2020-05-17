@@ -87,7 +87,7 @@ parser.add_argument('--min_learning_rate', type=float, default=1e-4)
 parser.add_argument('--loss_decay', type=float, default=0.2)
 parser.add_argument('--skip_partition', type=bool, default=False)
 parser.add_argument('--exploration_min', type=float, default=0.2)
-
+parser.add_argument('--cut_off_util', type=float, default=0.9)
 
 # for yogi
 parser.add_argument('--gradient_policy', type=str, default='')

@@ -1,7 +1,12 @@
 import sys, os, time, datetime, random
 
+ps_port = random.randint(1000, 60000)
+manager_port = random.randint(1000, 60000)
 
-paramsCmd = ' --ps_ip=10.255.11.92 --model=lr --epochs=20000 --upload_epoch=20  --dump_epoch=100 --learning_rate=0.04 --decay_epoch=5 --model_avg=True --batch_size=32 '
+print(ps_port, manager_port)
+
+paramsCmd = ' --ps_ip=10.255.11.92 --model=shufflenet_v2_x2_0 --epochs=20000 --upload_epoch=20  --dump_epoch=500 --learning_rate=0.04 --decay_epoch=15 --model_avg=True --batch_size=32 ' + \
+            ' --ps_port='+str(ps_port)+' --manager_port='+str(manager_port) + ' '
 
 
 os.system("bhosts > vms")
