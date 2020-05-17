@@ -211,6 +211,38 @@ class DataPartitioner(object):
 
         self.get_JSD(overallNumSamples/float(totalNumOfSamples), self.classPerWorker, [0] * numOfClients)
 
+    def partitionTraceSpeech(self, dataToClient):
+        clientToData = {}
+        clientNumSamples = {}
+        numOfLabels = 35
+
+        # data share the same index with labels
+        
+        for index, sample in enumerate(self.data.data):
+            clientId = dataToClient[sample]
+            labelId = self.labels[index]
+
+            if clientId not in clientToData:
+                clientToData[clientId] = []
+                clientNumSamples[clientId] = [0] * numOfLabels
+
+            clientToData[clientId].append(index)
+            clientNumSamples[clientId][labelId] += 1
+        
+        numOfClients = len(clientToData.keys())
+        self.classPerWorker = np.zeros([numOfClients, numOfLabels])
+
+        for clientId in range(numOfClients):
+            logging.info(clientId)
+            self.classPerWorker[clientId] = clientNumSamples[clientId]
+            self.rng.shuffle(clientToData[clientId])
+            self.partitions.append(clientToData[clientId])
+
+        overallNumSamples = np.asarray(self.classPerWorker.sum(axis=0)).reshape(-1)
+        totalNumOfSamples = self.classPerWorker.sum()
+
+        self.get_JSD(overallNumSamples/float(totalNumOfSamples), self.classPerWorker, [0] * numOfClients)
+
     def partitionTraceNLP(self):
         clientToData = {}
         clientNumSamples = {}
@@ -274,8 +306,10 @@ class DataPartitioner(object):
 
                 with open(self.dataMapFile, 'rb') as db:
                     dataToClient = pickle.load(db)
-
-                self.partitionTraceCV(dataToClient=dataToClient)
+                if self.task == 'speech':
+                    self.partitionTraceSpeech(dataToClient=dataToClient)
+                else:
+                    self.partitionTraceCV(dataToClient=dataToClient)
             else:
                 self.partitionTraceNLP()
         else:

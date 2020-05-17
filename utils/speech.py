@@ -94,7 +94,8 @@ class SPEECH():
             tuple: (image, target) where target is index of the target class.
         """
         path, target = self.data[index], int(self.targets[index])
-        data = {'path': path, 'target': target}
+        data_dir = os.path.join(self.root, 'train') if self.train else os.path.join(self.root, 'test')
+        data = {'path': os.path.join(data_dir, path), 'target': target}
 
 
         if self.transform is not None:
@@ -135,7 +136,7 @@ class SPEECH():
             audio = audio.name
             classTag = audio.split('_')[0]
             if classTag in self.classMapping:
-                rawData.append(os.path.join(path, audio))
+                rawData.append(audio)
                 rawTags.append(self.classMapping[classTag])
         return rawData, rawTags
 
