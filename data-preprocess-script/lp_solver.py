@@ -8,13 +8,13 @@ import time, sys
 
 def lp_solver(datas, systems, budget, preference, data_trans_size, init_values = None, time_limit = None, read_flag = False, write_flag = False, request_budget = True, gap = None, solver = 'gurobi'):
     if solver == 'gurobi':
-        return lp_gurobi(datas, systems, budget, preference, data_trans_size, init_values, time_limit, read_flag, write_flag, gap, request_budget)
+        return lp_gurobi(datas, systems, budget, preference, data_trans_size, init_values, time_limit, read_flag, write_flag, request_budget, gap=gap)
     else:
         return lp_cplex(datas, systems, budget, preference, data_trans_size, init_values, time_limit, read_flag, write_flag, gap, request_budget)
 
 
 
-def lp_gurobi(datas, systems, budget, preference, data_trans_size, init_values = None, time_limit = None, read_flag = False, write_flag = False, request_budget=True, gap = None), :
+def lp_gurobi(datas, systems, budget, preference, data_trans_size, init_values = None, time_limit = None, read_flag = False, write_flag = False, request_budget=True, gap = None):
 
     num_of_clients = len(datas)
     num_of_class = len(datas[0])
@@ -34,20 +34,23 @@ def lp_gurobi(datas, systems, budget, preference, data_trans_size, init_values =
     time_list = [(gp.quicksum([quantity[(i, j)] for j in range(num_of_class)])*systems[i][0])/1000. for i in range(num_of_clients)]
     comm_time_list = [data_trans_size/float(systems[i][1]) for i in range(num_of_clients)]
 
-    #time_list = [((gp.quicksum([quantity[(i, j)] for j in range(num_of_class)])*systems[i][0])/1000. + data_trans_size/systems[i][1]) for i in range(num_of_clients)]
-    # The objective is to minimize the slowest
-    m.setObjective(slowest, GRB.MINIMIZE)
+    #print(f'====comm_time_list: {comm_time_list}')
+    # print(f'====preference: {preference}')
 
     # Preference Constraint
     for i in range(num_of_class):
-        m.addConstr(gp.quicksum([quantity[(client, i)] for client in range(num_of_clients)]) == preference[i], name='preference_' + str(i))
+        m.addConstr(gp.quicksum([quantity[(client, i)] for client in range(num_of_clients)]) >= preference[i], name='preference_' + str(i))
 
     # Capacity Constraint
     m.addConstrs((quantity[i] <= datas[i[0]][i[1]] for i in quantity), name='capacity_'+str(i))
-    
+
     status = m.addVars([i for i in range(num_of_clients)], vtype = GRB.BINARY, name = 'status') # Binary var indicates the selection status
     for i in range(num_of_clients):
-        m.addGenConstrIndicator(status[i], False, gp.quicksum([quantity[(i, j)] for j in range(num_of_class)]) ==  0.0)
+        m.addGenConstrIndicator(status[i], False, quantity.sum(i, '*') <= 0)
+        #m.addGenConstrIndicator(status[i], True, gp.quicksum([quantity[(i, j)] for j in range(num_of_class)]) >=  0.0)
+    #for i in range(num_of_clients):
+    #    for j in range(num_of_class):
+    #        m.addGenConstrIndicator(status[i], True, quantity[(i, j)]  >=  0.9)
 
     # Budget Constraint
     if request_budget:
@@ -55,10 +58,10 @@ def lp_gurobi(datas, systems, budget, preference, data_trans_size, init_values =
 
     # Minimize the slowest
     for idx, t in enumerate(time_list):
-        m.addConstr(slowest >= t + status[i] * comm_time_list[idx], name='slow')
+        m.addConstr(slowest >= t + status[idx] * comm_time_list[idx], name=f'slow_{idx}')
 
     # Initialize variables if init_values is provided
-    if init_values: 
+    if init_values:
         for k, v in init_values.items():
             quantity[k].Start = v
 
@@ -67,22 +70,24 @@ def lp_gurobi(datas, systems, budget, preference, data_trans_size, init_values =
         m.Params.timeLimit = time_limit
 
     # set the optimality gap
-    if gap:
+    if gap is not None:
         m.Params.MIPgap = gap
-
+    # The objective is to minimize the slowest
+    m.setObjective(slowest, GRB.MINIMIZE)
     m.update()
     if read_flag:
         if os.path.exists('temp.mst'):
             m.read('temp.mst')
 
     m.optimize()
-    print(f'Optimization took {m.Runtime}')
+    lpruntime = m.Runtime
+    print(f'Optimization took {lpruntime}')
     print(f'Gap between current and optimal is {m.MIPGap}')
 
     # Process the solution
-    result = [[0] * num_of_class for _ in range(num_of_clients)]
+    result = np.zeros([num_of_clients, num_of_class])
     if m.status == GRB.OPTIMAL:
-        print('Found optimal solution')
+        print(f'Found optimal solution and slowest is {slowest.x}')
         pointx = m.getAttr('x', quantity)
         for i in qlist:
             if quantity[i].x > 0.0001:
@@ -90,12 +95,12 @@ def lp_gurobi(datas, systems, budget, preference, data_trans_size, init_values =
                 result[i[0]][i[1]] = pointx[i]
     else:
         print('No optimal solution')
-    
+
     if write_flag:
         m.write('temp.mst')
+    m.write('model.lp')
 
-    return result
-
+    return result, m, lpruntime
 
 def lp_cplex(datas, systems, budget, preference, data_size, init_values = None, time_limit = None, read_flag = False, write_flag = False, request_budget=True, gap = None):
 
@@ -186,6 +191,5 @@ def lp_cplex(datas, systems, budget, preference, data_size, init_values = None, 
             if values[quantity[i][j]] > tol:
                 result[i][j] = values[quantity[i][j]]
                 # print(f"Client {i} Class {j} : {values[quantity[i][j]]}")
-    
-    return result
 
+    return result

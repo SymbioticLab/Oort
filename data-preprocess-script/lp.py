@@ -2,7 +2,7 @@ import pickle, math
 import numpy as np
 import gurobipy as gp
 from gurobipy import *
-import time, sys
+import time, sys, gc
 from queue import PriorityQueue
 from numpy import *
 from lp_solver import *
@@ -10,7 +10,9 @@ from lp_solver import *
 sys.stdout.flush()
 
 data_trans_size = 100663 # size of mobilenet, 12 MB
-budget = 1000
+budget = 100
+gap_bar = 3e-1 # terminate the lp
+num_of_class_interest = 10000
 
 def load_profiles(datafile, sysfile, distrfile):
     # load user data information
@@ -19,7 +21,7 @@ def load_profiles(datafile, sysfile, distrfile):
     # load user system information
     systems = pickle.load(open(sysfile, 'rb'))
 
-    # Load global data distribution 
+    # Load global data distribution
     distr = pickle.load(open(distrfile, 'rb'))
 
     return datas, systems, distr
@@ -78,7 +80,7 @@ class Pacer():
 
     def register(self, clientId):
         sum_sample = self.sum_interest_columns_client(clientId)
-        
+
         if self.clients.qsize() <= self.topk:
             self.push_client_window(clientId)
             self.clients.put((sum_sample, clientId))
@@ -148,17 +150,17 @@ def sum_interest_columns(datas, cols):
     return sum_of_cols
 
 #### Step 2: meet data preference first ####
-def select_by_sorted_num(datas, pref, budget):
+def select_by_sorted_num(raw_datas, pref, budget):
     maxTries = 1000
     curTries = 0
 
     interestChanged = True
     sum_of_cols = None
     listOfInterest = None
-    num_rows = len(datas)
+    num_rows = len(raw_datas)
 
     clientsTaken = {}
-    data_copy = np.copy(datas)
+    datas = np.copy(raw_datas)
 
     preference = {k:pref[k] for k in pref}
 
@@ -170,26 +172,22 @@ def select_by_sorted_num(datas, pref, budget):
         # recompute the top-k clients
         if interestChanged:
             listOfInterest = list(preference.keys())
-            #sum_of_cols = sum_interest_columns(np.copy(datas), listOfInterest)
             sum_of_cols = datas[:, listOfInterest].sum(axis=1)
 
-        # start greedy until exceeds budget or interestChanged
-
         # calculate sum of each client
-        top_k_indices = sorted(range(num_rows), reverse=True, key=lambda k:np.sum(sum_of_cols[k]))
+        # filter the one w/ zero samples
+        feasible_clients = np.where(sum_of_cols > 0)[0]
 
-        # the rest is also zero, no need to move on
-        if sum_of_cols[top_k_indices[0]] == 0:
+        if len(feasible_clients) == 0:
             break
 
-        for clientId in top_k_indices:
+        top_k_indices = sorted(feasible_clients, reverse=True, key=lambda k:sum_of_cols[k])
 
-            if sum_of_cols[clientId] == 0:
-                break
-
+        for idx, clientId in enumerate(top_k_indices):
             # update quantities
             # 1. update preference
             tempTakenSamples = {}
+
             for cl in listOfInterest:
                 takenSamples = min(preference[cl], datas[clientId][cl])
                 preference[cl] -= takenSamples
@@ -200,7 +198,6 @@ def select_by_sorted_num(datas, pref, budget):
 
                 tempTakenSamples[cl] = takenSamples
 
-            # 2: remove client from data by setting to zero
             datas[clientId, :] = 0
             clientsTaken[clientId] = tempTakenSamples
 
@@ -209,19 +206,8 @@ def select_by_sorted_num(datas, pref, budget):
 
         curTries += 1
 
-    # check preference 
+    # check preference
     is_success = (len(preference) == 0 and len(clientsTaken) <= budget)
-
-    # checkPref = {k:0 for k in pref}
-
-    # for client in clientsTaken:
-    #     for cl in clientsTaken[client]:
-    #         assert(clientsTaken[client][cl] <= data_copy[client][cl])
-    #         checkPref[cl] += clientsTaken[client][cl]
-
-    # if is_success:
-    #     for cl in sorted(pref.keys()):
-    #         assert(pref[cl] == checkPref[cl])
 
     print("Picked {} clients".format(len(clientsTaken)))
     return clientsTaken, is_success
@@ -235,25 +221,33 @@ def cal_jct(clientsTaken, sys):
     return duration
 
 
-def preprocess(data):
+def preprocess(data_file):
     # Get the global distribution
-    distr = [0] * len(data[0])
+    #distr = [0] * len(data[0])
 
-    for i in data:
-        distr = [sum(x) for x in zip(distr, i)]
+    with open(data_file, 'rb') as fin:
+        data = pickle.load(fin)
 
-    outfile = 'global_distr'
+    # print(data[23][:100])
+    # data = np.array(data)
+    # print(data[23][:100])
+    print(len(data[0]))
+    distr = data.sum(axis=0).tolist()
+    print(len(distr))
+
+    outfile = 'so_global_distr'
     outf = open(outfile, 'wb')
-    pickle.dump(global_distr, outf)
+    pickle.dump(distr, outf)
     outf.close()
 
     return None
 
-def run_lp(requirement):
+preprocess('so_data_distr')
+
+def run_lp(requirement, data, systems, distr):
     global budget, data_trans_size
 
-    data, systems, distr = load_profiles('openImg_size.txt', 'clientprofile', 'openImg_global_distr')
-    num_of_class = 596 #len(data[0])
+    num_of_class = num_of_class_interest #len(data[0])
     num_of_clients = len(data)
     distr = distr[:num_of_class]
     sum_distr = sum(distr)
@@ -266,8 +260,9 @@ def run_lp(requirement):
     #preference = [math.floor(i * 0.4) for i in distr[:num_of_class]]
 
     start_time = time.time()
-    result = lp_solver(data, sys_prof, budget, preference, data_trans_size)
+    result, sol, lp_duration = lp_solver(data, sys_prof, budget, preference, data_trans_size, gap=gap_bar)#, request_budget=False)
     finish_time = time.time()
+    lp_duration = finish_time - start_time
 
     print(f"LP solver took {finish_time - start_time} sec")
 
@@ -283,24 +278,28 @@ def run_lp(requirement):
     for i, j in zip(temp, preference):
         if i < j:
             flag = False
-            print("Preference not satisfied")
+            #print("Preference not satisfied")
 
+    flag = flag & (sol.status == GRB.OPTIMAL)
     if flag:
         print("Perfect")
-        return True
+        return [lp_duration, sol.objVal, count]
     else:
-        return False
+        return [lp_duration, -1, -1]
 
 
-def run_heuristic(requirement):
+def run_heuristic(requirement, data, systems, distr):
     global budget, data_trans_size
 
-    data, systems, distr = load_profiles('openImg_size.txt', 'clientprofile', 'openImg_global_distr')
-    num_of_class = 596 #len(data[0])
+
+    #data, systems, distr = load_profiles('openImg_size.txt', 'clientprofile', 'openImg_global_distr')
+    # data, systems, distr = load_profiles('so_data_distr', 'clientprofile', 'so_global_distr')
+    num_of_class = num_of_class_interest #596 #len(data[0])
     num_of_clients = len(data)
     distr = distr[:num_of_class]
     sum_distr = sum(distr)
 
+    print(num_of_clients, num_of_class)
     data = data[:num_of_clients, :num_of_class]
 
     raw_data = np.copy(data)
@@ -310,21 +309,25 @@ def run_heuristic(requirement):
     preference_dict = {idx:p for idx, p in enumerate(preference)}
     avg_of_pref_samples = sum(preference)/float(budget)
     sys_prof = [systems[i+1] for i in range(num_of_clients)] # id -> speed, bw
-    
+
     # cap the data by preference
-    pref_matrix = tile(array(preference), (num_of_clients, 1))
-    data = np.minimum(data, pref_matrix)
+    # pref_matrix = tile(array(preference), (num_of_clients, 1))
+    # data = np.minimum(data, pref_matrix)
 
     # sort clients by # of samples
     sum_sample_per_client = data[:, list(preference_dict.keys())].sum(axis=1) #sum_interest_columns(np.copy(data), list(preference_dict.keys()))
-    top_clients = sorted(range(num_of_clients), reverse=True, key=lambda k:np.sum(sum_sample_per_client[k])) #sorted(range(num_of_clients), key=lambda k:est_dur[k])
-    
+    top_clients = sorted(range(num_of_clients), reverse=True, key=lambda k:np.sum(sum_sample_per_client[k]))[:1000] #sorted(range(num_of_clients), key=lambda k:est_dur[k])
+
     # random.shuffle(top_clients)
 
     # decide the cut-off
-    cut_off_clients = int(0.5 * num_of_clients + 1)
+    ratio_of_rep = max([preference[i]/float(distr[i]) * 5.0 for i in range(len(preference)) if distr[i] > 0])
+    cut_off_clients = min(int(ratio_of_rep * num_of_clients + 1), num_of_clients)
+
+    print(f"cut_off_clients is {cut_off_clients}")
     select_clients = None
 
+    cut_off_required = 100 #budget #min(budget, 200)
     start_time = time.time()
     while True:
         tempData = data[top_clients[:cut_off_clients], :]
@@ -335,21 +338,23 @@ def run_heuristic(requirement):
             select_clients = {top_clients[k]:clientsTaken[k] for k in clientsTaken.keys()}
 
             # pad the budget
-            if len(select_clients) < budget:
+            if len(select_clients) < cut_off_required:
                 for client in top_clients:
                     if client not in select_clients:
                         select_clients[client] = {}
 
-                    if len(select_clients) == budget:
+                    if len(select_clients) == cut_off_required:
                         break
             break
         else:
+            print(f"====Fail to augment with cut_off_clients {cut_off_clients}")
             if cut_off_clients == num_of_clients:
-                return False
+                return [time.time() -  start_time, 0, -1]
             cut_off_clients = min(cut_off_clients * 2, num_of_clients)
             print("====Augment the cut_off_clients to {}".format(cut_off_clients))
 
-    print("====Client augmentation took {} sec to pick {} clients".format(time.time() - start_time, len(select_clients)))
+    augTime = time.time() - start_time
+    print("====Client augmentation took {} sec to pick {} clients".format(augTime, len(select_clients)))
 
     #=================== Stage 2: pass to LP ===================#
 
@@ -369,10 +374,11 @@ def run_heuristic(requirement):
             init_values[(idx, cl)] = select_clients[key][cl]
 
     start_time = time.time()
-    result = lp_solver(tempdata, tempsys, budget, preference, data_trans_size, init_values=init_values, request_budget=False)
+    result, sol, lp_duration = lp_solver(tempdata, tempsys, budget, preference, data_trans_size, init_values=init_values, request_budget=False, gap=gap_bar)
     finish_time = time.time()
+    #lp_duration = finish_time - start_time
 
-    print(f"LP solver took {finish_time - start_time} sec")
+    print(f"LP solver took {finish_time - start_time:.2f} sec")
 
     temp = [0] * len(data[0])
     count = 0
@@ -388,23 +394,42 @@ def run_heuristic(requirement):
             flag = False
             print("Preference not satisfied")
 
+    assert(flag == (sol.status == GRB.OPTIMAL))
     if flag:
         print("Perfect")
 
     print(f'\# of class {num_of_class}, \# of clients {num_of_clients}')
 
-    return True
+    if flag:
+        return [augTime, lp_duration, sol.objVal, count]
 
-requirements = [1000, 2000, 4000, 8000, 10000, 20000, 40000, 80000, 160000, 320000, 640000, 1280000]
+    return [augTime, lp_duration, sol.objVal, -1]
 
-for i in requirements:
-    print(f"====Start to run {i} requirements")
-    is_success = run_heuristic(i)
-    #is_success = run_lp(i)
+temp_requirements = [1000, 2000, 4000, 6000, 8000, 10000, 20000, 40000, 60000, 80000, 100000, 150000, 200000, 250000, 300000, 350000, 400000, 450000, 500000, 550000, 600000, 700000, 800000, 900000, 1000000, 1200000]
+requirements = [x for x in temp_requirements if x > num_of_class_interest * 5]
+#requirements = [20000]
 
-    if not is_success:
-        print(f"====Terminate with {i}")
-        break
+is_heuristic = True #True
 
-#run_lp()
+budgets = [100, 500, 1000, 1500, 2000, 3000, 5000]
+
+gc.disable()
+data, systems, distr = load_profiles('so_data_distr', 'clientprofile', 'so_global_distr')
+gc.enable()
+
+for item in budgets:
+    budget = item
+    output_file = str(budget)+'_heuristic_result' if is_heuristic else 'optimal_result'
+
+    with open(output_file, 'w') as fout:
+        for i in requirements:
+            print(f"====Start to run {i} requirements")
+            sol = run_heuristic(i, data, systems, distr) if is_heuristic else run_lp(i)
+
+            fout.writelines(f'data_trans_size: {data_trans_size}, budget: {budget}, requirement: {i}, end-to-end: {sum(sol[:-1]):.3f}, details: {sol} \n')
+
+            print(f'====data_trans_size: {data_trans_size}, budget: {budget}, requirement: {i}, end-to-end: {sum(sol[:-1]):.3f}s, details: {sol}\n')
+            if sol[-1] == -1:
+                print(f"====Terminate with {i}")
+                break
 
