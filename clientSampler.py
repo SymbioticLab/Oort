@@ -20,6 +20,7 @@ class ClientSampler(object):
         self.rng = Random()
         self.rng.seed(sample_seed)
         self.count = 0
+        self.feasible_samples = 0
 
     def registerClient(self, hostId, clientId, dis, size, speed=[1.0, 1.0], duration=1):
 
@@ -28,6 +29,8 @@ class ClientSampler(object):
 
         if size >= self.filter_less and size <= self.filter_more:
             self.feasibleClients.append(clientId)
+
+            self.feasible_samples += size
 
             if self.mode == "bandit":
                 self.ucbSampler.registerArm(clientId, reward=min(size, args.upload_epoch*args.batch_size), size=size, duration=duration)
@@ -139,6 +142,8 @@ class ClientSampler(object):
             return self.ucbSampler.getAllMetrics()
         return {}
 
+    def getDataInfo(self):
+        return {'total_feasible_clients': len(self.feasibleClients), 'total_length': self.feasible_samples}
+
     def getClientReward(self, clientId):
         return self.ucbSampler.getClientReward(clientId)
-

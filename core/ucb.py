@@ -176,6 +176,7 @@ class UCB(object):
                 break
             pickedClients.append(clientId)
 
+        #pickedClients = sorted(scores, key=scores.get, reverse=True)[:min(int(self.sample_window*exploitLen), len(scores))]
         augment_factor = len(pickedClients)
 
         totalSc = float(sum([scores[key] for key in pickedClients]))

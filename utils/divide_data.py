@@ -233,7 +233,7 @@ class DataPartitioner(object):
         self.classPerWorker = np.zeros([numOfClients, numOfLabels])
 
         for clientId in range(numOfClients):
-            logging.info(clientId)
+            #logging.info(clientId)
             self.classPerWorker[clientId] = clientNumSamples[clientId]
             self.rng.shuffle(clientToData[clientId])
             self.partitions.append(clientToData[clientId])
@@ -519,7 +519,7 @@ def partition_dataset(partitioner, workers, partitionRatio=[], sequential=0, rat
 def select_dataset(rank: int, partition: DataPartitioner, batch_size: int, isTest=False, is_rank=0, collate_fn=None):
     partition = partition.use(rank - 1, isTest, is_rank-1)
     timeOut = 0 if isTest else 60
-    numOfThreads = int(min(args.num_loaders, len(partition)/(batch_size+1)))
+    numOfThreads = args.num_loaders #int(min(args.num_loaders, len(partition)/(batch_size+1)))
     dropLast = False if isTest else True
 
     if collate_fn is None:

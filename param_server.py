@@ -75,7 +75,7 @@ dump_ps_ip()
 entire_train_data = None
 sample_size_dic = {}
 
-staleness_file = '/tmp/staleness' + args.model + ".txt"
+staleness_file = logDir + 'staleness.txt'
 
 os.environ['MASTER_ADDR'] = args.ps_ip
 os.environ['MASTER_PORT'] = args.ps_port
@@ -170,6 +170,8 @@ def initiate_sampler_query(numOfClients):
 
             collectedClients += 1
 
+    logging.info("====Info of all feasible clients {}".format(clientSampler.getDataInfo()))
+    
     return clientSampler
 
 
@@ -214,13 +216,13 @@ def init_dataset():
             model = mobilenet_v2(num_classes=outputClass[args.data_set], inchannels=1)
         elif args.model == "resnet18":
             model = resnet18(num_classes=outputClass[args.data_set], in_channels=1)
-        elif model_name == "resnet34":
+        elif args.model == "resnet34":
             model = resnet34(num_classes=outputClass[args.data_set], in_channels=1)
-        elif model_name == "resnet50":
+        elif args.model == "resnet50":
             model = resnet50(num_classes=outputClass[args.data_set], in_channels=1)
-        elif model_name == "resnet101":
+        elif args.model == "resnet101":
             model = resnet101(num_classes=outputClass[args.data_set], in_channels=1)
-        elif model_name == "resnet152":
+        elif args.model == "resnet152":
             model = resnet152(num_classes=outputClass[args.data_set], in_channels=1)
         else:
             # Should not reach here

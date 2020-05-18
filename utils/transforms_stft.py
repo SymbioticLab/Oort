@@ -11,6 +11,8 @@ from torch.utils.data import Dataset
 
 from .transforms_wav import should_apply_transform
 
+random.seed(233)
+
 class ToSTFT(object):
     """Applies on an audio the short time fourier transform."""
 

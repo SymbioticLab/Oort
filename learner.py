@@ -165,13 +165,13 @@ def init_dataset():
             model = mobilenet_v2(num_classes=outputClass[args.data_set], inchannels=1)
         elif args.model == "resnet18":
             model = resnet18(num_classes=outputClass[args.data_set], in_channels=1)
-        elif model_name == "resnet34":
+        elif args.model == "resnet34":
             model = resnet34(num_classes=outputClass[args.data_set], in_channels=1)
-        elif model_name == "resnet50":
+        elif args.model == "resnet50":
             model = resnet50(num_classes=outputClass[args.data_set], in_channels=1)
-        elif model_name == "resnet101":
+        elif args.model == "resnet101":
             model = resnet101(num_classes=outputClass[args.data_set], in_channels=1)
-        elif model_name == "resnet152":
+        elif args.model == "resnet152":
             model = resnet152(num_classes=outputClass[args.data_set], in_channels=1)
         else:
             # Should not reach here

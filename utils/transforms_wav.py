@@ -9,6 +9,8 @@ import librosa
 import torch
 from torch.utils.data import Dataset
 
+random.seed(233)
+
 def should_apply_transform(prob=0.5):
     """Transforms are only randomly applied with the given probability."""
     return random.random() < prob
