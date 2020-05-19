@@ -79,13 +79,13 @@ os.environ['GLOO_SOCKET_IFNAME'] = 'vlan260'
 # os.environ['OMP_NUM_THREADS'] = args.threads
 # os.environ['MKL_NUM_THREADS'] = args.threads
 
-# try to pick the right gpus
-# cudaPrefix = 'cuda'
+# # try to pick the right gpus
+# cudaPrefix = 'cuda:'
 # logging.info("====CUDA_VISIBLE_DEVICES is {}, {}".format(os.environ["CUDA_VISIBLE_DEVICES"], torch.cuda.device_count()))
 
 # deviceId = int(os.environ["CUDA_VISIBLE_DEVICES"])
 # torch.cuda.set_device(0)
-# device = torch.device(cudaPrefix)#+str(0))
+# device = torch.device(0)
 
 # logging.info("====Pick gpu {}, {}".format(deviceId, device))
 
@@ -523,10 +523,12 @@ def run_client(clientId, cmodel, iters, learning_rate, argdicts = {}):
 
             loss_cnt = len(loss_list)
 
+        #epoch_train_loss += temp_loss
 
         temp_loss = temp_loss/float(loss_cnt)
 
         # only measure the loss of the last epoch
+
         if itr >= (iters - total_batch_size - 1):
             if epoch_train_loss is None:
                 epoch_train_loss = temp_loss
@@ -550,17 +552,11 @@ def run_client(clientId, cmodel, iters, learning_rate, argdicts = {}):
                     param.data += learning_rate * args.proxy_mu * (last_model_tensors[idx] - param.data)
         else:
             # proxy term 
-            temp_weights = []
-            if args.proxy_avg:
-                for idx, param in enumerate(cmodel.parameters()):
-                    temp_weights.append(learning_rate * args.proxy_mu * (last_model_tensors[idx] - param.data))
-
-            # loss.backward()
             optimizer.step()
-            
+
             if args.proxy_avg:
                 for idx, param in enumerate(cmodel.parameters()):
-                    param.data += temp_weights[idx]
+                    param.data += learning_rate * args.proxy_mu * (last_model_tensors[idx] - param.data)         
 
             cmodel.zero_grad()
 
@@ -579,7 +575,7 @@ def run_client(clientId, cmodel, iters, learning_rate, argdicts = {}):
         del global_data_iter[rmClient]
 
     # save the state of this client if # of batches > iters, since we want to pass over all samples at least one time
-    if total_batch_size > iters * 1.5 and len(train_data_itr_list) > 0 and args.task != 'nlp':
+    if total_batch_size > iters * 3 and len(train_data_itr_list) > 0 and args.task != 'nlp':
         global_data_iter[clientId] = [train_data_itr_list[0], curBatch, total_batch_size, argdicts['iters']]
     else:
         if args.num_loaders > 0:
@@ -606,11 +602,12 @@ def run_client(clientId, cmodel, iters, learning_rate, argdicts = {}):
     isSuccess = True
     if count > 0:
         speed = time_spent/float(count) 
-        #epoch_train_loss /= float(count)
+        #epoch_train_loss /= float(loss_cnt)
     else:
         isSuccess = False
         logging.info("====Failed to run client {}".format(clientId))
 
+    #logging.info("====Epoch epoch_train_loss is {}".format(epoch_train_loss))
     return model_param, epoch_train_loss, local_trained, str(speed) + '_' + str(count), time_cost, isSuccess
 
 def run(rank, model, train_data, test_data, queue, param_q, stop_flag, client_cfg):

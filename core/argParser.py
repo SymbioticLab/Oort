@@ -16,6 +16,10 @@ parser.add_argument('--time_stamp', type=str, default='logs')
 parser.add_argument('--task', type=str, default='cv')
 parser.add_argument('--pacer_delta', type=float, default=10)
 parser.add_argument('--pacer_step', type=int, default=9999999999)
+parser.add_argument('--capacity_bin', type=bool, default=True)
+parser.add_argument('--exploration_alpha', type=float, default=0.3)
+parser.add_argument('--exploration_factor', type=float, default=0.9)
+parser.add_argument('--exploration_decay', type=float, default=0.98)
 
 # The configuration of model and dataset
 parser.add_argument('--data_dir', type=str, default='~/cifar10/')
@@ -87,7 +91,7 @@ parser.add_argument('--min_learning_rate', type=float, default=1e-4)
 parser.add_argument('--loss_decay', type=float, default=0.2)
 parser.add_argument('--skip_partition', type=bool, default=False)
 parser.add_argument('--exploration_min', type=float, default=0.2)
-parser.add_argument('--cut_off_util', type=float, default=0.9)
+parser.add_argument('--cut_off_util', type=float, default=0.95)
 
 # for yogi
 parser.add_argument('--gradient_policy', type=str, default='')

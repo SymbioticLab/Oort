@@ -84,9 +84,9 @@ os.environ['GLOO_SOCKET_IFNAME'] = 'vlan260'
 
 # cudaPrefix = 'cuda'
 # logging.info("====CUDA_VISIBLE_DEVICES is {}, {}".format(os.environ["CUDA_VISIBLE_DEVICES"], torch.cuda.device_count()))
-# deviceId = int(os.environ["CUDA_VISIBLE_DEVICES"])
+# deviceId = 0# int(os.environ["CUDA_VISIBLE_DEVICES"])
 # torch.cuda.set_device(0)
-# device = torch.device(cudaPrefix)#+str(0))
+# device = torch.device(0)#+str(0))
 # logging.info("====Pick gpu {}, {}".format(torch.cuda.current_device(), device))
 
 device = None
@@ -171,7 +171,7 @@ def initiate_sampler_query(numOfClients):
             collectedClients += 1
 
     logging.info("====Info of all feasible clients {}".format(clientSampler.getDataInfo()))
-    
+
     return clientSampler
 
 
@@ -354,32 +354,23 @@ def run(model, test_data, queue, param_q, stop_signal, clientSampler):
                                 else:
                                     sumDeltaWeights[idx] += model_weight * ratioSample
 
-                            # if gradients is None:
-                            #     gradients = (model_weight - last_global_model[idx]).flatten()
-                            # else:
-                            #     gradients = torch.cat((gradients, (model_weight - last_global_model[idx]).flatten()))
-
                         # bias term for global speed
                         virtual_c = virtualClientClock[clientId] if clientId in virtualClientClock else 1.
                         clientUtility = 1. 
 
+                        size_of_sample_bin = 1. 
+
+                        if args.capacity_bin == True:
+                            size_of_sample_bin = min(clientSampler.getClient(clientId).size, args.upload_epoch*args.batch_size)
+
                         # register the score
                         if args.score_mode == "loss":
-                            clientUtility = math.sqrt(iteration_loss[i]) * min(clientSampler.getClient(clientId).size, 
-                                                        args.upload_epoch*args.batch_size)
-                        # elif args.score_mode == "norm_model":
-                        #     clientSampler.registerScore(clientId, 
-                        #                                 gradients.norm(2).data.item() * min(clientSampler.getClient(clientId).size, 
-                        #                                 args.upload_epoch*args.batch_size), auxi=gradients.norm(2).data.item(), 
-                        #                                 time_stamp=epoch_count
-                        #                   )
+                            clientUtility = math.sqrt(iteration_loss[i]) * size_of_sample_bin
                         elif args.score_mode == "norm":
-                            clientUtility = math.sqrt(iteration_loss[i]) * min(clientSampler.getClient(clientId).size, 
-                                                        args.upload_epoch*args.batch_size)
+                            clientUtility = math.sqrt(iteration_loss[i]) * size_of_sample_bin
 
                         elif args.score_mode == "size":
-                            clientUtility = min(clientSampler.getClient(clientId).size, 
-                                                        args.upload_epoch*args.batch_size)
+                            clientUtility = size_of_sample_bin
                         else:
                             clientUtility = (1.0 - clientSampler.getClient(clientId).distance)
                             
@@ -644,3 +635,4 @@ if __name__ == "__main__":
     #p.start()
     #p.join()
     manager.shutdown()
+

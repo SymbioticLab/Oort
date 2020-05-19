@@ -10,10 +10,10 @@ class UCB(object):
         self.totalArms = OrderedDict()
         self.training_round = 0
 
-        self.exploration = 0.9
-        self.decay_factor = 0.98
+        self.exploration = args.exploration_factor 
+        self.decay_factor = args.exploration_decay 
         self.exploration_min = args.exploration_min
-        self.alpha = 0.3
+        self.alpha = args.exploration_alpha
 
         self.rng = Random()
         self.rng.seed(sample_seed)
@@ -252,3 +252,4 @@ class UCB(object):
         _avg = sum(aList)/float(len(aList))
 
         return float(_max), float(_min), float(_range), float(_avg)
+
