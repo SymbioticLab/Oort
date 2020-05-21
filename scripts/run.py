@@ -106,6 +106,7 @@ rawCmdPs = '\npython ~/DMFL/param_server.py ' + paramsCmd + ' --this_rank=0 ' + 
 
 with open('server.lsf', 'w') as fout:
     scriptPS = template + '\n#BSUB -J server\n#BSUB -e server{}'.format(timeStamp) + '.e\n#BSUB -o server{}'.format(timeStamp) + '.o\n' + '#BSUB -m "gpu-cn002"\n\n' + rawCmdPs
+    #scriptPS = template + '\n#BSUB -J server\n#BSUB -e server{}'.format(timeStamp) + '.e\n#BSUB -o server{}'.format(timeStamp) + '.o\n' + '\n' + rawCmdPs
     fout.writelines(scriptPS)
 
 # execute ps

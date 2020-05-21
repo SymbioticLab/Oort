@@ -147,7 +147,7 @@ class UCB(object):
                 numOfExploited += 1
 
                 sc = (creward - min_reward)/float(range_reward) \
-                    + math.sqrt(0.1*math.log(cur_time)/self.totalArms[key][1]) # temporal-uncertainty
+                    + self.alpha*((cur_time-self.totalArms[key][1]) - min_staleness)/float(range_staleness) #math.sqrt(0.1*math.log(cur_time)/self.totalArms[key][1]) # temporal-uncertainty
 
                     #self.alpha*((cur_time-self.totalArms[key][1]) - min_staleness)/float(range_staleness)
 
