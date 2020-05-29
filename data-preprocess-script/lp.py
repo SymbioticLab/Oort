@@ -11,8 +11,9 @@ sys.stdout.flush()
 
 data_trans_size = 100663 # size of mobilenet, 12 MB
 budget = 100
-gap_bar = 3e-1 # terminate the lp
-num_of_class_interest = 10000
+gap_bar = 0.25 # terminate the lp
+num_of_class_interest = 596 #596
+greedy_only = False
 
 def load_profiles(datafile, sysfile, distrfile):
     # load user data information
@@ -242,7 +243,7 @@ def preprocess(data_file):
 
     return None
 
-preprocess('so_data_distr')
+#preprocess('so_data_distr')
 
 def run_lp(requirement, data, systems, distr):
     global budget, data_trans_size
@@ -262,7 +263,7 @@ def run_lp(requirement, data, systems, distr):
     start_time = time.time()
     result, sol, lp_duration = lp_solver(data, sys_prof, budget, preference, data_trans_size, gap=gap_bar)#, request_budget=False)
     finish_time = time.time()
-    lp_duration = finish_time - start_time
+    lp_solver_duration = finish_time - start_time
 
     print(f"LP solver took {finish_time - start_time} sec")
 
@@ -283,23 +284,36 @@ def run_lp(requirement, data, systems, distr):
     flag = flag & (sol.status == GRB.OPTIMAL)
     if flag:
         print("Perfect")
-        return [lp_duration, sol.objVal, count]
+        return [lp_duration, sol.objVal, lp_solver_duration, count]
     else:
-        return [lp_duration, -1, -1]
+        return [lp_duration, -1, lp_solver_duration, -1]
 
+def greedy_result(select_clients, sys_prof):
+    # get the sum of samples for each client
+    task_duration = []
 
-def run_heuristic(requirement, data, systems, distr):
-    global budget, data_trans_size
+    for clientId in select_clients:
+        class_dict = select_clients[clientId]
+        samples_taken = sum([class_dict[cl] for cl in class_dict])
+        task_duration.append(samples_taken*sys_prof[clientId][0]/1000. + data_trans_size/float(sys_prof[clientId][1]))
+
+    return max(task_duration)
+
+def run_heuristic(requirement, _raw_data, systems, distr):
+    global budget, data_trans_size, num_of_class_interest, greedy_only
 
 
     #data, systems, distr = load_profiles('openImg_size.txt', 'clientprofile', 'openImg_global_distr')
     # data, systems, distr = load_profiles('so_data_distr', 'clientprofile', 'so_global_distr')
+    data = np.copy(_raw_data)
+
     num_of_class = num_of_class_interest #596 #len(data[0])
     num_of_clients = len(data)
     distr = distr[:num_of_class]
     sum_distr = sum(distr)
 
     print(num_of_clients, num_of_class)
+
     data = data[:num_of_clients, :num_of_class]
 
     raw_data = np.copy(data)
@@ -316,7 +330,7 @@ def run_heuristic(requirement, data, systems, distr):
 
     # sort clients by # of samples
     sum_sample_per_client = data[:, list(preference_dict.keys())].sum(axis=1) #sum_interest_columns(np.copy(data), list(preference_dict.keys()))
-    top_clients = sorted(range(num_of_clients), reverse=True, key=lambda k:np.sum(sum_sample_per_client[k]))[:1000] #sorted(range(num_of_clients), key=lambda k:est_dur[k])
+    top_clients = sorted(range(num_of_clients), reverse=True, key=lambda k:np.sum(sum_sample_per_client[k]))
 
     # random.shuffle(top_clients)
 
@@ -327,7 +341,8 @@ def run_heuristic(requirement, data, systems, distr):
     print(f"cut_off_clients is {cut_off_clients}")
     select_clients = None
 
-    cut_off_required = 100 #budget #min(budget, 200)
+    cut_off_required = 200 #max(budget * 0.1, 100)
+
     start_time = time.time()
     while True:
         tempData = data[top_clients[:cut_off_clients], :]
@@ -338,7 +353,7 @@ def run_heuristic(requirement, data, systems, distr):
             select_clients = {top_clients[k]:clientsTaken[k] for k in clientsTaken.keys()}
 
             # pad the budget
-            if len(select_clients) < cut_off_required:
+            if len(select_clients) < cut_off_required and not greedy_only:
                 for client in top_clients:
                     if client not in select_clients:
                         select_clients[client] = {}
@@ -374,9 +389,15 @@ def run_heuristic(requirement, data, systems, distr):
             init_values[(idx, cl)] = select_clients[key][cl]
 
     start_time = time.time()
-    result, sol, lp_duration = lp_solver(tempdata, tempsys, budget, preference, data_trans_size, init_values=init_values, request_budget=False, gap=gap_bar)
+
+    if not greedy_only:
+        result, sol, lp_duration = lp_solver(tempdata, tempsys, budget, preference, data_trans_size, init_values=init_values, request_budget=False, gap=gap_bar)
+    else:
+        result = greedy_result(select_clients, sys_prof)
+        return [augTime, 0., result, 0., len(select_clients)]
+
     finish_time = time.time()
-    #lp_duration = finish_time - start_time
+    lp_solver_duration = finish_time - start_time
 
     print(f"LP solver took {finish_time - start_time:.2f} sec")
 
@@ -401,21 +422,50 @@ def run_heuristic(requirement, data, systems, distr):
     print(f'\# of class {num_of_class}, \# of clients {num_of_clients}')
 
     if flag:
-        return [augTime, lp_duration, sol.objVal, count]
+        return [augTime, lp_duration, sol.objVal, lp_solver_duration, count]
 
-    return [augTime, lp_duration, sol.objVal, -1]
+    return [augTime, lp_duration, sol.objVal, lp_solver_duration, -1]
 
-temp_requirements = [1000, 2000, 4000, 6000, 8000, 10000, 20000, 40000, 60000, 80000, 100000, 150000, 200000, 250000, 300000, 350000, 400000, 450000, 500000, 550000, 600000, 700000, 800000, 900000, 1000000, 1200000]
-requirements = [x for x in temp_requirements if x > num_of_class_interest * 5]
+#temp_requirements = [1000, 2000, 4000, 5000, 6000, 7000, 8000] + [10000*i for i in range(1, 10)] + [100000*i for i in range(1, 10)] #, 20000, 40000, 60000, 80000, 100000, 150000, 200000, 250000, 300000, 350000, 400000, 450000, 500000, 550000, 600000, 700000, 800000, 900000, 1000000, 1200000]
+temp_requirements = [1000 * i for i in range(1, 11)] + [10000 * i for i in range(2, 11)] + [100000, 150000, 200000, 250000, 300000, 350000, 400000, 450000, 500000, 550000, 600000, 700000, 800000, 900000, 1000000, 1200000]
+
+#temp_requirements = [10000*i for i in range(1, 10)] + [100000*i for i in range(1, 10)]
+requirements = [x for x in temp_requirements if x > num_of_class_interest]# * 5]
 #requirements = [20000]
 
 is_heuristic = True #True
 
-budgets = [100, 500, 1000, 1500, 2000, 3000, 5000]
+budgets = [100, 500, 1000, 1500, 2000, 2500, 3000, 3500, 4000, 4500, 5000]
 
 gc.disable()
-data, systems, distr = load_profiles('so_data_distr', 'clientprofile', 'so_global_distr')
+#data, systems, distr = load_profiles('/mnt/so/so_data_distr', 'clientprofile', 'so_global_distr')
+data, systems, distr = load_profiles('openImg_size.txt', 'clientprofile', 'openImg_global_distr')
+
 gc.enable()
+
+
+# budget = 500
+
+# output_file = 'class_heuristic_result' if is_heuristic else 'optimal_result'
+# with open(output_file, 'w') as fout:
+#     classes = [i*10**exp for exp in range(1, 5) for i in range(1, 9)]
+#     for i in classes:
+#         num_of_class_interest = i
+
+#         print(f"====Start to run {i} class")
+#         req = sum(distr[:i]) * 0.01
+#         sol = run_heuristic(req, data, systems, distr) if is_heuristic else run_lp(req, data, systems, distr)
+
+#         fout.writelines(f'data_trans_size: {data_trans_size}, class: {i}, requirement: {req}, end-to-end: {sum(sol[:-2]):.3f}, details: {sol} \n')
+
+#         print(f'====data_trans_size: {data_trans_size}, class: {i}, requirement: {req}, end-to-end: {sum(sol[:-2]):.3f}s, details: {sol}\n')
+#         if sol[-1] == -1:
+#             print(f"====Terminate with {i}")
+#             break
+
+#         gc.collect()
+
+greedy_only = False
 
 for item in budgets:
     budget = item
@@ -424,12 +474,13 @@ for item in budgets:
     with open(output_file, 'w') as fout:
         for i in requirements:
             print(f"====Start to run {i} requirements")
-            sol = run_heuristic(i, data, systems, distr) if is_heuristic else run_lp(i)
+            sol = run_heuristic(i, data, systems, distr) if is_heuristic else run_lp(i, data, systems, distr)
 
-            fout.writelines(f'data_trans_size: {data_trans_size}, budget: {budget}, requirement: {i}, end-to-end: {sum(sol[:-1]):.3f}, details: {sol} \n')
+            fout.writelines(f'data_trans_size: {data_trans_size}, budget: {budget}, requirement: {i}, end-to-end: {sum(sol[:-2]):.3f}, details: {sol} \n')
 
-            print(f'====data_trans_size: {data_trans_size}, budget: {budget}, requirement: {i}, end-to-end: {sum(sol[:-1]):.3f}s, details: {sol}\n')
+            print(f'====data_trans_size: {data_trans_size}, budget: {budget}, requirement: {i}, end-to-end: {sum(sol[:-2]):.3f}s, details: {sol}\n')
             if sol[-1] == -1:
                 print(f"====Terminate with {i}")
                 break
 
+            gc.collect()
