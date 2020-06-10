@@ -135,7 +135,8 @@ class ClientSampler(object):
             return self.ucbSampler.getTopK(numOfClients, cur_time=cur_time)
         else:
             self.rng.shuffle(self.feasibleClients)
-            return self.feasibleClients[:numOfClients]
+            client_len = min(numOfClients, len(self.feasibleClients) -1)
+            return self.feasibleClients[:client_len]
 
     def getAllMetrics(self):
         if self.mode == "bandit":
@@ -147,3 +148,4 @@ class ClientSampler(object):
 
     def getClientReward(self, clientId):
         return self.ucbSampler.getClientReward(clientId)
+

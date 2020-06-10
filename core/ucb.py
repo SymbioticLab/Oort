@@ -78,7 +78,7 @@ class UCB(object):
                 logging.info("====Pacer changes at {} to {}".format(self.training_round, self.round_threshold))
 
             # change sharply -> we decrease the pacer step
-            elif abs(utilCurrentPacerRounds - utilLastPacerRounds) >= utilLastPacerRounds * 0.3:
+            elif abs(utilCurrentPacerRounds - utilLastPacerRounds) >= utilLastPacerRounds * 5:#0.3:
                 self.round_threshold = max(self.args.pacer_delta, self.round_threshold - self.args.pacer_delta)
                 self.last_util_record = self.training_round - self.args.pacer_step
                 logging.info("====Pacer changes at {} to {}".format(self.training_round, self.round_threshold))
@@ -147,7 +147,7 @@ class UCB(object):
                 numOfExploited += 1
 
                 sc = (creward - min_reward)/float(range_reward) \
-                    + self.alpha*((cur_time-self.totalArms[key][1]) - min_staleness)/float(range_staleness) #math.sqrt(0.1*math.log(cur_time)/self.totalArms[key][1]) # temporal-uncertainty
+                    + self.alpha*((cur_time-self.totalArms[key][1]) - min_staleness)/float(range_staleness) #math.sqrt(0.1*math.log(cur_time)/self.totalArms[key][1]) #self.alpha*((cur_time-self.totalArms[key][1]) - min_staleness)/float(range_staleness) #math.sqrt(0.1*math.log(cur_time)/self.totalArms[key][1]) # temporal-uncertainty
 
                     #self.alpha*((cur_time-self.totalArms[key][1]) - min_staleness)/float(range_staleness)
 

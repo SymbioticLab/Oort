@@ -76,18 +76,22 @@ os.environ['MASTER_ADDR'] = args.ps_ip
 os.environ['MASTER_PORT'] = args.ps_port
 os.environ['NCCL_SOCKET_IFNAME'] = 'ib0'
 os.environ['GLOO_SOCKET_IFNAME'] = 'vlan260'
+os.environ['NCCL_DEBUG'] = 'INFO'
+
 # os.environ['OMP_NUM_THREADS'] = args.threads
 # os.environ['MKL_NUM_THREADS'] = args.threads
 
 # # try to pick the right gpus
+
 # cudaPrefix = 'cuda:'
 # logging.info("====CUDA_VISIBLE_DEVICES is {}, {}".format(os.environ["CUDA_VISIBLE_DEVICES"], torch.cuda.device_count()))
 
-# deviceId = int(os.environ["CUDA_VISIBLE_DEVICES"])
-# torch.cuda.set_device(0)
-# device = torch.device(0)
+# deviceId = 0#int(os.environ["CUDA_VISIBLE_DEVICES"])
+# torch.cuda.set_device(cudaPrefix+str(deviceId))
+# device = cudaPrefix+str(deviceId) #torch.device(0)
 
 # logging.info("====Pick gpu {}, {}".format(deviceId, device))
+# logging.info(f"====NCCL config ip: {args.ps_ip}, port: {args.ps_port}")
 
 device = None
 deviceId = None
@@ -100,7 +104,7 @@ for i in range(4):
         device = torch.device(cudaPrefix+str(i))
         torch.cuda.set_device(i)
         deviceId = i
-        logging.info(torch.rand(1).to(device=device))
+        logging.info(f'====end up with cuda device {torch.rand(1).to(device=device)}')
         break
     except Exception as e:
         # no gpus available
@@ -146,6 +150,7 @@ def init_myprocesses(rank, size, model,
                    fn, backend, client_cfg):
     print("====Worker: init_myprocesses")
     fn(rank, model, train_dataset, test_dataset, q, param_q, stop_flag, client_cfg)
+
 def init_dataset():
     global tokenizer, device
 
@@ -186,7 +191,8 @@ def init_dataset():
             model = tormodels.__dict__[args.model](num_classes=outputClass[args.data_set])
 
     model = model.to(device=device)
-
+    model.eval()
+    
     if args.data_set == 'Mnist':
         train_transform, test_transform = get_data_transform('mnist')
 
@@ -575,7 +581,7 @@ def run_client(clientId, cmodel, iters, learning_rate, argdicts = {}):
         del global_data_iter[rmClient]
 
     # save the state of this client if # of batches > iters, since we want to pass over all samples at least one time
-    if total_batch_size > iters * 3 and len(train_data_itr_list) > 0 and args.task != 'nlp':
+    if total_batch_size > iters * 10 and len(train_data_itr_list) > 0 and args.task != 'nlp':
         global_data_iter[clientId] = [train_data_itr_list[0], curBatch, total_batch_size, argdicts['iters']]
     else:
         if args.num_loaders > 0:
@@ -627,6 +633,18 @@ def run(rank, model, train_data, test_data, queue, param_q, stop_flag, client_cf
     for idx, param in enumerate(model.parameters()):
         dist.broadcast(tensor=param.data, src=0)
     
+    if args.load_model:
+        try:
+            with open(modelPath, 'rb') as fin:
+                model = pickle.load(fin)
+
+            model = model.to(device=device)
+            #model.load_state_dict(torch.load(modelPath, map_location=lambda storage, loc: storage.cuda(deviceId)))
+            logging.info("====Load model successfully\n")
+        except Exception as e:
+            logging.info("====Error: Failed to load model due to {}\n".format(str(e)))
+            sys.exit(-1)
+
     for idx, param in enumerate(model.parameters()): 
         last_model_tensors.append(copy.deepcopy(param.data))
 
@@ -658,7 +676,7 @@ def run(rank, model, train_data, test_data, queue, param_q, stop_flag, client_cf
 
             computeStart = time.time()
 
-            if not args.test_only or epoch == 1:
+            if not args.test_only:
                 # dump a copy of model
                 with open(tempModelPath, 'wb') as fout:
                     pickle.dump(model, fout)
@@ -708,6 +726,9 @@ def run(rank, model, train_data, test_data, queue, param_q, stop_flag, client_cf
                     client_dataset = select_dataset(nextClientId, global_trainDB, batch_size=args.test_bsz, isTest=True)
                     test_loss, acc, acc_5, temp_testResults = test_model(rank, model, client_dataset, criterion=criterion, 
                                                                             tokenizer=tokenizer)
+
+                    logging.info(f'====Epoch: {epoch}, clientId: {nextClientId}, len: {len(client_dataset)}, test_loss: {test_loss}, acc: {acc}, acc_5: {acc_5}')
+
                     # merge test results
                     for idx, item in enumerate(temp_testResults):
                         testResults[idx] += item
@@ -756,7 +777,7 @@ def run(rank, model, train_data, test_data, queue, param_q, stop_flag, client_cf
                 # forward pass of the training data
                 if args.test_train_data:
                     rank_train_data = select_dataset(
-                                        this_rank, global_trainDB, batch_size=args.test_bsz, is_rank=rank,
+                                        args.this_rank, global_trainDB, batch_size=args.test_bsz, is_rank=rank,
                                         collate_fn=collate if args.task=='nlp' else None
                                       )
                     test_loss, acc, acc_5, testResults = test_model(rank, model, rank_train_data, criterion=criterion, tokenizer=tokenizer)
@@ -769,6 +790,14 @@ def run(rank, model, train_data, test_data, queue, param_q, stop_flag, client_cf
                 uploadEpoch = epoch
                 last_test = time.time()
                 gc.collect()
+
+            if epoch % args.dump_epoch == 0 and args.this_rank == 1:
+                model = model.to(device='cpu')
+                with open(logDir+'/'+str(args.model)+'_'+str(epoch)+'.pth.tar', 'wb') as fout:
+                    pickle.dump(model, fout)
+
+                logging.info("====Dump model successfully")
+                model = model.to(device=device)
 
         except Exception as e:
             exc_type, exc_obj, exc_tb = sys.exc_info()
@@ -859,3 +888,5 @@ if __name__ == "__main__":
     init_myprocesses(this_rank, world_size, model, entire_train_data, test_data,
                                           q, param_q, stop_flag,
                                           run, args.backend, client_cfg)
+
+

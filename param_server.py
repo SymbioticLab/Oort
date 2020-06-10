@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 
 from core.argParser import args
-import os, shutil, pickle
+import os, shutil, pickle, gc
 import random, math
 import numpy as np
 import sys, socket
@@ -81,13 +81,17 @@ os.environ['MASTER_ADDR'] = args.ps_ip
 os.environ['MASTER_PORT'] = args.ps_port
 os.environ['NCCL_SOCKET_IFNAME'] = 'ib0'
 os.environ['GLOO_SOCKET_IFNAME'] = 'vlan260'
+os.environ['NCCL_DEBUG'] = 'INFO'
 
-# cudaPrefix = 'cuda'
+# cudaPrefix = 'cuda:'
 # logging.info("====CUDA_VISIBLE_DEVICES is {}, {}".format(os.environ["CUDA_VISIBLE_DEVICES"], torch.cuda.device_count()))
-# deviceId = 0# int(os.environ["CUDA_VISIBLE_DEVICES"])
-# torch.cuda.set_device(0)
-# device = torch.device(0)#+str(0))
+
+# deviceId = 0#int(os.environ["CUDA_VISIBLE_DEVICES"])
+# #torch.cuda.set_device(deviceId)
+# device = cudaPrefix+str(deviceId) #torch.device(0)
+
 # logging.info("====Pick gpu {}, {}".format(torch.cuda.current_device(), device))
+# logging.info(f"====NCCL config ip: {args.ps_ip}, port: {args.ps_port}")
 
 device = None
 deviceId = None
@@ -191,7 +195,8 @@ def init_myprocesses(rank, size, model, test_data, queue, param_q, stop_signal, 
         clientIdsToRun.append([nextClientIdToRun])
         sampledClientSet.add(nextClientIdToRun)
     
-    dist.broadcast(tensor=torch.tensor(clientIdsToRun, dtype=torch.int).to(device=device), src=0)
+    clientTensor = torch.tensor(clientIdsToRun, dtype=torch.int, device=device)
+    dist.broadcast(tensor=clientTensor, src=0)
 
     # Start the PS service
     fn(model, test_data, queue, param_q, stop_signal, clientSampler)
@@ -236,15 +241,19 @@ def init_dataset():
         else:
             model = tormodels.__dict__[args.model](num_classes=outputClass[args.data_set])
 
-    model = model.to(device=device)
-
     if args.load_model:
         try:
-            model.load_state_dict(torch.load(modelPath, map_location=lambda storage, loc: storage.cuda(deviceId)))
+            with open(modelPath, 'rb') as fin:
+                model = pickle.load(fin)
+
+            #model.load_state_dict(torch.load(modelPath, map_location=lambda storage, loc: storage.cuda(deviceId)))
             logging.info("====Load model successfully\n")
         except Exception as e:
             logging.info("====Error: Failed to load model due to {}\n".format(str(e)))
             sys.exit(-1)
+
+    model = model.to(device=device)
+    model.eval()
 
     logging.info("====Finish loading model")
 
@@ -259,7 +268,7 @@ def run(model, test_data, queue, param_q, stop_signal, clientSampler):
     
     #if not args.load_model:
     for idx, param in enumerate(model.parameters()):
-        dist.broadcast(tensor=param.data, src=0)
+        dist.broadcast(tensor=param.data.to(device=device), src=0)
 
     workers = [int(v) for v in str(args.learners).split('-')]
 
@@ -382,6 +391,9 @@ def run(model, test_data, queue, param_q, stop_signal, clientSampler):
 
                         avgUtilLastEpoch += ratioSample * clientUtility
 
+                        delta_ws = None
+                        del delta_ws
+
                 logging.info("====Done handling rank {}, with ratio {}, now collected {} clients".format(rank_src, ratioSample, received_updates))
 
                 # aggregate the test results
@@ -440,6 +452,12 @@ def run(model, test_data, queue, param_q, stop_signal, clientSampler):
                     if pendingWorkers[pworker] <= args.stale_threshold + currentMinStep:
                         # start to send param, to avoid synchronization problem, first create a copy here?
                         workersToSend.append(pworker)
+
+                tmp_dict = None
+                delta_wss = None
+
+                del delta_wss
+                del tmp_dict
 
                 if len(workersToSend) > 0:
                     # assign avg reward to explored, but not ran workers
@@ -547,21 +565,21 @@ def run(model, test_data, queue, param_q, stop_signal, clientSampler):
                         logging.info("Handle Wight {} | Send {}".format(handle_dur, time.time() - send_start))
 
                     # dump the model into file for backup
-                    if epoch_count % args.dump_epoch == 0:
-                        torch.save(model.state_dict(), logDir+'/'+str(args.model)+'_'+str(currentMinStep)+'.pth.tar')
-                        # with open(logDir+'/'+str(args.model)+'_'+str(currentMinStep)+'.pth.tar', 'wb') as fout:
-                        #     pickle.dump(model.to(device='cpu'), fout)
+                    # if epoch_count % args.dump_epoch == 0:
+                    #     torch.save(model.state_dict(), logDir+'/'+str(args.model)+'_'+str(currentMinStep)+'.pth.tar')
+                    #     # with open(logDir+'/'+str(args.model)+'_'+str(currentMinStep)+'.pth.tar', 'wb') as fout:
+                    #     #     pickle.dump(model.to(device='cpu'), fout)
 
-                        # dump sampler
-                        # with open(logDir + '/sampler_' + str(currentMinStep), 'wb') as fout:
-                        #     pickle.dump(clientSampler, fout)
+                    #     # dump sampler
+                    #     # with open(logDir + '/sampler_' + str(currentMinStep), 'wb') as fout:
+                    #     #     pickle.dump(clientSampler, fout)
 
-                        # # dump metrics
-                        # with open(logDir + '/sampler_metrics_' + str(currentMinStep), 'wb') as fout:
-                        #     pickle.dump(clientSampler.getAllMetrics(), fout)
+                    #     # # dump metrics
+                    #     # with open(logDir + '/sampler_metrics_' + str(currentMinStep), 'wb') as fout:
+                    #     #     pickle.dump(clientSampler.getAllMetrics(), fout)
 
-                        logging.info("====Dump model and sampler successfully")
-                        model = model.to(device=device)
+                    #     logging.info("====Dump model and sampler successfully")
+                    #     model = model.to(device=device)
 
                     last_global_model = [param for param in pickle.loads(pickle.dumps(model)).parameters()]
                     
@@ -569,6 +587,8 @@ def run(model, test_data, queue, param_q, stop_signal, clientSampler):
                     global_virtual_clock += round_duration
                     received_updates = 0
                     sumDeltaWeights = []
+
+                    gc.collect()
 
                 # The training stop
                 if(epoch_count >= args.epochs):
