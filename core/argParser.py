@@ -20,12 +20,14 @@ parser.add_argument('--capacity_bin', type=bool, default=True)
 parser.add_argument('--exploration_alpha', type=float, default=0.3)
 parser.add_argument('--exploration_factor', type=float, default=0.9)
 parser.add_argument('--exploration_decay', type=float, default=0.98)
+parser.add_argument('--fixed_clients', type=bool, default=False)
 
 # The configuration of model and dataset
 parser.add_argument('--data_dir', type=str, default='~/cifar10/')
 parser.add_argument('--save_path', type=str, default='./')
 parser.add_argument('--client_path', type=str, default='/tmp/client.cfg')
 parser.add_argument('--model', type=str, default='resnet')
+parser.add_argument('--read_models_path', type=bool, default=False)
 parser.add_argument('--depth', type=int, default=18)
 parser.add_argument('--data_set', type=str, default='cifar10')
 parser.add_argument('--sample_mode', type=str, default='random')
@@ -247,4 +249,3 @@ parser.add_argument("--num_classes", type=int, default=35, help="For number of c
 
 
 args = parser.parse_args()
-

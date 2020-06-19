@@ -267,8 +267,9 @@ def run(model, test_data, queue, param_q, stop_signal, clientSampler):
     f_staleness = open(staleness_file, 'w')
     
     #if not args.load_model:
-    for idx, param in enumerate(model.parameters()):
+    for name, param in model.named_parameters():
         dist.broadcast(tensor=param.data.to(device=device), src=0)
+        logging.info(f"====Model paramters name: {name}")
 
     workers = [int(v) for v in str(args.learners).split('-')]
 
@@ -298,6 +299,8 @@ def run(model, test_data, queue, param_q, stop_signal, clientSampler):
     last_global_model = [param for param in pickle.loads(pickle.dumps(model)).parameters()]
     clientsLastEpoch = []
     sumDeltaWeights = []
+    clientWeightsCache = {}
+    last_sampled_clients = None
 
     gradient_controller = None
     # initiate yogi if necessary
@@ -348,6 +351,7 @@ def run(model, test_data, queue, param_q, stop_signal, clientSampler):
                         # fraction of total samples on this specific node 
                         ratioSample = clientSampler.getSampleRatio(clientId, rank_src, args.is_even_avg)
                         delta_ws = delta_wss[i]
+                        #clientWeightsCache[clientId] = [torch.from_numpy(x).to(device=device) for x in delta_ws]
 
                         epoch_train_loss += ratioSample * iteration_loss[i]
                         isSelected = True if clientId in sampledClientSet else False
@@ -377,7 +381,6 @@ def run(model, test_data, queue, param_q, stop_signal, clientSampler):
                             clientUtility = math.sqrt(iteration_loss[i]) * size_of_sample_bin
                         elif args.score_mode == "norm":
                             clientUtility = math.sqrt(iteration_loss[i]) * size_of_sample_bin
-
                         elif args.score_mode == "size":
                             clientUtility = size_of_sample_bin
                         else:
@@ -416,10 +419,13 @@ def run(model, test_data, queue, param_q, stop_signal, clientSampler):
                             top_1_str = 'all-or-nothing: '
                             top_5_str = 'accuracy: '
 
-                        logging.info("====After aggregation in epoch: {}, virtual_clock: {}, {}: {} % ({}), {}: {} % ({}), test loss: {}, test len: {}"
-                                .format(updateEpoch, global_virtual_clock, top_1_str, round(test_results[updateEpoch][0]/test_results[updateEpoch][3]*100.0, 4), 
-                                test_results[updateEpoch][0], top_5_str, round(test_results[updateEpoch][1]/test_results[updateEpoch][3]*100.0, 4), 
-                                test_results[updateEpoch][1], test_results[updateEpoch][2]/test_results[updateEpoch][3], test_results[updateEpoch][3]))
+                        try:
+                            logging.info("====After aggregation in epoch: {}, virtual_clock: {}, {}: {} % ({}), {}: {} % ({}), test loss: {}, test len: {}"
+                                    .format(updateEpoch, global_virtual_clock, top_1_str, round(test_results[updateEpoch][0]/test_results[updateEpoch][3]*100.0, 4), 
+                                    test_results[updateEpoch][0], top_5_str, round(test_results[updateEpoch][1]/test_results[updateEpoch][3]*100.0, 4), 
+                                    test_results[updateEpoch][1], test_results[updateEpoch][2]/test_results[updateEpoch][3], test_results[updateEpoch][3]))
+                        except Exception as e:
+                            logging.info(f"====Error {e}")
 
                 handlerDur = time.time() - handlerStart
                 global_update += 1
@@ -495,7 +501,9 @@ def run(model, test_data, queue, param_q, stop_signal, clientSampler):
                         
                         numToRealRun = max(args.total_worker, len(workers))
                         numToSample = int(numToRealRun * args.overcommit)
-                        sampledClientsReal = sorted(clientSampler.resampleClients(numToSample, cur_time=epoch_count))
+                        sampledClientsReal = last_sampled_clients if args.fixed_clients and last_sampled_clients else sorted(clientSampler.resampleClients(numToSample, cur_time=epoch_count))
+
+                        last_sampled_clients = sampledClientsReal
 
                         # we decide to simulate the wall-clock and remove the stragglers
                         completionTimes = []
@@ -586,7 +594,27 @@ def run(model, test_data, queue, param_q, stop_signal, clientSampler):
                     # update the virtual clock
                     global_virtual_clock += round_duration
                     received_updates = 0
+
+                    #clientKeys = sorted(clientWeightsCache.keys())
+                    # calculate the L2-norm of weights
+                    #tempSumL2Norm = [w.norm(2).item() for w in sumDeltaWeights]
+                    #assert(len(tempSumL2Norm) == len(clientWeightsCache[clientKeys[0]]))
+                    
+                    #logging.info(f"====Avg L2-norm is: {tempSumL2Norm}")
+
+                    # tempModelL2Norm = [param.data.norm(2).item() for param in model.parameters()]
+                    # logging.info(f"====Model L2-norm is: {tempModelL2Norm}")
+
+                    # for clientId in clientKeys:
+                    #     weights = clientWeightsCache[clientId]
+                    #     tempL2Norm = []
+                    #     for pIdx, weight in enumerate(weights):
+                    #         tempL2Norm.append((weight - sumDeltaWeights[pIdx]).norm(2).item())
+
+                    #     logging.info(f"====For clientId {clientId}, L2-norm is: {tempL2Norm}")
+
                     sumDeltaWeights = []
+                    clientWeightsCache = {}
 
                     gc.collect()
 

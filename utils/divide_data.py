@@ -478,7 +478,7 @@ class DataPartitioner(object):
 
         pass
 
-    def use(self, partition, istest, is_rank):
+    def use(self, partition, istest, is_rank, fractional):
         _partition = partition
         resultIndex = []
 
@@ -489,7 +489,7 @@ class DataPartitioner(object):
                 if i % self.args.total_worker == is_rank:
                     resultIndex += self.partitions[i]
 
-        exeuteLength = len(resultIndex) if istest == False else int(len(resultIndex) * args.test_ratio)
+        exeuteLength = -1 if istest == False or fractional == False else int(len(resultIndex) * args.test_ratio)
 
         resultIndex = resultIndex[:exeuteLength]
         self.rng.shuffle(resultIndex)
@@ -516,8 +516,9 @@ def partition_dataset(partitioner, workers, partitionRatio=[], sequential=0, rat
     partitioner.partitionDataByDefault(sizes=partition_sizes, sequential=sequential, ratioOfClassWorker=ratioOfClassWorker,filter_class=filter_class, _args=arg)
     #logging.info("====Partitioning data takes {} s\n".format(time.time() - stime()))
 
-def select_dataset(rank: int, partition: DataPartitioner, batch_size: int, isTest=False, is_rank=0, collate_fn=None):
-    partition = partition.use(rank - 1, isTest, is_rank-1)
+def select_dataset(rank: int, partition: DataPartitioner, batch_size: int, isTest=False, is_rank=0, fractional=True, collate_fn=None):
+
+    partition = partition.use(rank - 1, isTest, is_rank-1, fractional)
     timeOut = 0 if isTest else 60
     numOfThreads = args.num_loaders #int(min(args.num_loaders, len(partition)/(batch_size+1)))
     dropLast = False if isTest else True
@@ -526,4 +527,3 @@ def select_dataset(rank: int, partition: DataPartitioner, batch_size: int, isTes
         return DataLoader(partition, batch_size=batch_size, shuffle=True, pin_memory=False, num_workers=numOfThreads, drop_last=dropLast, timeout=timeOut)#, worker_init_fn=np.random.seed(12))
     else:
         return DataLoader(partition, batch_size=batch_size, shuffle=True, pin_memory=False, num_workers=numOfThreads, drop_last=dropLast, timeout=timeOut, collate_fn=collate_fn)#, worker_init_fn=np.random.seed(12))
-

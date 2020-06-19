@@ -11,6 +11,7 @@ import random, math, gc, copy
 import multiprocessing, threading
 import numpy as np
 import torch
+import re
 import torch.distributed as dist
 from torch.autograd import Variable
 from torchvision import datasets, transforms
@@ -150,6 +151,18 @@ def init_myprocesses(rank, size, model,
                    fn, backend, client_cfg):
     print("====Worker: init_myprocesses")
     fn(rank, model, train_dataset, test_dataset, q, param_q, stop_flag, client_cfg)
+
+def scan_models(path):
+    files = os.listdir(path)
+    model_paths = {}
+
+    for file in files:
+        if not os.path.isdir(file):
+            if '.pth.tar' in file and args.model in file:
+                model_state_id = int(re.findall(args.model+"_(.+?).pth.tar", file)[0])
+                model_paths[model_state_id] = os.path.join(path, file)
+
+    return model_paths
 
 def init_dataset():
     global tokenizer, device
@@ -653,12 +666,19 @@ def run(rank, model, train_data, test_data, queue, param_q, stop_flag, client_cf
 
     learning_rate = args.learning_rate
 
-    testResults = [0, 0, 0, 0]
+    testResults = [0, 0, 0, 1]
     # first run a forward pass
-    test_loss, acc, acc_5, testResults = test_model(rank, model, test_data, criterion=criterion, tokenizer=tokenizer)
+    # test_loss, acc, acc_5, testResults = test_model(rank, model, test_data, criterion=criterion, tokenizer=tokenizer)
     uploadEpoch = 0
+    models_dir = None
+    sorted_models_dir = None
+    isComplete = False
 
     last_test = time.time()
+
+    if args.read_models_path:
+        models_dir = scan_models(args.model_path)
+        sorted_models_dir = sorted(models_dir)
 
     tempModelPath = logDir+'/model_'+str(args.this_rank)+'.pth.tar'
 
@@ -720,14 +740,31 @@ def run(rank, model, train_data, test_data, queue, param_q, stop_flag, client_cf
                 #gc.collect()
             else:
                 logging.info('====Start test round {}'.format(epoch))
-                testResults = [0., 0., 0., 0.]
+
+                model_load_path = None
+                # force to read models
+                if models_dir is not None:
+                    model_load_path = models_dir[sorted_models_dir[0]]
+
+                    with open(model_load_path, 'rb') as fin:
+                        model = pickle.load(fin)
+                        model = model.to(device=device)
+
+                    logging.info(f"====Now load model checkpoint: {sorted_models_dir[0]}")
+
+                    del sorted_models_dir[0]
+
+                    if len(sorted_models_dir) == 0:
+                        isComplete = True
+
+                testResults = [0., 0., 0., 1.]
                 # designed for testing only
                 for nextClientId in nextClientIds:
-                    client_dataset = select_dataset(nextClientId, global_trainDB, batch_size=args.test_bsz, isTest=True)
-                    test_loss, acc, acc_5, temp_testResults = test_model(rank, model, client_dataset, criterion=criterion, 
-                                                                            tokenizer=tokenizer)
 
-                    logging.info(f'====Epoch: {epoch}, clientId: {nextClientId}, len: {len(client_dataset)}, test_loss: {test_loss}, acc: {acc}, acc_5: {acc_5}')
+                    client_dataset = select_dataset(nextClientId, global_trainDB, batch_size=args.test_bsz, isTest=True, fractional=False, collate_fn=collate if args.task=='nlp' else None)
+                    test_loss, acc, acc_5, temp_testResults = test_model(rank, model, client_dataset, criterion=criterion, tokenizer=tokenizer)
+
+                    logging.info(f'====Epoch: {epoch}, clientId: {nextClientId}, len: {temp_testResults[-1]}, test_loss: {test_loss}, acc: {acc}, acc_5: {acc_5}')
 
                     # merge test results
                     for idx, item in enumerate(temp_testResults):
@@ -740,7 +777,7 @@ def run(rank, model, train_data, test_data, queue, param_q, stop_flag, client_cf
             # upload the weight
             sendStart = time.time()
             testResults.append(uploadEpoch)
-            queue.put({rank: [trainedModels, preTrainedLoss, trainedSize, False, ranClients, trainSpeed, testResults, virtualClock]})
+            queue.put({rank: [trainedModels, preTrainedLoss, trainedSize, isComplete, ranClients, trainSpeed, testResults, virtualClock]})
             uploadEpoch = -1
             sendDur = time.time() - sendStart
 
@@ -777,7 +814,7 @@ def run(rank, model, train_data, test_data, queue, param_q, stop_flag, client_cf
                 # forward pass of the training data
                 if args.test_train_data:
                     rank_train_data = select_dataset(
-                                        args.this_rank, global_trainDB, batch_size=args.test_bsz, is_rank=rank,
+                                        args.this_rank, global_trainDB, batch_size=args.test_bsz, is_rank=rank, 
                                         collate_fn=collate if args.task=='nlp' else None
                                       )
                     test_loss, acc, acc_5, testResults = test_model(rank, model, rank_train_data, criterion=criterion, tokenizer=tokenizer)
