@@ -351,7 +351,7 @@ def run(model, test_data, queue, param_q, stop_signal, clientSampler):
                         # fraction of total samples on this specific node 
                         ratioSample = clientSampler.getSampleRatio(clientId, rank_src, args.is_even_avg)
                         delta_ws = delta_wss[i]
-                        #clientWeightsCache[clientId] = [torch.from_numpy(x).to(device=device) for x in delta_ws]
+                        clientWeightsCache[clientId] = [torch.from_numpy(x).to(device=device) for x in delta_ws]
 
                         epoch_train_loss += ratioSample * iteration_loss[i]
                         isSelected = True if clientId in sampledClientSet else False
@@ -595,23 +595,24 @@ def run(model, test_data, queue, param_q, stop_signal, clientSampler):
                     global_virtual_clock += round_duration
                     received_updates = 0
 
-                    #clientKeys = sorted(clientWeightsCache.keys())
-                    # calculate the L2-norm of weights
-                    #tempSumL2Norm = [w.norm(2).item() for w in sumDeltaWeights]
-                    #assert(len(tempSumL2Norm) == len(clientWeightsCache[clientKeys[0]]))
+                    clientKeys = sorted(clientWeightsCache.keys())
                     
-                    #logging.info(f"====Avg L2-norm is: {tempSumL2Norm}")
+                    # calculate the L2-norm of weights
+                    tempSumL2Norm = [w.norm(2).item() for w in sumDeltaWeights]
+                    assert(len(tempSumL2Norm) == len(clientWeightsCache[clientKeys[0]]))
+                    
+                    logging.info(f"====Epoch: {epoch_count}, Avg L2-norm is: {tempSumL2Norm}")
 
-                    # tempModelL2Norm = [param.data.norm(2).item() for param in model.parameters()]
-                    # logging.info(f"====Model L2-norm is: {tempModelL2Norm}")
+                    tempModelL2Norm = [param.data.norm(2).item() for param in model.parameters()]
+                    logging.info(f"====Model L2-norm is: {tempModelL2Norm}")
 
-                    # for clientId in clientKeys:
-                    #     weights = clientWeightsCache[clientId]
-                    #     tempL2Norm = []
-                    #     for pIdx, weight in enumerate(weights):
-                    #         tempL2Norm.append((weight - sumDeltaWeights[pIdx]).norm(2).item())
+                    for clientId in clientKeys:
+                        weights = clientWeightsCache[clientId]
+                        tempL2Norm = []
+                        for pIdx, weight in enumerate(weights):
+                            tempL2Norm.append((weight - sumDeltaWeights[pIdx]).norm(2).item())
 
-                    #     logging.info(f"====For clientId {clientId}, L2-norm is: {tempL2Norm}")
+                        logging.info(f"====For clientId {clientId}, L2-norm is: {tempL2Norm}")
 
                     sumDeltaWeights = []
                     clientWeightsCache = {}
