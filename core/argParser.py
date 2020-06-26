@@ -248,4 +248,34 @@ parser.add_argument("--vocab_tag_size", type=int, default=500, help="For vocab t
 parser.add_argument("--num_classes", type=int, default=35, help="For number of classes in speech")
 
 
+# for voice
+parser.add_argument('--train-manifest', metavar='DIR',
+                    help='path to train manifest csv', default='data/train_manifest.csv')
+parser.add_argument('--val-manifest', metavar='DIR',
+                    help='path to validation manifest csv', default='data/val_manifest.csv')
+parser.add_argument('--sample-rate', default=16000, type=int, help='Sample rate')
+parser.add_argument('--labels-path', default='labels.json', help='Contains all characters for transcription')
+parser.add_argument('--window-size', default=.02, type=float, help='Window size for spectrogram in seconds')
+parser.add_argument('--window-stride', default=.01, type=float, help='Window stride for spectrogram in seconds')
+parser.add_argument('--window', default='hamming', help='Window type for spectrogram generation')
+parser.add_argument('--hidden-size', default=64, type=int, help='Hidden size of RNNs')
+parser.add_argument('--hidden-layers', default=4, type=int, help='Number of RNN layers')
+parser.add_argument('--rnn-type', default='lstm', help='Type of the RNN. rnn|gru|lstm are supported')
+parser.add_argument('--finetune', dest='finetune', action='store_true',
+                    help='Finetune the model from checkpoint "continue_from"')
+parser.add_argument('--speed-volume-perturb', dest='speed_volume_perturb', action='store_true',
+                    help='Use random tempo and gain perturbations.')
+parser.add_argument('--spec-augment', dest='spec_augment', action='store_true',
+                    help='Use simple spectral augmentation on mel spectograms.')
+parser.add_argument('--noise-dir', default=None,
+                    help='Directory to inject noise into audio. If default, noise Inject not added')
+parser.add_argument('--noise-prob', default=0.4, help='Probability of noise being added per sample')
+parser.add_argument('--noise-min', default=0.0,
+                    help='Minimum noise level to sample from. (1.0 means all noise, not original signal)', type=float)
+parser.add_argument('--noise-max', default=0.5,
+                    help='Maximum noise levels to sample from. Maximum 1.0', type=float)
+parser.add_argument('--no-bidirectional', dest='bidirectional', action='store_false', default=True,
+                    help='Turn off bi-directional RNNs, introduces lookahead convolution')
+
+
 args = parser.parse_args()

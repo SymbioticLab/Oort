@@ -11,6 +11,7 @@ import numpy as np
 import logging
 from core.argParser import args
 from utils.nlp import mask_tokens
+from utils.decoder import GreedyDecoder
 
 class MySGD(optim.SGD):
 
@@ -120,9 +121,16 @@ def test_model(rank, model, test_data, criterion=nn.NLLLoss(), tokenizer=None):
     test_len = 0
     perplexity_loss = 0.
 
+    total_cer, total_wer, num_tokens, num_chars = 0, 0, 0, 0
+
     model.eval()
     targets_list = []
     preds = []
+
+    decoder = None
+
+    if args.task == 'voice':
+        decoder = GreedyDecoder(model.labels, blank_index=model.labels.index('_'))
 
     for data, target in test_data:
         if args.task == 'nlp':
@@ -153,6 +161,7 @@ def test_model(rank, model, test_data, criterion=nn.NLLLoss(), tokenizer=None):
                 targets_list += [target_index]
 
             test_loss += loss.data.item()
+
         elif args.task == 'speech':
             data, target = Variable(data).cuda(), Variable(target).cuda()
             data = torch.unsqueeze(data, 1)
@@ -165,6 +174,37 @@ def test_model(rank, model, test_data, criterion=nn.NLLLoss(), tokenizer=None):
 
             correct += acc[0].item()
             top_5 += acc[1].item()
+
+        elif args.task == 'voice':
+            (data, target, input_percentages, target_sizes) = data
+
+            input_sizes = input_percentages.mul_(int(inputs.size(3))).int()
+            inputs = Variable(inputs).cuda()
+
+            # unflatten targets
+            split_targets = []
+            offset = 0
+            for size in target_sizes:
+                split_targets.append(target[offset:offset + size])
+                offset += size
+
+            out, output_sizes = model(inputs, input_sizes)
+
+            decoded_output, _ = decoder.decode(out, output_sizes)
+            target_strings = decoder.convert_to_strings(split_targets)
+
+            for x in range(len(target_strings)):
+                transcript, reference = decoded_output[x][0], target_strings[x][0]
+                wer_inst = decoder.wer(transcript, reference)
+                cer_inst = decoder.cer(transcript, reference)
+                total_wer += wer_inst
+                total_cer += cer_inst
+                num_tokens += len(reference.split())
+                num_chars += len(reference.replace(' ', ''))
+
+            outputs = out.transpose(0, 1).float()
+            loss = criterion(outputs, target, output_sizes, target_sizes)
+            test_loss += loss.data.item()
         else:
             data, target = Variable(data).cuda(), Variable(target).cuda()
 
@@ -179,6 +219,9 @@ def test_model(rank, model, test_data, criterion=nn.NLLLoss(), tokenizer=None):
 
         test_len += len(target)
 
+    if args.task == 'voice':
+        correct,  top_5, test_len = total_wer, total_cer, num_tokens
+        
     # loss function averages over batch size
     test_loss /= len(test_data)
     perplexity_loss /= len(test_data)
@@ -189,10 +232,6 @@ def test_model(rank, model, test_data, criterion=nn.NLLLoss(), tokenizer=None):
     acc = round(correct / test_len, 4) 
     acc_5 = round(top_5 / test_len, 4)
     test_loss = round(test_loss, 4)
-
-    # if args.task == 'nlp':
-    #     correct = math.exp(perplexity_loss) * test_len
-    #     acc = correct
 
     if args.task == 'tag':
         # precision, recall, f1, sup = precision_recall_fscore_support(targets_list, preds, average='samples')

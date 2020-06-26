@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 
 from core.argParser import args
-import os, shutil, pickle, gc
+import os, shutil, pickle, gc, json
 import random, math
 import numpy as np
 import sys, socket
@@ -19,6 +19,7 @@ from torch.multiprocessing import Queue
 from torch.utils.data import DataLoader
 from torchvision import datasets, transforms
 import torchvision.models as tormodels
+from torch_baidu_ctc import CTCLoss
 
 from utils.models import *
 from utils.utils_data import get_data_transform
@@ -32,6 +33,9 @@ from utils.transforms_wav import *
 from utils.transforms_stft import *
 from utils.speech import *
 from utils.resnet_speech import *
+
+# for voice
+from utils.voice_model import DeepSpeech, supported_rnns
 
 #device = torch.device(args.to_device)
 
@@ -233,6 +237,24 @@ def init_dataset():
             # Should not reach here
             print('Model must be resnet or mobilenet')
             sys.exit(-1)
+    elif args.task == 'voice':
+        # Initialise new model training
+        with open(args.labels_path) as label_file:
+            labels = json.load(label_file)
+
+        audio_conf = dict(sample_rate=args.sample_rate,
+                          window_size=args.window_size,
+                          window_stride=args.window_stride,
+                          window=args.window,
+                          noise_dir=args.noise_dir,
+                          noise_prob=args.noise_prob,
+                          noise_levels=(args.noise_min, args.noise_max))
+        model = DeepSpeech(rnn_hidden_size=args.hidden_size,
+                           nb_layers=args.hidden_layers,
+                           labels=labels,
+                           rnn_type=supported_rnns[args.rnn_type.lower()],
+                           audio_conf=audio_conf,
+                           bidirectional=args.bidirectional)
     else:
         if args.model == 'mnasnet':
             model = MnasNet(num_classes=outputClass[args.data_set])
@@ -351,7 +373,7 @@ def run(model, test_data, queue, param_q, stop_signal, clientSampler):
                         # fraction of total samples on this specific node 
                         ratioSample = clientSampler.getSampleRatio(clientId, rank_src, args.is_even_avg)
                         delta_ws = delta_wss[i]
-                        clientWeightsCache[clientId] = [torch.from_numpy(x).to(device=device) for x in delta_ws]
+                        #clientWeightsCache[clientId] = [torch.from_numpy(x).to(device=device) for x in delta_ws]
 
                         epoch_train_loss += ratioSample * iteration_loss[i]
                         isSelected = True if clientId in sampledClientSet else False
@@ -595,24 +617,24 @@ def run(model, test_data, queue, param_q, stop_signal, clientSampler):
                     global_virtual_clock += round_duration
                     received_updates = 0
 
-                    clientKeys = sorted(clientWeightsCache.keys())
+                    # clientKeys = sorted(clientWeightsCache.keys())
                     
-                    # calculate the L2-norm of weights
-                    tempSumL2Norm = [w.norm(2).item() for w in sumDeltaWeights]
-                    assert(len(tempSumL2Norm) == len(clientWeightsCache[clientKeys[0]]))
+                    # # calculate the L2-norm of weights
+                    # tempSumL2Norm = [w.norm(2).item() for w in sumDeltaWeights]
+                    # assert(len(tempSumL2Norm) == len(clientWeightsCache[clientKeys[0]]))
                     
-                    logging.info(f"====Epoch: {epoch_count}, Avg L2-norm is: {tempSumL2Norm}")
+                    # logging.info(f"====Epoch: {epoch_count}, Avg L2-norm is: {tempSumL2Norm}")
 
-                    tempModelL2Norm = [param.data.norm(2).item() for param in model.parameters()]
-                    logging.info(f"====Model L2-norm is: {tempModelL2Norm}")
+                    # tempModelL2Norm = [param.data.norm(2).item() for param in model.parameters()]
+                    # logging.info(f"====Model L2-norm is: {tempModelL2Norm}")
 
-                    for clientId in clientKeys:
-                        weights = clientWeightsCache[clientId]
-                        tempL2Norm = []
-                        for pIdx, weight in enumerate(weights):
-                            tempL2Norm.append((weight - sumDeltaWeights[pIdx]).norm(2).item())
+                    # for clientId in clientKeys:
+                    #     weights = clientWeightsCache[clientId]
+                    #     tempL2Norm = []
+                    #     for pIdx, weight in enumerate(weights):
+                    #         tempL2Norm.append((weight - sumDeltaWeights[pIdx]).norm(2).item())
 
-                        logging.info(f"====For clientId {clientId}, L2-norm is: {tempL2Norm}")
+                    #     logging.info(f"====For clientId {clientId}, L2-norm is: {tempL2Norm}")
 
                     sumDeltaWeights = []
                     clientWeightsCache = {}
@@ -684,4 +706,3 @@ if __name__ == "__main__":
     #p.start()
     #p.join()
     manager.shutdown()
-

@@ -2,7 +2,7 @@
 # Thanks to qihua Zhou
 
 from core.argParser import args
-import os, shutil, sys, time, datetime, logging, pickle
+import os, shutil, sys, time, datetime, logging, pickle, json
 from collections import OrderedDict
 from ctypes import c_bool
 from multiprocessing import Process, Value
@@ -32,6 +32,10 @@ from utils.transforms_stft import *
 from utils.speech import *
 from utils.resnet_speech import *
 from utils.femnist import *
+
+# for voice
+from utils.voice_model import DeepSpeech, supported_rnns
+from utils.voice_data_loader import SpectrogramDataset
 
 #device = torch.device(args.to_device)
 #torch.set_num_threads(int(args.threads))
@@ -195,6 +199,24 @@ def init_dataset():
             # Should not reach here
             print('Model must be resnet or mobilenet')
             sys.exit(-1)
+    elif args.task == 'voice':
+        # Initialise new model training
+        with open(args.labels_path) as label_file:
+            labels = json.load(label_file)
+
+        audio_conf = dict(sample_rate=args.sample_rate,
+                          window_size=args.window_size,
+                          window_stride=args.window_stride,
+                          window=args.window,
+                          noise_dir=args.noise_dir,
+                          noise_prob=args.noise_prob,
+                          noise_levels=(args.noise_min, args.noise_max))
+        model = DeepSpeech(rnn_hidden_size=args.hidden_size,
+                           nb_layers=args.hidden_layers,
+                           labels=labels,
+                           rnn_type=supported_rnns[args.rnn_type.lower()],
+                           audio_conf=audio_conf,
+                           bidirectional=args.bidirectional)
     else:
         if args.model == 'mnasnet':
             model = MnasNet(num_classes=outputClass[args.data_set])
@@ -265,6 +287,19 @@ def init_dataset():
                                 transform=transforms.Compose([LoadAudio(),
                                          FixAudioLength(),
                                          valid_feature_transform]))
+    elif args.data_set == 'common_voice':
+        train_dataset = SpectrogramDataset(audio_conf=model.audio_conf,
+                                       manifest_filepath=args.train_manifest,
+                                       labels=model.labels,
+                                       normalize=True,
+                                       speed_volume_perturb=args.speed_volume_perturb,
+                                       spec_augment=args.spec_augment)
+        test_dataset = SpectrogramDataset(audio_conf=model.audio_conf,
+                                      manifest_filepath=args.val_manifest,
+                                      labels=model.labels,
+                                      normalize=True,
+                                      speed_volume_perturb=False,
+                                      spec_augment=False)
     else:
         print('DataSet must be {}!'.format(['Mnist', 'Cifar', 'openImg', 'blog', 'stackoverflow', 'speech']))
         sys.exit(-1)
@@ -376,6 +411,32 @@ def collate(examples: List[torch.Tensor]):
         return (pad_sequence(examples, batch_first=True), None)
     return (pad_sequence(examples, batch_first=True, padding_value=tokenizer.pad_token_id), None)
 
+def voice_collate_fn(batch):
+    def func(p):
+        return p[0].size(1)
+
+    batch = sorted(batch, key=lambda sample: sample[0].size(1), reverse=True)
+    longest_sample = max(batch, key=func)[0]
+    freq_size = longest_sample.size(0)
+    minibatch_size = len(batch)
+    max_seqlength = longest_sample.size(1)
+    inputs = torch.zeros(minibatch_size, 1, freq_size, max_seqlength)
+    input_percentages = torch.FloatTensor(minibatch_size)
+    target_sizes = torch.IntTensor(minibatch_size)
+    targets = []
+    for x in range(minibatch_size):
+        sample = batch[x]
+        tensor = sample[0]
+        target = sample[1]
+        seq_length = tensor.size(1)
+        inputs[x][0].narrow(1, 0, seq_length).copy_(tensor)
+        input_percentages[x] = seq_length / float(max_seqlength)
+        target_sizes[x] = len(target)
+        targets.extend(target)
+    targets = torch.IntTensor(targets)
+
+    return (inputs, targets, input_percentages, target_sizes), None
+
 def run_client(clientId, cmodel, iters, learning_rate, argdicts = {}):
     global global_trainDB, global_data_iter, last_model_tensors, tokenizer
 
@@ -395,15 +456,27 @@ def run_client(clientId, cmodel, iters, learning_rate, argdicts = {}):
         optimizer = AdamW(optimizer_grouped_parameters, lr=learning_rate, eps=args.adam_epsilon)
         #optimizer = torch.optim.SGD(cmodel.parameters(), lr=learning_rate, momentum=0.9, weight_decay=5e-4)
 
-    criterion = torch.nn.CrossEntropyLoss(reduction='none').to(device=device) if args.task != 'tag' else torch.nn.BCEWithLogitsLoss(reduction='none').to(device=device)
-   
+    criterion = None 
+
+    if args.task == 'voice':
+        criterion = CTCLoss(reduction='none').to(device=device)
+    else:
+        criterion = torch.nn.CrossEntropyLoss(reduction='none').to(device=device) 
+
     train_data_itr_list = []
+    collate_fn = None
+
+    if args.task == 'nlp':
+        collate_fn = collate
+    elif args.task == 'voice':
+        collate_fn = voice_collate_fn
+
 
     if clientId not in global_data_iter:
         client_train_data = select_dataset(
                                 clientId, global_trainDB, 
                                 batch_size=args.batch_size, 
-                                collate_fn=collate if args.task =='nlp' else None
+                                collate_fn=collate_fn
                             )
 
         train_data_itr = iter(client_train_data)
@@ -425,6 +498,10 @@ def run_client(clientId, cmodel, iters, learning_rate, argdicts = {}):
     numOfFailures = 0
     numOfTries = 5
 
+    input_sizes = None
+    target_sizes = None
+    output_sizes = None
+
     cmodel.train()
     # TODO: if indeed enforce FedAvg, we will run fixed number of epochs, instead of iterations
 
@@ -439,6 +516,11 @@ def run_client(clientId, cmodel, iters, learning_rate, argdicts = {}):
                         # target is None in this case
                         (data, _) = next(train_data_itr_list[0])
                         data, target = mask_tokens(data, tokenizer, args) if args.mlm else (data, data)
+                        
+                    elif args.task == 'voice':
+                        (data, target, input_percentages, target_sizes), _ = next(train_data_itr_list[0])
+                        input_sizes = input_percentages.mul_(int(data.size(3))).int()
+
                     else:
                         (data, target) = next(train_data_itr_list[0])
 
@@ -454,21 +536,10 @@ def run_client(clientId, cmodel, iters, learning_rate, argdicts = {}):
                     tempData = select_dataset(
                             clientId, global_trainDB, 
                             batch_size=args.batch_size, 
-                            collate_fn=collate if args.task =='nlp' else None
+                            collate_fn=collate_fn
                         )
 
                     train_data_itr_list = [iter(tempData)]
-
-                    # # reload data after finishing the epoch
-                    # numToWarmUp = numOfPreWarmUp - len(train_data_itr_list)
-
-                    # for i in range(numToWarmUp):
-                    #     tempData = select_dataset(
-                    #         clientId, global_trainDB, 
-                    #         batch_size=args.batch_size, 
-                    #         collate_fn=collate if args.task =='nlp' else None
-                    #     )
-                    #     train_data_itr_list.append(iter(tempData))
 
                     if args.task == 'nlp':
                         tempItr = train_data_itr_list[0]
@@ -492,14 +563,15 @@ def run_client(clientId, cmodel, iters, learning_rate, argdicts = {}):
         numOfFailures = 0
         curBatch = curBatch + 1
 
-        data, target = Variable(data).to(device=device), Variable(target).to(device=device)
+        data, target = Variable(data).to(device=device), Variable(target).to(device=device if args.task != 'voice' else 'cpu')
+        local_trained += len(target)
+
         if args.task == 'speech':
             data = torch.unsqueeze(data, 1)
 
-        local_trained += len(target)
-
         if args.task != 'nlp':
             optimizer.zero_grad()
+
         comp_start = time.time()
 
         if args.task == 'nlp':
@@ -507,6 +579,10 @@ def run_client(clientId, cmodel, iters, learning_rate, argdicts = {}):
             outputs = cmodel(data, masked_lm_labels=target) if args.mlm else cmodel(data, labels=target)
             loss = outputs[0]
             #torch.nn.utils.clip_grad_norm_(cmodel.parameters(), args.max_grad_norm)
+        elif args.task == 'voice':
+            outputs, output_sizes = cmodel(data, input_sizes)
+            outputs = outputs.transpose(0, 1).float()  # TxNxH
+            loss = criterion(outputs, target, output_sizes, target_sizes)
         else:
             if args.model != 'inception_v3':
                 if args.model == 'googlenet':
@@ -557,8 +633,10 @@ def run_client(clientId, cmodel, iters, learning_rate, argdicts = {}):
         count += len(target)
 
         # ========= Define the backward loss ==============
+        optimizer.zero_grad()
         loss = torch.mean(loss)
         loss.backward()
+
         if args.task != 'nlp':
             delta_w = optimizer.get_delta_w(learning_rate)
 
@@ -633,7 +711,12 @@ def run(rank, model, train_data, test_data, queue, param_q, stop_flag, client_cf
     logging.info("====Worker: Start running")
 
     global nextClientIds, global_trainDB, last_model_tensors
-    criterion = torch.nn.CrossEntropyLoss().to(device=device) if args.task != 'tag' else torch.nn.BCEWithLogitsLoss().to(device=device)
+    criterion = None 
+
+    if args.task == 'voice':
+        criterion = CTCLoss(reduction='mean').to(device=device)
+    else:
+        criterion = torch.nn.CrossEntropyLoss(reduction='mean').to(device=device) 
    
     global_trainDB = train_data
     startTime = time.time()
@@ -673,6 +756,13 @@ def run(rank, model, train_data, test_data, queue, param_q, stop_flag, client_cf
     models_dir = None
     sorted_models_dir = None
     isComplete = False
+
+    collate_fn = None
+
+    if args.task == 'nlp':
+        collate_fn = collate
+    elif args.task == 'voice':
+        collate_fn = voice_collate_fn
 
     last_test = time.time()
 
@@ -761,7 +851,9 @@ def run(rank, model, train_data, test_data, queue, param_q, stop_flag, client_cf
                 # designed for testing only
                 for nextClientId in nextClientIds:
 
-                    client_dataset = select_dataset(nextClientId, global_trainDB, batch_size=args.test_bsz, isTest=True, fractional=False, collate_fn=collate if args.task=='nlp' else None)
+                    client_dataset = select_dataset(nextClientId, global_trainDB, batch_size=args.test_bsz, isTest=True, 
+                                                        fractional=False, collate_fn=collate_fn
+                                                    )
                     test_loss, acc, acc_5, temp_testResults = test_model(rank, model, client_dataset, criterion=criterion, tokenizer=tokenizer)
 
                     logging.info(f'====Epoch: {epoch}, clientId: {nextClientId}, len: {temp_testResults[-1]}, test_loss: {test_loss}, acc: {acc}, acc_5: {acc_5}')
@@ -815,7 +907,7 @@ def run(rank, model, train_data, test_data, queue, param_q, stop_flag, client_cf
                 if args.test_train_data:
                     rank_train_data = select_dataset(
                                         args.this_rank, global_trainDB, batch_size=args.test_bsz, is_rank=rank, 
-                                        collate_fn=collate if args.task=='nlp' else None
+                                        collate_fn=collate_fn
                                       )
                     test_loss, acc, acc_5, testResults = test_model(rank, model, rank_train_data, criterion=criterion, tokenizer=tokenizer)
                 else:
@@ -918,8 +1010,15 @@ if __name__ == "__main__":
     testsetPartitioner = DataPartitioner(data=test_dataset, isTest=True, numOfClass=args.num_class)
     logging.info("==== Finished testing data partitioner =====")
 
+    collate_fn = None
+
+    if args.task == 'nlp':
+        collate_fn = collate
+    elif args.task == 'voice':
+        collate_fn = voice_collate_fn
+
     partition_dataset(testsetPartitioner, [i for i in range(world_size-1)], splitTestRatio)
-    test_data = select_dataset(this_rank, testsetPartitioner, batch_size=args.test_bsz, isTest=True, collate_fn=collate if args.task=='nlp' else None)
+    test_data = select_dataset(this_rank, testsetPartitioner, batch_size=args.test_bsz, isTest=True, collate_fn=collate_fn)
 
     stop_flag = Value(c_bool, False)
     init_myprocesses(this_rank, world_size, model, entire_train_data, test_data,
