@@ -251,8 +251,8 @@ parser.add_argument("--num_classes", type=int, default=35, help="For number of c
 # for voice
 parser.add_argument('--train-manifest', metavar='DIR',
                     help='path to train manifest csv', default='data/train_manifest.csv')
-parser.add_argument('--val-manifest', metavar='DIR',
-                    help='path to validation manifest csv', default='data/val_manifest.csv')
+parser.add_argument('--test-manifest', metavar='DIR',
+                    help='path to test manifest csv', default='data/test_manifest.csv')
 parser.add_argument('--sample-rate', default=16000, type=int, help='Sample rate')
 parser.add_argument('--labels-path', default='labels.json', help='Contains all characters for transcription')
 parser.add_argument('--window-size', default=.02, type=float, help='Window size for spectrogram in seconds')

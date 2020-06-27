@@ -17,6 +17,7 @@ from torch.autograd import Variable
 from torchvision import datasets, transforms
 import torchvision.models as tormodels
 from torch.utils.data.sampler import WeightedRandomSampler
+from torch_baidu_ctc import CTCLoss
 
 from utils.openImg import *
 from utils.divide_data import partition_dataset, select_dataset, DataPartitioner
@@ -295,7 +296,7 @@ def init_dataset():
                                        speed_volume_perturb=args.speed_volume_perturb,
                                        spec_augment=args.spec_augment)
         test_dataset = SpectrogramDataset(audio_conf=model.audio_conf,
-                                      manifest_filepath=args.val_manifest,
+                                      manifest_filepath=args.test_manifest,
                                       labels=model.labels,
                                       normalize=True,
                                       speed_volume_perturb=False,
@@ -502,6 +503,7 @@ def run_client(clientId, cmodel, iters, learning_rate, argdicts = {}):
     target_sizes = None
     output_sizes = None
 
+    cmodel = cmodel.to(device=device)
     cmodel.train()
     # TODO: if indeed enforce FedAvg, we will run fixed number of epochs, instead of iterations
 
@@ -516,7 +518,7 @@ def run_client(clientId, cmodel, iters, learning_rate, argdicts = {}):
                         # target is None in this case
                         (data, _) = next(train_data_itr_list[0])
                         data, target = mask_tokens(data, tokenizer, args) if args.mlm else (data, data)
-                        
+
                     elif args.task == 'voice':
                         (data, target, input_percentages, target_sizes), _ = next(train_data_itr_list[0])
                         input_sizes = input_percentages.mul_(int(data.size(3))).int()
@@ -541,14 +543,14 @@ def run_client(clientId, cmodel, iters, learning_rate, argdicts = {}):
 
                     train_data_itr_list = [iter(tempData)]
 
-                    if args.task == 'nlp':
-                        tempItr = train_data_itr_list[0]
-                        (data, _) = next(tempItr)
-                        data, target = mask_tokens(data, tokenizer, args) if args.mlm else (data, data)
-                    else:
-                        (data, target) = next(train_data_itr_list[0])
+                    # if args.task == 'nlp':
+                    #     tempItr = train_data_itr_list[0]
+                    #     (data, _) = next(tempItr)
+                    #     data, target = mask_tokens(data, tokenizer, args) if args.mlm else (data, data)
+                    # else:
+                    #     (data, target) = next(train_data_itr_list[0])
 
-                    fetchSuccess = True
+                    # fetchSuccess = False
 
             except Exception as e:
                 numOfFailures += 1
@@ -563,14 +565,14 @@ def run_client(clientId, cmodel, iters, learning_rate, argdicts = {}):
         numOfFailures = 0
         curBatch = curBatch + 1
 
-        data, target = Variable(data).to(device=device), Variable(target).to(device=device if args.task != 'voice' else 'cpu')
+        data = Variable(data).to(device=device)
+        if args.task != 'voice':
+            target = Variable(target).to(device=device)
+
         local_trained += len(target)
 
         if args.task == 'speech':
             data = torch.unsqueeze(data, 1)
-
-        if args.task != 'nlp':
-            optimizer.zero_grad()
 
         comp_start = time.time()
 
@@ -795,7 +797,6 @@ def run(rank, model, train_data, test_data, queue, param_q, stop_flag, client_cf
                     # roll back to the global model for simulation
                     with open(tempModelPath, 'rb') as fin:
                         model = pickle.load(fin)
-                        model = model.to(device=device)
 
                     if args.score_mode == 'norm':
                         # need to get the individual norm of samples
