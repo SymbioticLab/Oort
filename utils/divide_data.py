@@ -297,10 +297,36 @@ class DataPartitioner(object):
 
         self.get_JSD(overallNumSamples/float(totalNumOfSamples), self.classPerWorker, [0] * numOfClients)
 
+    def partitionTraceVoice(self):
+        clientToData = {}
+        clientNumSamples = {}
+        numOfLabels = 28
+
+        clientToData = self.data.client_mapping
+        for clientId in clientToData:
+            clientNumSamples[clientId] = [1] * numOfLabels
+        
+        numOfClients = len(clientToData.keys())
+        self.classPerWorker = np.zeros([numOfClients, numOfLabels])
+
+        for clientId in range(numOfClients):
+            #logging.info(clientId)
+            self.classPerWorker[clientId] = clientNumSamples[clientId]
+            self.rng.shuffle(clientToData[clientId])
+            self.partitions.append(clientToData[clientId])
+
+        overallNumSamples = np.asarray(self.classPerWorker.sum(axis=0)).reshape(-1)
+        totalNumOfSamples = self.classPerWorker.sum()
+
+        self.get_JSD(overallNumSamples/float(totalNumOfSamples), self.classPerWorker, [0] * numOfClients)
+
     def partitionDataByDefault(self, sizes, sequential, ratioOfClassWorker, filter_class, _args):
         if self.is_trace and not self.args.enforce_random:
             # use the real trace, thus no need to partition
-            if self.task != 'nlp' and self.task != 'tag':
+            if self.task == 'voice':
+                self.partitionTraceVoice()
+
+            elif self.task != 'nlp' and self.task != 'tag':
                 # read the serialized sampleToClient file
                 dataToClient = OrderedDict()
 
@@ -527,3 +553,4 @@ def select_dataset(rank: int, partition: DataPartitioner, batch_size: int, isTes
         return DataLoader(partition, batch_size=batch_size, shuffle=True, pin_memory=False, num_workers=numOfThreads, drop_last=dropLast, timeout=timeOut)#, worker_init_fn=np.random.seed(12))
     else:
         return DataLoader(partition, batch_size=batch_size, shuffle=True, pin_memory=False, num_workers=numOfThreads, drop_last=dropLast, timeout=timeOut, collate_fn=collate_fn)#, worker_init_fn=np.random.seed(12))
+

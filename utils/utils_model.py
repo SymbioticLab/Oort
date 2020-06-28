@@ -178,8 +178,8 @@ def test_model(rank, model, test_data, criterion=nn.NLLLoss(), tokenizer=None):
         elif args.task == 'voice':
             (data, target, input_percentages, target_sizes) = data
 
-            input_sizes = input_percentages.mul_(int(inputs.size(3))).int()
-            inputs = Variable(inputs).cuda()
+            input_sizes = input_percentages.mul_(int(data.size(3))).int()
+            data = Variable(data).cuda()
 
             # unflatten targets
             split_targets = []
@@ -188,7 +188,7 @@ def test_model(rank, model, test_data, criterion=nn.NLLLoss(), tokenizer=None):
                 split_targets.append(target[offset:offset + size])
                 offset += size
 
-            out, output_sizes = model(inputs, input_sizes)
+            out, output_sizes = model(data, input_sizes)
 
             decoded_output, _ = decoder.decode(out, output_sizes)
             target_strings = decoder.convert_to_strings(split_targets)
@@ -220,7 +220,7 @@ def test_model(rank, model, test_data, criterion=nn.NLLLoss(), tokenizer=None):
         test_len += len(target)
 
     if args.task == 'voice':
-        correct,  top_5, test_len = total_wer, total_cer, num_tokens
+        correct,  top_5, test_len = float(total_wer), float(total_cer), float(num_tokens)
         
     # loss function averages over batch size
     test_loss /= len(test_data)

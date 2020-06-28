@@ -258,8 +258,8 @@ parser.add_argument('--labels-path', default='labels.json', help='Contains all c
 parser.add_argument('--window-size', default=.02, type=float, help='Window size for spectrogram in seconds')
 parser.add_argument('--window-stride', default=.01, type=float, help='Window stride for spectrogram in seconds')
 parser.add_argument('--window', default='hamming', help='Window type for spectrogram generation')
-parser.add_argument('--hidden-size', default=64, type=int, help='Hidden size of RNNs')
-parser.add_argument('--hidden-layers', default=4, type=int, help='Number of RNN layers')
+parser.add_argument('--hidden-size', default=256, type=int, help='Hidden size of RNNs')
+parser.add_argument('--hidden-layers', default=5, type=int, help='Number of RNN layers')
 parser.add_argument('--rnn-type', default='lstm', help='Type of the RNN. rnn|gru|lstm are supported')
 parser.add_argument('--finetune', dest='finetune', action='store_true',
                     help='Finetune the model from checkpoint "continue_from"')

@@ -294,7 +294,8 @@ def init_dataset():
                                        labels=model.labels,
                                        normalize=True,
                                        speed_volume_perturb=args.speed_volume_perturb,
-                                       spec_augment=args.spec_augment)
+                                       spec_augment=args.spec_augment,
+                                       data_mapfile=args.data_mapfile)
         test_dataset = SpectrogramDataset(audio_conf=model.audio_conf,
                                       manifest_filepath=args.test_manifest,
                                       labels=model.labels,
@@ -499,9 +500,7 @@ def run_client(clientId, cmodel, iters, learning_rate, argdicts = {}):
     numOfFailures = 0
     numOfTries = 5
 
-    input_sizes = None
-    target_sizes = None
-    output_sizes = None
+    input_sizes, target_sizes, output_sizes = None, None, None
 
     cmodel = cmodel.to(device=device)
     cmodel.train()
@@ -543,15 +542,6 @@ def run_client(clientId, cmodel, iters, learning_rate, argdicts = {}):
 
                     train_data_itr_list = [iter(tempData)]
 
-                    # if args.task == 'nlp':
-                    #     tempItr = train_data_itr_list[0]
-                    #     (data, _) = next(tempItr)
-                    #     data, target = mask_tokens(data, tokenizer, args) if args.mlm else (data, data)
-                    # else:
-                    #     (data, target) = next(train_data_itr_list[0])
-
-                    # fetchSuccess = False
-
             except Exception as e:
                 numOfFailures += 1
                 exc_type, exc_obj, exc_tb = sys.exc_info()
@@ -577,7 +567,6 @@ def run_client(clientId, cmodel, iters, learning_rate, argdicts = {}):
         comp_start = time.time()
 
         if args.task == 'nlp':
-            cmodel.train()
             outputs = cmodel(data, masked_lm_labels=target) if args.mlm else cmodel(data, labels=target)
             loss = outputs[0]
             #torch.nn.utils.clip_grad_norm_(cmodel.parameters(), args.max_grad_norm)

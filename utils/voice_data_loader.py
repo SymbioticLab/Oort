@@ -1,5 +1,6 @@
 import math
 import os
+import pickle
 from tempfile import NamedTemporaryFile
 
 import librosa
@@ -141,7 +142,7 @@ class SpectrogramParser(AudioParser):
 
 class SpectrogramDataset(Dataset, SpectrogramParser):
     def __init__(self, audio_conf, manifest_filepath, labels, normalize=False, speed_volume_perturb=False,
-                 spec_augment=False):
+                 spec_augment=False, data_mapfile=None):
         """
         Dataset that loads tensors via a csv containing file paths to audio files and transcripts separated by
         a comma. Each new line is a different sample. Example below:
@@ -163,7 +164,28 @@ class SpectrogramDataset(Dataset, SpectrogramParser):
         self.size = len(ids)
         self.targets = [0 for i in range(self.size)]
         self.labels_map = dict([(labels[i], i) for i in range(len(labels))])
+        self.client_mapping = None 
+
+        if data_mapfile:
+            self.client_mapping = self.load_client_mapping(data_mapfile)
+
         super(SpectrogramDataset, self).__init__(audio_conf, normalize, speed_volume_perturb, spec_augment)
+
+    def load_client_mapping(self, mapping_path):
+
+        with open(mapping_path, 'rb') as fin:
+            raw_client_mapping = pickle.load(fin)
+
+        client_mapping = {}
+        for idx, item in enumerate(self.ids):
+            client_id = raw_client_mapping[os.path.split(item[0])[1]]
+
+            if client_id not in client_mapping:
+                client_mapping[client_id] = []
+
+            client_mapping[client_id].append(idx)
+
+        return client_mapping
 
     def __getitem__(self, index):
         sample = self.ids[index]
@@ -351,4 +373,3 @@ def load_randomly_augmented_audio(path, sample_rate=16000, tempo_range=(0.85, 1.
     audio = augment_audio_with_sox(path=path, sample_rate=sample_rate,
                                    tempo=tempo_value, gain=gain_value)
     return audio
-
