@@ -113,7 +113,7 @@ class UCB(object):
 
         return sum_reward/sum_count
 
-    def getTopK(self, numOfSamples, cur_time):
+    def getTopK(self, numOfSamples, cur_time, feasible_clients):
         self.training_round = cur_time
 
         self.pacer()
@@ -122,9 +122,10 @@ class UCB(object):
         numOfExploited = 0
         exploreLen = 0
 
-        orderedKeys = list(self.totalArms.keys())
+        orderedKeys = [x for x in list(self.totalArms.keys()) if int(x) in feasible_clients]
+
         if self.round_threshold < 101:
-            sortedDuration = sorted([self.totalArms[key][5] for key in orderedKeys])
+            sortedDuration = sorted([self.totalArms[key][5] for key in list(self.totalArms.keys())])
             self.round_prefer_duration = sortedDuration[min(int(len(sortedDuration) * self.round_threshold/100.), len(sortedDuration)-1)]
 
         moving_reward, staleness, allloss = [], [], {}
@@ -185,7 +186,7 @@ class UCB(object):
 
         # exploration 
         if len(self.unexplored) > 0:
-            _unexplored = list(self.unexplored)
+            _unexplored = [x for x in list(self.unexplored) if int(x) in feasible_clients]
 
             init_reward = {}
             for cl in _unexplored:
@@ -252,4 +253,5 @@ class UCB(object):
         _avg = sum(aList)/float(len(aList))
 
         return float(_max), float(_min), float(_range), float(_avg)
+
 

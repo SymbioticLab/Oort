@@ -417,6 +417,8 @@ def voice_collate_fn(batch):
     def func(p):
         return p[0].size(1)
 
+    start_time = time.time()
+
     batch = sorted(batch, key=lambda sample: sample[0].size(1), reverse=True)
     longest_sample = max(batch, key=func)[0]
     freq_size = longest_sample.size(0)
@@ -436,6 +438,8 @@ def voice_collate_fn(batch):
         target_sizes[x] = len(target)
         targets.extend(target)
     targets = torch.IntTensor(targets)
+
+    end_time = time.time()
 
     return (inputs, targets, input_percentages, target_sizes), None
 
@@ -526,7 +530,7 @@ def run_client(clientId, cmodel, iters, learning_rate, argdicts = {}):
                         (data, target) = next(train_data_itr_list[0])
 
                     fetchSuccess = True
-                except Exception:
+                except Exception as ex:
                     try:
                         if args.num_loaders > 0:
                             train_data_itr_list[0]._shutdown_workers()
@@ -540,6 +544,7 @@ def run_client(clientId, cmodel, iters, learning_rate, argdicts = {}):
                             collate_fn=collate_fn
                         )
 
+                    logging.info(f"====Error {ex}")
                     train_data_itr_list = [iter(tempData)]
 
             except Exception as e:
@@ -573,7 +578,7 @@ def run_client(clientId, cmodel, iters, learning_rate, argdicts = {}):
         elif args.task == 'voice':
             outputs, output_sizes = cmodel(data, input_sizes)
             outputs = outputs.transpose(0, 1).float()  # TxNxH
-            loss = criterion(outputs, target, output_sizes, target_sizes)
+            loss = criterion(outputs, target, output_sizes, target_sizes).to(device=device)
         else:
             if args.model != 'inception_v3':
                 if args.model == 'googlenet':
@@ -650,10 +655,10 @@ def run_client(clientId, cmodel, iters, learning_rate, argdicts = {}):
 
         comp_duration = (time.time() - comp_start)
     
-        logging.info('For client {}, upload iter {}, epoch {}, Batch {}/{}, Loss:{} | TotalTime {} | Comptime: {} | epoch_train_loss {}\n'
+        logging.info('For client {}, upload iter {}, epoch {}, Batch {}/{}, Loss:{} | TotalTime: {} | CompTime: {} | DataLoader: {} | epoch_train_loss: {}\n'
                     .format(clientId, argdicts['iters'], int(curBatch/total_batch_size),
-                    (curBatch % total_batch_size), total_batch_size, round(loss.data.item(), 4), 
-                    round(time.time() - it_start, 4), round(comp_duration, 4), epoch_train_loss))
+                    (curBatch % total_batch_size), total_batch_size, temp_loss, 
+                    round(time.time() - it_start, 4), round(comp_duration, 4), round(comp_start - it_start, 4), epoch_train_loss))
 
     # remove the one with LRU
     if len(global_client_profile) > args.max_iter_store:

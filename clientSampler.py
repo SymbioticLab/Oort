@@ -4,6 +4,7 @@ import math
 from random import Random
 import logging
 from core.argParser import args
+import pickle
 
 class ClientSampler(object):
 
@@ -21,11 +22,18 @@ class ClientSampler(object):
         self.rng.seed(sample_seed)
         self.count = 0
         self.feasible_samples = 0
+        self.user_trace = None
+
+        if args.user_trace is not None:
+            with open(args.user_trace, 'rb') as fin:
+                self.user_trace = pickle.load(fin)
 
     def registerClient(self, hostId, clientId, dis, size, speed=[1.0, 1.0], duration=1):
 
         uniqueId = self.getUniqueId(hostId, clientId)
-        self.Clients[uniqueId] = Client(hostId, clientId, dis, size, speed)
+        user_trace = None if self.user_trace is None else self.user_trace[int(clientId)]
+
+        self.Clients[uniqueId] = Client(hostId, clientId, dis, size, speed, user_trace)
 
         if size >= self.filter_less and size <= self.filter_more:
             self.feasibleClients.append(clientId)
@@ -37,6 +45,9 @@ class ClientSampler(object):
 
     def getAllClients(self):
         return self.feasibleClients
+
+    def getAllClientsLength(self):
+        return len(self.feasibleClients)
 
     def getClient(self, clientId):
         return self.Clients[self.getUniqueId(0, clientId)]
@@ -128,15 +139,35 @@ class ClientSampler(object):
 
             return 1./totalSampleInTraining
 
+    def getFeasibleClients(self, cur_time):
+        if self.user_trace is None:
+            return self.feasibleClients
+
+        feasible_clients = []
+
+        for clientId in self.feasibleClients:
+            if self.Clients[self.getUniqueId(0, clientId)].isActive(cur_time):
+                feasible_clients.append(clientId)
+
+        return feasible_clients
+
+    def isClientActive(self, clientId, cur_time):
+        return self.Clients[self.getUniqueId(0, clientId)].isActive(cur_time)
+
     def resampleClients(self, numOfClients, cur_time=0):
         self.count += 1
 
+        feasible_clients = self.getFeasibleClients(cur_time)
+
+        if len(feasible_clients) <= numOfClients:
+            return feasible_clients
+
         if self.mode == "bandit" and self.count > 1:
-            return self.ucbSampler.getTopK(numOfClients, cur_time=cur_time)
+            return self.ucbSampler.getTopK(numOfClients, cur_time=cur_time, feasible_clients=set(feasible_clients))
         else:
-            self.rng.shuffle(self.feasibleClients)
-            client_len = min(numOfClients, len(self.feasibleClients) -1)
-            return self.feasibleClients[:client_len]
+            self.rng.shuffle(feasible_clients)
+            client_len = min(numOfClients, len(feasible_clients) -1)
+            return feasible_clients[:client_len]
 
     def getAllMetrics(self):
         if self.mode == "bandit":
@@ -148,4 +179,5 @@ class ClientSampler(object):
 
     def getClientReward(self, clientId):
         return self.ucbSampler.getClientReward(clientId)
+
 

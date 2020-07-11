@@ -25,7 +25,9 @@ def load_audio(path):
     sound, sample_rate = sf.read(path, dtype='int16')
     # TODO this should be 32768.0 to get twos-complement range.
     # TODO the difference is negligible but should be fixed for new models.
-    sound = sound.astype('float32') / 32767  # normalize audio
+
+    #sound = torch.tensor(sound, dtype=torch.float)/32767.0
+    sound = sound.astype('float32') / 32767.0  # normalize audio
     if len(sound.shape) > 1:
         if sound.shape[1] == 1:
             sound = sound.squeeze()
@@ -119,12 +121,17 @@ class SpectrogramParser(AudioParser):
         win_length = n_fft
         hop_length = int(self.sample_rate * self.window_stride)
         # STFT
+        # spect = torch.stft(y, n_fft=n_fft, hop_length=hop_length,
+        #             win_length=win_length, window=torch.tensor(self.window), normalized=True).cuda()
+
         D = librosa.stft(y, n_fft=n_fft, hop_length=hop_length,
                          win_length=win_length, window=self.window)
+
         spect, phase = librosa.magphase(D)
         # S = log(S+1)
         spect = np.log1p(spect)
         spect = torch.FloatTensor(spect)
+
         if self.normalize:
             mean = spect.mean()
             std = spect.std()
@@ -215,8 +222,8 @@ def _collate_fn(batch):
     minibatch_size = len(batch)
     max_seqlength = longest_sample.size(1)
     inputs = torch.zeros(minibatch_size, 1, freq_size, max_seqlength)
-    input_percentages = torch.FloatTensor(minibatch_size)
-    target_sizes = torch.LongTensor(minibatch_size)
+    input_percentages = torch.tensor(minibatch_size, dtype=torch.float).cuda()
+    target_sizes = torch.tensor(minibatch_size, dtype=torch.long).cuda()
     targets = []
     for x in range(minibatch_size):
         sample = batch[x]
@@ -228,7 +235,7 @@ def _collate_fn(batch):
         input_percentages[x] = seq_length / float(max_seqlength)
         target_sizes[x] = len(target)
         targets.extend(target)
-    targets = torch.LongTensor(targets)
+    targets = torch.tensor(targets, dtype=torch.long)
     return inputs, targets, input_percentages, target_sizes
 
 
@@ -373,3 +380,4 @@ def load_randomly_augmented_audio(path, sample_rate=16000, tempo_range=(0.85, 1.
     audio = augment_audio_with_sox(path=path, sample_rate=sample_rate,
                                    tempo=tempo_value, gain=gain_value)
     return audio
+

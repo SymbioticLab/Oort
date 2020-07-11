@@ -176,10 +176,10 @@ def test_model(rank, model, test_data, criterion=nn.NLLLoss(), tokenizer=None):
             top_5 += acc[1].item()
 
         elif args.task == 'voice':
-            (data, target, input_percentages, target_sizes) = data
+            (inputs, target, input_percentages, target_sizes) = data
 
-            input_sizes = input_percentages.mul_(int(data.size(3))).int()
-            data = Variable(data).cuda()
+            input_sizes = input_percentages.mul_(int(inputs.size(3))).int()
+            inputs = Variable(inputs).cuda()
 
             # unflatten targets
             split_targets = []
@@ -188,7 +188,7 @@ def test_model(rank, model, test_data, criterion=nn.NLLLoss(), tokenizer=None):
                 split_targets.append(target[offset:offset + size])
                 offset += size
 
-            out, output_sizes = model(data, input_sizes)
+            out, output_sizes = model(inputs, input_sizes)
 
             decoded_output, _ = decoder.decode(out, output_sizes)
             target_strings = decoder.convert_to_strings(split_targets)
@@ -202,7 +202,8 @@ def test_model(rank, model, test_data, criterion=nn.NLLLoss(), tokenizer=None):
                 num_tokens += len(reference.split())
                 num_chars += len(reference.replace(' ', ''))
 
-            outputs = out.transpose(0, 1).float()
+            outputs = out.transpose(0, 1)
+            outputs = outputs.float()
             loss = criterion(outputs, target, output_sizes, target_sizes)
             test_loss += loss.data.item()
         else:

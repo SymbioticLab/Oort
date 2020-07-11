@@ -103,7 +103,7 @@ sampledClientSet = set()
 
 # try to pick the right gpus
 cudaPrefix = 'cuda:'
-for i in range(4):
+for i in range(3, -1, -1):
     try:
         device = torch.device(cudaPrefix+str(i))
         torch.cuda.set_device(i)
@@ -112,7 +112,7 @@ for i in range(4):
         break
     except Exception as e:
         # no gpus available
-        if i == 4:
+        if i == 0:
             logging.info(e)
             deviceId = None
             logging.info('Turn to CPU device ...')
@@ -291,7 +291,7 @@ def run(model, test_data, queue, param_q, stop_signal, clientSampler):
     #if not args.load_model:
     for name, param in model.named_parameters():
         dist.broadcast(tensor=param.data.to(device=device), src=0)
-        logging.info(f"====Model paramters name: {name}")
+        logging.info(f"====Model parameters name: {name}")
 
     workers = [int(v) for v in str(args.learners).split('-')]
 
@@ -523,11 +523,20 @@ def run(model, test_data, queue, param_q, stop_signal, clientSampler):
                         
                         numToRealRun = max(args.total_worker, len(workers))
                         numToSample = int(numToRealRun * args.overcommit)
-                        sampledClientsReal = last_sampled_clients if args.fixed_clients and last_sampled_clients else sorted(clientSampler.resampleClients(numToSample, cur_time=epoch_count))
+                        sampledClientsRealTemp = last_sampled_clients if args.fixed_clients and last_sampled_clients else sorted(clientSampler.resampleClients(numToSample, cur_time=epoch_count))
+
+                        sampledClientsReal = []
+                        for virtualClient in sampledClientsRealTemp:
+                            roundDuration = clientSampler.getCompletionTime(virtualClient, 
+                                                    batch_size=args.batch_size, upload_epoch=args.upload_epoch, 
+                                                    model_size=args.model_size)
+
+                            if clientSampler.isClientActive(virtualClient, roundDuration + global_virtual_clock):
+                                sampledClientsReal.append(virtualClient)
 
                         last_sampled_clients = sampledClientsReal
 
-                        # we decide to simulate the wall-clock and remove the stragglers
+                        # we decide to simulate the wall time and remove 1. stragglers 2. off-line
                         completionTimes = []
                         virtualClientClock = {}
                         for virtualClient in sampledClientsReal:
@@ -549,8 +558,8 @@ def run(model, test_data, queue, param_q, stop_signal, clientSampler):
                         sampledClientSet = set(sampledClients)
                         round_duration = completionTimes[top_k_index[-1]]
 
-                        logging.info("====Try to resample clients, and result is: \n{}\n while final takes: \n {} \n virtual duration is {}"
-                                    .format(sampledClientsReal, sampledClients, virtualClientClock))
+                        logging.info("====Try to resample clients, and result is: \n{}\n while final takes: \n {} \n virtual duration is {}, {} clients become offline"
+                                    .format(sampledClientsReal, sampledClients, virtualClientClock, len(sampledClientsRealTemp) - len(sampledClientsReal)))
 
                         allocateClientToWorker = {}
                         allocateClientDict = {rank:0 for rank in workers}
