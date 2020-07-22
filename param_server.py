@@ -1,80 +1,9 @@
 # -*- coding: utf-8 -*-
-
-from core.argParser import args
-import os, shutil, pickle, gc, json
-import random, math
-import numpy as np
-import sys, socket
-import time
-import datetime
-import logging
-from collections import deque
-from clientSampler import ClientSampler
-from collections import OrderedDict
-from multiprocessing.managers import BaseManager
-import torch
-import torch.distributed as dist
-from torch.multiprocessing import Process
-from torch.multiprocessing import Queue
-from torch.utils.data import DataLoader
-from torchvision import datasets, transforms
-import torchvision.models as tormodels
-from torch_baidu_ctc import CTCLoss
-
-from utils.models import *
-from utils.utils_data import get_data_transform
-from utils.utils_model import test_model
-from utils.openImg import *
-from utils.nlp import *
-from utils.inception import *
-from utils.stackoverflow import *
-from utils.yogi import *
-from utils.transforms_wav import *
-from utils.transforms_stft import *
-from utils.speech import *
-from utils.resnet_speech import *
-
-# for voice
-from utils.voice_model import DeepSpeech, supported_rnns
+from fl_aggregator_libs import *
 
 #device = torch.device(args.to_device)
 
-logDir = os.getcwd() + "/../../models/"  + args.model + '/' + args.time_stamp + '/server/'
-logFile = logDir + 'log'
-modelDir = os.getcwd() + "/../../models/"  + args.model
-modelPath = modelDir+'/'+str(args.model)+'.pth.tar' if args.model_path is None else args.model_path
-
-
-def init_logging():
-    global logDir
-
-    if not os.path.isdir(logDir):
-        os.makedirs(logDir, exist_ok=True)
-
-    with open(logFile, 'w') as fin:
-        pass
-
-    logging.basicConfig(format='%(asctime)s,%(msecs)d %(levelname)s %(message)s',
-                        datefmt='%H:%M:%S',
-                        level=logging.DEBUG,
-                        handlers=[
-                            logging.FileHandler(logFile, mode='a'),
-                            logging.StreamHandler()
-                        ])
-
-def dump_ps_ip():
-    hostname_map = {}
-    with open('ipmapping', 'rb') as fin:
-        hostname_map = pickle.load(fin)
-
-    ps_ip = str(hostname_map[str(socket.gethostname())])
-    args.ps_ip = ps_ip
-
-    with open(logDir+'ip', 'wb') as fout:
-        pickle.dump(ps_ip, fout)
-
-init_logging()
-dump_ps_ip()
+initiate_aggregator_setting()
 
 entire_train_data = None
 sample_size_dic = {}
@@ -127,10 +56,6 @@ for i in range(3, -1, -1):
 #torch.set_num_threads(int(args.threads))
 #torch.cuda.set_device(args.gpu_device)
 
-sampledClientSet = set()
-# initiate for nlp
-tokenizer = AlbertTokenizer.from_pretrained('albert-base-v2') if args.task =='nlp' else None
-
 def initiate_sampler_query(numOfClients):
     # Initiate the clientSampler 
     if args.sampler_path is None:
@@ -182,7 +107,6 @@ def initiate_sampler_query(numOfClients):
 
     return clientSampler
 
-
 def init_myprocesses(rank, size, model, test_data, queue, param_q, stop_signal, fn, backend):
     global sampledClientSet
 
@@ -205,82 +129,6 @@ def init_myprocesses(rank, size, model, test_data, queue, param_q, stop_signal, 
     # Start the PS service
     fn(model, test_data, queue, param_q, stop_signal, clientSampler)
 
-def init_dataset():
-    global tokenizer
-
-    outputClass = {'Mnist': 10, 'cifar10': 10, "imagenet": 1000, 'emnist': 47, 'openImg': 596, 'google_speech': 35, 'femnist': 62}
-
-    logging.info("====Initialize the model")
-
-    if args.task == 'nlp':
-        # we should train from scratch
-        config = AutoConfig.from_pretrained(os.path.join(args.data_dir, 'albert-base-v2-config.json'))
-        model = AutoModelWithLMHead.from_config(config)
-    elif args.task == 'tag-one-sample':
-        # Load LR model for tag prediction
-        model = LogisticRegression(args.vocab_token_size, args.vocab_tag_size)
-    elif args.task == 'speech':
-
-        if args.model == 'mobilenet':
-            model = mobilenet_v2(num_classes=outputClass[args.data_set], inchannels=1)
-        elif args.model == "resnet18":
-            model = resnet18(num_classes=outputClass[args.data_set], in_channels=1)
-        elif args.model == "resnet34":
-            model = resnet34(num_classes=outputClass[args.data_set], in_channels=1)
-        elif args.model == "resnet50":
-            model = resnet50(num_classes=outputClass[args.data_set], in_channels=1)
-        elif args.model == "resnet101":
-            model = resnet101(num_classes=outputClass[args.data_set], in_channels=1)
-        elif args.model == "resnet152":
-            model = resnet152(num_classes=outputClass[args.data_set], in_channels=1)
-        else:
-            # Should not reach here
-            print('Model must be resnet or mobilenet')
-            sys.exit(-1)
-    elif args.task == 'voice':
-        # Initialise new model training
-        with open(args.labels_path) as label_file:
-            labels = json.load(label_file)
-
-        audio_conf = dict(sample_rate=args.sample_rate,
-                          window_size=args.window_size,
-                          window_stride=args.window_stride,
-                          window=args.window,
-                          noise_dir=args.noise_dir,
-                          noise_prob=args.noise_prob,
-                          noise_levels=(args.noise_min, args.noise_max))
-        model = DeepSpeech(rnn_hidden_size=args.hidden_size,
-                           nb_layers=args.hidden_layers,
-                           labels=labels,
-                           rnn_type=supported_rnns[args.rnn_type.lower()],
-                           audio_conf=audio_conf,
-                           bidirectional=args.bidirectional)
-    else:
-        if args.model == 'mnasnet':
-            model = MnasNet(num_classes=outputClass[args.data_set])
-        elif args.model == "lr":
-            model = LogisticRegression(args.input_dim, outputClass[args.data_set])
-        else:
-            model = tormodels.__dict__[args.model](num_classes=outputClass[args.data_set])
-
-    if args.load_model:
-        try:
-            with open(modelPath, 'rb') as fin:
-                model = pickle.load(fin)
-
-            #model.load_state_dict(torch.load(modelPath, map_location=lambda storage, loc: storage.cuda(deviceId)))
-            logging.info("====Load model successfully\n")
-        except Exception as e:
-            logging.info("====Error: Failed to load model due to {}\n".format(str(e)))
-            sys.exit(-1)
-
-    model = model.to(device=device)
-    model.eval()
-
-    logging.info("====Finish loading model")
-
-    return model, [], []
-
 def run(model, test_data, queue, param_q, stop_signal, clientSampler):
     global logDir, sampledClientSet
 
@@ -288,6 +136,8 @@ def run(model, test_data, queue, param_q, stop_signal, clientSampler):
 
     f_staleness = open(staleness_file, 'w')
     
+    model = model.to(device=device)
+
     #if not args.load_model:
     for name, param in model.named_parameters():
         dist.broadcast(tensor=param.data.to(device=device), src=0)
@@ -679,8 +529,6 @@ def setup_seed(seed):
 
 if __name__ == "__main__":
 
-    with open(logFile, 'w') as f:
-        pass
     # Control the global random
     setup_seed(args.this_rank)
 

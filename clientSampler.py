@@ -2,7 +2,6 @@ from core.ucb import UCB
 from core.client import Client
 import math
 from random import Random
-import logging
 from core.argParser import args
 import pickle
 
@@ -36,8 +35,9 @@ class ClientSampler(object):
         self.Clients[uniqueId] = Client(hostId, clientId, dis, size, speed, user_trace)
 
         if size >= self.filter_less and size <= self.filter_more:
+            print(clientId, size)
+            
             self.feasibleClients.append(clientId)
-
             self.feasible_samples += size
 
             if self.mode == "bandit":
@@ -162,12 +162,20 @@ class ClientSampler(object):
         if len(feasible_clients) <= numOfClients:
             return feasible_clients
 
+        pickled_clients = None
+        feasible_clients_set = set(feasible_clients)
+
         if self.mode == "bandit" and self.count > 1:
-            return self.ucbSampler.getTopK(numOfClients, cur_time=cur_time, feasible_clients=set(feasible_clients))
+            pickled_clients = self.ucbSampler.getTopK(numOfClients, cur_time=cur_time, feasible_clients=feasible_clients_set)
         else:
             self.rng.shuffle(feasible_clients)
             client_len = min(numOfClients, len(feasible_clients) -1)
-            return feasible_clients[:client_len]
+            pickled_clients = feasible_clients[:client_len]
+
+
+        for item in pickled_clients:
+            assert (item in feasible_clients_set)
+        return pickled_clients
 
     def getAllMetrics(self):
         if self.mode == "bandit":

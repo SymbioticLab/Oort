@@ -1,81 +1,10 @@
 # -*- coding: utf-8 -*-
-# Thanks to qihua Zhou
+from fl_client_libs import *
 
-from core.argParser import args
-import os, shutil, sys, time, datetime, logging, pickle, json
-from collections import OrderedDict
-from ctypes import c_bool
-from multiprocessing import Process, Value
-from multiprocessing.managers import BaseManager
-import random, math, gc, copy
-import multiprocessing, threading
-import numpy as np
-import torch
-import re
-import torch.distributed as dist
-from torch.autograd import Variable
-from torchvision import datasets, transforms
-import torchvision.models as tormodels
-from torch.utils.data.sampler import WeightedRandomSampler
-from torch_baidu_ctc import CTCLoss
-
-from utils.openImg import *
-from utils.divide_data import partition_dataset, select_dataset, DataPartitioner
-from utils.models import *
-from utils.utils_data import get_data_transform
-from utils.utils_model import MySGD, test_model
-from utils.crosslossprox import CrossEntropyLossProx
-from utils.nlp import *
-from utils.inception import *
-from utils.stackoverflow import *
-from utils.transforms_wav import *
-from utils.transforms_stft import *
-from utils.speech import *
-from utils.resnet_speech import *
-from utils.femnist import *
-
-# for voice
-from utils.voice_model import DeepSpeech, supported_rnns
-from utils.voice_data_loader import SpectrogramDataset
+initiate_client_setting()
 
 #device = torch.device(args.to_device)
 #torch.set_num_threads(int(args.threads))
-
-logDir = os.getcwd() + "/../../models/" + args.model + '/' + args.time_stamp + '/learner/'
-logFile = logDir + 'log_'+str(args.this_rank)
-modelDir = os.getcwd() + "/../../models/"  + args.model
-modelPath = modelDir+'/'+str(args.model)+'.pth.tar' if args.model_path is None else args.model_path
-
-def init_logging():
-    global logDir, logging
-
-    if not os.path.isdir(logDir):
-        os.makedirs(logDir, exist_ok=True)
-
-    logging.basicConfig(format='%(asctime)s,%(msecs)d %(levelname)s %(message)s',
-                    datefmt='%H:%M:%S',
-                    level=logging.INFO,
-                    handlers=[
-                        logging.FileHandler(logFile, mode='a'),
-                        logging.StreamHandler()
-                    ])
-
-def get_ps_ip():
-    global args
-
-    ip_file = logDir + '../server/ip'
-    ps_ip = None
-    while not os.path.exists(ip_file):
-        time.sleep(1)
-
-    with open(ip_file, 'rb') as fin:
-        ps_ip = pickle.load(fin)
-
-    args.ps_ip = ps_ip
-    logging.info('====Config ps_ip on {}, args.ps_ip is {}'.format(ps_ip, args.ps_ip))
-
-init_logging()
-get_ps_ip()
 
 entire_train_data = None
 os.environ['MASTER_ADDR'] = args.ps_ip
@@ -105,7 +34,7 @@ sampledClientSet = set()
 
 # try to pick the right gpus
 cudaPrefix = 'cuda:'
-for i in range(4):
+for i in range(3, -1, -1):
     try:
         device = torch.device(cudaPrefix+str(i))
         torch.cuda.set_device(i)
@@ -114,7 +43,7 @@ for i in range(4):
         break
     except Exception as e:
         # no gpus available
-        if i == 4:
+        if i == 0:
             logging.info(e)
             deviceId = None
             logging.info('Turn to CPU device ...')
@@ -132,11 +61,7 @@ global_optimizers = {}
 
 workers = [int(v) for v in str(args.learners).split('-')]
 
-# initiate for nlp
-tokenizer = AlbertTokenizer.from_pretrained('albert-base-v2') if args.task =='nlp' else None
-
 logging.info("===== Experiment start =====")
-
 
 def report_data_info(rank, queue, entire_train_data):
     global nextClientIds
@@ -168,150 +93,6 @@ def scan_models(path):
                 model_paths[model_state_id] = os.path.join(path, file)
 
     return model_paths
-
-def init_dataset():
-    global tokenizer, device
-
-    outputClass = {'Mnist': 10, 'cifar10': 10, "imagenet": 1000, 'emnist': 47, 'openImg': 596, 'google_speech': 35, 'femnist': 62}
-
-    logging.info("====Initialize the model")
-
-    if args.task == 'nlp':
-        # we should train from scratch
-        config = AutoConfig.from_pretrained(os.path.join(args.data_dir, 'albert-base-v2-config.json'))
-        model = AutoModelWithLMHead.from_config(config)
-    elif args.task == 'tag-one-sample':
-        # Load LR model for tag prediction
-        model = LogisticRegression(args.vocab_token_size, args.vocab_tag_size)
-    elif args.task == 'speech':
-        if args.model == 'mobilenet':
-            model = mobilenet_v2(num_classes=outputClass[args.data_set], inchannels=1)
-        elif args.model == "resnet18":
-            model = resnet18(num_classes=outputClass[args.data_set], in_channels=1)
-        elif args.model == "resnet34":
-            model = resnet34(num_classes=outputClass[args.data_set], in_channels=1)
-        elif args.model == "resnet50":
-            model = resnet50(num_classes=outputClass[args.data_set], in_channels=1)
-        elif args.model == "resnet101":
-            model = resnet101(num_classes=outputClass[args.data_set], in_channels=1)
-        elif args.model == "resnet152":
-            model = resnet152(num_classes=outputClass[args.data_set], in_channels=1)
-        else:
-            # Should not reach here
-            print('Model must be resnet or mobilenet')
-            sys.exit(-1)
-    elif args.task == 'voice':
-        # Initialise new model training
-        with open(args.labels_path) as label_file:
-            labels = json.load(label_file)
-
-        audio_conf = dict(sample_rate=args.sample_rate,
-                          window_size=args.window_size,
-                          window_stride=args.window_stride,
-                          window=args.window,
-                          noise_dir=args.noise_dir,
-                          noise_prob=args.noise_prob,
-                          noise_levels=(args.noise_min, args.noise_max))
-        model = DeepSpeech(rnn_hidden_size=args.hidden_size,
-                           nb_layers=args.hidden_layers,
-                           labels=labels,
-                           rnn_type=supported_rnns[args.rnn_type.lower()],
-                           audio_conf=audio_conf,
-                           bidirectional=args.bidirectional)
-    else:
-        if args.model == 'mnasnet':
-            model = MnasNet(num_classes=outputClass[args.data_set])
-        elif args.model == "lr":
-            model = LogisticRegression(args.input_dim, outputClass[args.data_set])
-        else:
-            model = tormodels.__dict__[args.model](num_classes=outputClass[args.data_set])
-
-    model = model.to(device=device)
-    model.eval()
-    
-    if args.data_set == 'Mnist':
-        train_transform, test_transform = get_data_transform('mnist')
-
-        train_dataset = datasets.MNIST(args.data_dir, train=True, download=True,
-                                       transform=train_transform)
-        test_dataset = datasets.MNIST(args.data_dir, train=False, download=True,
-                                      transform=test_transform)
-
-    elif args.data_set == 'cifar10':
-        train_transform, test_transform = get_data_transform('cifar')
-        train_dataset = datasets.CIFAR10(args.data_dir, train=True, download=True,
-                                         transform=train_transform)
-        test_dataset = datasets.CIFAR10(args.data_dir, train=False, download=True,
-                                        transform=test_transform)
-
-    elif args.data_set == "imagenet":
-        train_transform, test_transform = get_data_transform('imagenet')
-        train_dataset = datasets.ImageNet(args.data_dir, split='train', download=False, transform=train_transform)
-        test_dataset = datasets.ImageNet(args.data_dir, split='val', download=False, transform=test_transform)
-
-    elif args.data_set == 'emnist':
-        test_dataset = datasets.EMNIST(args.data_dir, split='balanced', train=False, download=True, transform=transforms.ToTensor())
-        train_dataset = datasets.EMNIST(args.data_dir, split='balanced', train=True, download=True, transform=transforms.ToTensor())
-
-    elif args.data_set == 'femnist':
-        train_transform, test_transform = get_data_transform('mnist') 
-        train_dataset = FEMNIST(args.data_dir, train=True, transform=train_transform)
-        test_dataset = FEMNIST(args.data_dir, train=False, transform=test_transform)
-
-    elif args.data_set == 'openImg':
-        transformer_ns = 'openImg' if args.model != 'inception_v3' else 'openImgInception'
-        train_transform, test_transform = get_data_transform(transformer_ns) 
-        train_dataset = OPENIMG(args.data_dir, train=True, transform=train_transform)
-        test_dataset = OPENIMG(args.data_dir, train=False, transform=test_transform)
-
-    elif args.data_set == 'blog':
-        train_dataset = load_and_cache_examples(args, tokenizer, evaluate=False) 
-        test_dataset = load_and_cache_examples(args, tokenizer, evaluate=True)
-
-    elif args.data_set == 'stackoverflow':
-        train_dataset = stackoverflow(args.data_dir, train=True)
-        test_dataset = stackoverflow(args.data_dir, train=False)
-    
-    elif args.data_set == 'google_speech':
-        bkg = '_background_noise_'
-        data_aug_transform = transforms.Compose([ChangeAmplitude(), ChangeSpeedAndPitchAudio(), FixAudioLength(), ToSTFT(), StretchAudioOnSTFT(), TimeshiftAudioOnSTFT(), FixSTFTDimension()])
-        bg_dataset = BackgroundNoiseDataset(os.path.join(args.data_dir, bkg), data_aug_transform)
-        add_bg_noise = AddBackgroundNoiseOnSTFT(bg_dataset)
-        train_feature_transform = transforms.Compose([ToMelSpectrogramFromSTFT(n_mels=32), DeleteSTFT(), ToTensor('mel_spectrogram', 'input')])
-        train_dataset = SPEECH(args.data_dir, train= True,
-                                transform=transforms.Compose([LoadAudio(),
-                                         data_aug_transform,
-                                         add_bg_noise,
-                                         train_feature_transform]))
-        valid_feature_transform = transforms.Compose([ToMelSpectrogram(n_mels=32), ToTensor('mel_spectrogram', 'input')])
-        test_dataset = SPEECH(args.data_dir, train=False,
-                                transform=transforms.Compose([LoadAudio(),
-                                         FixAudioLength(),
-                                         valid_feature_transform]))
-    elif args.data_set == 'common_voice':
-        train_dataset = SpectrogramDataset(audio_conf=model.audio_conf,
-                                       manifest_filepath=args.train_manifest,
-                                       labels=model.labels,
-                                       normalize=True,
-                                       speed_volume_perturb=args.speed_volume_perturb,
-                                       spec_augment=args.spec_augment,
-                                       data_mapfile=args.data_mapfile)
-        test_dataset = SpectrogramDataset(audio_conf=model.audio_conf,
-                                      manifest_filepath=args.test_manifest,
-                                      labels=model.labels,
-                                      normalize=True,
-                                      speed_volume_perturb=False,
-                                      spec_augment=False)
-    else:
-        print('DataSet must be {}!'.format(['Mnist', 'Cifar', 'openImg', 'blog', 'stackoverflow', 'speech']))
-        sys.exit(-1)
-
-    logging.info("====Initialize client configuration")
-
-    # initiate the device information - normalized computation speed by enforcing sleeping, bandwidth
-    client_cfg = {}
-
-    return model, train_dataset, test_dataset, client_cfg
 
 # ================== Scorer =================== #
 def run_forward_pass(model, test_data):
@@ -460,7 +241,6 @@ def run_client(clientId, cmodel, iters, learning_rate, argdicts = {}):
             {"params": [p for n, p in cmodel.named_parameters() if any(nd in n for nd in no_decay)], "weight_decay": 0.0},
         ]
         optimizer = AdamW(optimizer_grouped_parameters, lr=learning_rate, eps=args.adam_epsilon)
-        #optimizer = torch.optim.SGD(cmodel.parameters(), lr=learning_rate, momentum=0.9, weight_decay=5e-4)
 
     criterion = None 
 
@@ -536,7 +316,7 @@ def run_client(clientId, cmodel, iters, learning_rate, argdicts = {}):
                             train_data_itr_list[0]._shutdown_workers()
                             del train_data_itr_list[0]
                     except Exception as e:
-                        logging.info("====Error {}".format(e))
+                        logging.info("====Error {}".format(str(e)))
 
                     tempData = select_dataset(
                             clientId, global_trainDB, 
@@ -544,7 +324,7 @@ def run_client(clientId, cmodel, iters, learning_rate, argdicts = {}):
                             collate_fn=collate_fn
                         )
 
-                    logging.info(f"====Error {ex}")
+                    logging.info(f"====Error {str(ex)}")
                     train_data_itr_list = [iter(tempData)]
 
             except Exception as e:
@@ -966,12 +746,13 @@ if __name__ == "__main__":
     logging.info("====Start to initialize dataset")
 
     gc.disable()
-    model, train_dataset, test_dataset, client_cfg = init_dataset()
+    model, train_dataset, test_dataset = init_dataset()
     gc.enable()
     gc.collect()
 
     splitTrainRatio = []
-
+    client_cfg = {}
+    
     # Initialize PS - client communication channel
     world_size = len(workers) + 1
     this_rank = args.this_rank
