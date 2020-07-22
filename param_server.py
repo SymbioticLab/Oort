@@ -56,7 +56,7 @@ for i in range(3, -1, -1):
 #torch.set_num_threads(int(args.threads))
 #torch.cuda.set_device(args.gpu_device)
 
-def initiate_sampler_query(numOfClients):
+def initiate_sampler_query(queue, numOfClients):
     # Initiate the clientSampler 
     if args.sampler_path is None:
         clientSampler = ClientSampler(args.sample_mode, args.score_mode, filter=args.filter_less, sample_seed=args.sample_seed)
@@ -107,14 +107,14 @@ def initiate_sampler_query(numOfClients):
 
     return clientSampler
 
-def init_myprocesses(rank, size, model, test_data, queue, param_q, stop_signal, fn, backend):
+def init_myprocesses(rank, size, model, queue, param_q, stop_signal, fn, backend):
     global sampledClientSet
 
     dist.init_process_group(backend, rank=rank, world_size=size)
 
     # After collecting all data information, then decide the clientId to run
     workerRanks = [int(v) for v in str(args.learners).split('-')]
-    clientSampler = initiate_sampler_query(len(workerRanks))
+    clientSampler = initiate_sampler_query(queue, len(workerRanks))
     
     clientIdsToRun = []
     for wrank in workerRanks:
@@ -127,9 +127,41 @@ def init_myprocesses(rank, size, model, test_data, queue, param_q, stop_signal, 
     dist.broadcast(tensor=clientTensor, src=0)
 
     # Start the PS service
-    fn(model, test_data, queue, param_q, stop_signal, clientSampler)
+    fn(model, queue, param_q, stop_signal, clientSampler)
 
-def run(model, test_data, queue, param_q, stop_signal, clientSampler):
+def prune_client_tasks(clientSampler, sampledClientsRealTemp, numToRealRun, global_virtual_clock):
+
+    sampledClientsReal = []
+    # 1. remove dummy clients that are not available to the end of training
+    for virtualClient in sampledClientsRealTemp:
+        roundDuration = clientSampler.getCompletionTime(virtualClient, 
+                                batch_size=args.batch_size, upload_epoch=args.upload_epoch, 
+                                model_size=args.model_size)
+
+        if clientSampler.isClientActive(virtualClient, roundDuration + global_virtual_clock):
+            sampledClientsReal.append(virtualClient)
+
+    # 2. we decide to simulate the wall time and remove 1. stragglers 2. off-line
+    completionTimes = []
+    virtual_client_clock = {}
+    for virtualClient in sampledClientsReal:
+        roundDuration = clientSampler.getCompletionTime(virtualClient, 
+                                batch_size=args.batch_size, upload_epoch=args.upload_epoch, 
+                                model_size=args.model_size)
+        completionTimes.append(roundDuration)
+        virtual_client_clock[virtualClient] = roundDuration
+
+    # 3. get the top-k completions
+    sortedWorkersByCompletion = sorted(range(len(completionTimes)), key=lambda k:completionTimes[k])
+    top_k_index = sortedWorkersByCompletion[:numToRealRun]
+    clients_to_run = [sampledClientsReal[k] for k in top_k_index]
+
+    dummy_clients = [sampledClientsReal[k] for k in sortedWorkersByCompletion[numToRealRun:]]
+    round_duration = completionTimes[top_k_index[-1]]
+
+    return clients_to_run, dummy_clients, virtual_client_clock, round_duration
+
+def run(model, queue, param_q, stop_signal, clientSampler):
     global logDir, sampledClientSet
 
     logging.info("====PS: get in run()")
@@ -168,7 +200,7 @@ def run(model, test_data, queue, param_q, stop_signal, clientSampler):
 
     global_update = 0
     received_updates = 0
-    last_global_model = [param for param in pickle.loads(pickle.dumps(model)).parameters()]
+
     clientsLastEpoch = []
     sumDeltaWeights = []
     clientWeightsCache = {}
@@ -266,9 +298,6 @@ def run(model, test_data, queue, param_q, stop_signal, clientSampler):
 
                         avgUtilLastEpoch += ratioSample * clientUtility
 
-                        delta_ws = None
-                        del delta_ws
-
                 logging.info("====Done handling rank {}, with ratio {}, now collected {} clients".format(rank_src, ratioSample, received_updates))
 
                 # aggregate the test results
@@ -331,16 +360,11 @@ def run(model, test_data, queue, param_q, stop_signal, clientSampler):
                         # start to send param, to avoid synchronization problem, first create a copy here?
                         workersToSend.append(pworker)
 
-                tmp_dict = None
-                delta_wss = None
-
-                del delta_wss
-                del tmp_dict
+                del delta_wss, tmp_dict
 
                 if len(workersToSend) > 0:
                     # assign avg reward to explored, but not ran workers
                     for clientId in exploredPendingWorkers:
-                        assert (avgUtilLastEpoch > 0)
                         clientSampler.registerScore(clientId, avgUtilLastEpoch,
                                                 time_stamp=epoch_count, duration=virtualClientClock[clientId],
                                                 success=False
@@ -357,65 +381,36 @@ def run(model, test_data, queue, param_q, stop_signal, clientSampler):
                     clientsLastEpoch = []
                     send_start = time.time()
 
-                    # transformation of gradients if necessary
-                    if gradient_controller is not None:
-                        sumDeltaWeights = gradient_controller.update(sumDeltaWeights)
-
-                    for idx, param in enumerate(model.parameters()):
-                        if not args.test_only:
-                            param.data += sumDeltaWeights[idx]
-                        dist.broadcast(tensor=(param.data.to(device=device)), src=0)
-
                     # resampling the clients if necessary
                     if epoch_count % args.resampling_interval == 0 or epoch_count == 2:
                         logging.info("====Start to sample for epoch {}, global virtualClock: {}, round_duration: {}"
                                         .format(epoch_count, global_virtual_clock, round_duration))
                         
-                        numToRealRun = max(args.total_worker, len(workers))
-                        numToSample = int(numToRealRun * args.overcommit)
-                        sampledClientsRealTemp = last_sampled_clients if args.fixed_clients and last_sampled_clients else sorted(clientSampler.resampleClients(numToSample, cur_time=epoch_count))
 
-                        sampledClientsReal = []
-                        for virtualClient in sampledClientsRealTemp:
-                            roundDuration = clientSampler.getCompletionTime(virtualClient, 
-                                                    batch_size=args.batch_size, upload_epoch=args.upload_epoch, 
-                                                    model_size=args.model_size)
+                        numToSample = int(args.total_worker * args.overcommit)
 
-                            if clientSampler.isClientActive(virtualClient, roundDuration + global_virtual_clock):
-                                sampledClientsReal.append(virtualClient)
+                        if args.fixed_clients and last_sampled_clients:
+                            sampledClientsRealTemp = last_sampled_clients 
+                        else:
+                            sampledClientsRealTemp = sorted(clientSampler.resampleClients(numToSample, cur_time=epoch_count))
 
-                        last_sampled_clients = sampledClientsReal
+                        last_sampled_clients = sampledClientsRealTemp
 
-                        # we decide to simulate the wall time and remove 1. stragglers 2. off-line
-                        completionTimes = []
-                        virtualClientClock = {}
-                        for virtualClient in sampledClientsReal:
-                            roundDuration = clientSampler.getCompletionTime(virtualClient, 
-                                                    batch_size=args.batch_size, upload_epoch=args.upload_epoch, 
-                                                    model_size=args.model_size)
-                            completionTimes.append(roundDuration)
-                            virtualClientClock[virtualClient] = roundDuration
+                        # remove dummy clients that we are not going to run
+                        clientsToRun, exploredPendingWorkers, virtualClientClock, round_duration = prune_client_tasks(
+                                                            clientSampler, sampledClientsRealTemp, 
+                                                            args.total_worker, global_virtual_clock
+                                                        )
+                        sampledClientSet = set(clientsToRun)
 
-                        # get the top-k completions
-                        sortedWorkersByCompletion = sorted(range(len(completionTimes)), key=lambda k:completionTimes[k])
-                        top_k_index = sortedWorkersByCompletion[:numToRealRun]
-                        sampledClients = [sampledClientsReal[k] for k in top_k_index]
-
-                        #if args.test_only and epoch_count == 2:
-                        #    sampledClients = clientSampler.getAllClients()
-
-                        exploredPendingWorkers = [sampledClientsReal[k] for k in sortedWorkersByCompletion[numToRealRun:]]
-                        sampledClientSet = set(sampledClients)
-                        round_duration = completionTimes[top_k_index[-1]]
-
-                        logging.info("====Try to resample clients, and result is: \n{}\n while final takes: \n {} \n virtual duration is {}, {} clients become offline"
-                                    .format(sampledClientsReal, sampledClients, virtualClientClock, len(sampledClientsRealTemp) - len(sampledClientsReal)))
+                        logging.info("====Try to resample clients, final takes: \n {} \n virtual duration is {}"
+                                    .format(clientsToRun, virtualClientClock))
 
                         allocateClientToWorker = {}
                         allocateClientDict = {rank:0 for rank in workers}
 
-                        # for those data lakes < # of iters, we use round-bin for load balance
-                        for c in sampledClients:
+                        # for those device lakes < # of clients, we use round-bin for load balance
+                        for c in clientsToRun:
                             clientDataSize = clientSampler.getClientSize(c)
                             numOfBatches = int(math.ceil(clientDataSize/args.batch_size))
 
@@ -447,53 +442,24 @@ def run(model, test_data, queue, param_q, stop_signal, clientSampler):
                         # remove from the pending workers
                         del pendingWorkers[worker]
 
+                   # transformation of gradients if necessary
+                    if gradient_controller is not None:
+                        sumDeltaWeights = gradient_controller.update(sumDeltaWeights)
+
+                    for idx, param in enumerate(model.parameters()):
+                        if not args.test_only:
+                            param.data += sumDeltaWeights[idx]
+                        dist.broadcast(tensor=(param.data.to(device=device)), src=0)
+
                     dist.broadcast(tensor=torch.tensor(clientIdsToRun, dtype=torch.int).to(device=device), src=0)
                     dist.broadcast(tensor=torch.tensor(clientsList, dtype=torch.int).to(device=device), src=0)
 
                     if global_update % args.display_step == 0:
                         logging.info("Handle Wight {} | Send {}".format(handle_dur, time.time() - send_start))
 
-                    # dump the model into file for backup
-                    # if epoch_count % args.dump_epoch == 0:
-                    #     torch.save(model.state_dict(), logDir+'/'+str(args.model)+'_'+str(currentMinStep)+'.pth.tar')
-                    #     # with open(logDir+'/'+str(args.model)+'_'+str(currentMinStep)+'.pth.tar', 'wb') as fout:
-                    #     #     pickle.dump(model.to(device='cpu'), fout)
-
-                    #     # dump sampler
-                    #     # with open(logDir + '/sampler_' + str(currentMinStep), 'wb') as fout:
-                    #     #     pickle.dump(clientSampler, fout)
-
-                    #     # # dump metrics
-                    #     # with open(logDir + '/sampler_metrics_' + str(currentMinStep), 'wb') as fout:
-                    #     #     pickle.dump(clientSampler.getAllMetrics(), fout)
-
-                    #     logging.info("====Dump model and sampler successfully")
-                    #     model = model.to(device=device)
-
-                    last_global_model = [param for param in pickle.loads(pickle.dumps(model)).parameters()]
-                    
                     # update the virtual clock
                     global_virtual_clock += round_duration
                     received_updates = 0
-
-                    # clientKeys = sorted(clientWeightsCache.keys())
-                    
-                    # # calculate the L2-norm of weights
-                    # tempSumL2Norm = [w.norm(2).item() for w in sumDeltaWeights]
-                    # assert(len(tempSumL2Norm) == len(clientWeightsCache[clientKeys[0]]))
-                    
-                    # logging.info(f"====Epoch: {epoch_count}, Avg L2-norm is: {tempSumL2Norm}")
-
-                    # tempModelL2Norm = [param.data.norm(2).item() for param in model.parameters()]
-                    # logging.info(f"====Model L2-norm is: {tempModelL2Norm}")
-
-                    # for clientId in clientKeys:
-                    #     weights = clientWeightsCache[clientId]
-                    #     tempL2Norm = []
-                    #     for pIdx, weight in enumerate(weights):
-                    #         tempL2Norm.append((weight - sumDeltaWeights[pIdx]).norm(2).item())
-
-                    #     logging.info(f"====For clientId {clientId}, L2-norm is: {tempL2Norm}")
 
                     sumDeltaWeights = []
                     clientWeightsCache = {}
@@ -527,10 +493,8 @@ def setup_seed(seed):
      random.seed(seed)
      torch.backends.cudnn.deterministic = True
 
-if __name__ == "__main__":
-
-    # Control the global random
-    setup_seed(args.this_rank)
+# communication channel for client information
+def initiate_channel():
 
     queue = Queue()
     param = Queue()
@@ -540,6 +504,15 @@ if __name__ == "__main__":
     BaseManager.register('get_param', callable=lambda: param)
     BaseManager.register('get_stop_signal', callable=lambda: stop_or_not)
     manager = BaseManager(address=(args.ps_ip, args.manager_port), authkey=b'queue')
+
+    return manager
+
+if __name__ == "__main__":
+
+    # Control the global random
+    setup_seed(args.this_rank)
+
+    manager = initiate_channel()
     manager.start()
     
     q = manager.get_queue()  # queue for parameter_server signal process
@@ -549,17 +522,12 @@ if __name__ == "__main__":
     logging.info("====Start to initialize dataset")
 
     model, train_dataset, test_dataset = init_dataset()
-    logging.info("====Len of train_dataset: {}, Len of test_dataset: {}".format(len(train_dataset), len(test_dataset)))
-
-    test_data = []#DataLoader(test_dataset, batch_size=args.test_bsz, shuffle=True)
-
+    
     world_size = len(str(args.learners).split('-')) + 1
     this_rank = args.this_rank
 
-    init_myprocesses(this_rank, world_size, model, test_data,
-                                                  q, param_q, stop_signal, run, args.backend)
-    #p = Process(target=init_myprocesses, args=(this_rank, world_size, model,test_data,
-    #                                               q, param_q, stop_signal, run, "gloo"))
-    #p.start()
-    #p.join()
+    init_myprocesses(this_rank, world_size, model,
+                    q, param_q, stop_signal, run, args.backend
+                )
+
     manager.shutdown()

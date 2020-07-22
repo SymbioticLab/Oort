@@ -140,52 +140,6 @@ def run_forward_pass(model, test_data):
 
     return (test_loss/float(test_len))
 
-def run_backward_pass(model, test_data):
-    test_loss = 0.
-    test_len = 0.
-    totalLoss = None
-    gradient_norm = 0
-
-    #model.eval()
-    criterion = torch.nn.CrossEntropyLoss().to(device=device) if args.task != 'tag' else torch.nn.BCEWithLogitsLoss().to(device=device)
-    optimizer = MySGD(model.parameters(), lr=learning_rate, momentum=0.9, weight_decay=5e-4)
-
-    gradientSamples = []
-
-    for data, target in test_data:
-        data, target = Variable(data).to(device=device), Variable(target).to(device=device)
-        #output = model(data)
-
-        if args.model != 'inception_v3':
-            output = model(data)
-
-            if args.model == 'googlenet':
-                loss1 = criterion(output, target)
-                loss2 = criterion(aux1, target)
-                loss3 = criterion(aux2, target)
-                loss = loss1 + 0.3 * (loss2 + loss3)
-            else:
-                loss = criterion(output, target)
-        else:
-            output, aux_outputs = model(data)
-            loss1 = criterion(output, target)
-            loss2 = criterion(aux_outputs, target)
-            loss = loss1 + 0.4*loss2
-
-        test_loss += loss.data.item()
-        test_len += len(target)
-
-        optimizer.zero_grad()
-        loss.backward()
-
-        # sum the gradient norm of samples
-        for p in list(filter(lambda p: p.grad is not None, model.parameters())):
-            gradient_norm += p.grad.data.norm(2).item()
-
-    # loss function averages over batch size
-    gradient_norm /= float(len(test_data))
-
-    return gradient_norm
 
 def collate(examples: List[torch.Tensor]):
     global tokenizer
@@ -256,7 +210,6 @@ def run_client(clientId, cmodel, iters, learning_rate, argdicts = {}):
         collate_fn = collate
     elif args.task == 'voice':
         collate_fn = voice_collate_fn
-
 
     if clientId not in global_data_iter:
         client_train_data = select_dataset(
@@ -572,12 +525,6 @@ def run(rank, model, train_data, test_data, queue, param_q, stop_flag, client_cf
                     with open(tempModelPath, 'rb') as fin:
                         model = pickle.load(fin)
 
-                    if args.score_mode == 'norm':
-                        # need to get the individual norm of samples
-                        backward_dataset = select_dataset(nextClientId, global_trainDB, batch_size=1, isTest=True)
-                        gradient_norm = run_backward_pass(model, backward_dataset)
-                        score = gradient_norm
-
                     _model_param, _loss, _trained_size, _speed, _time, _isSuccess = run_client(
                                 clientId=nextClientId, 
                                 cmodel=model, 
@@ -731,12 +678,18 @@ def setup_seed(seed):
      random.seed(seed)
      torch.backends.cudnn.deterministic = True
 
-if __name__ == "__main__":
-    setup_seed(args.this_rank)
+def initiate_channel():
     BaseManager.register('get_queue')
     BaseManager.register('get_param')
     BaseManager.register('get_stop_signal')
     manager = BaseManager(address=(args.ps_ip, args.manager_port), authkey=b'queue')
+
+    return manager
+
+if __name__ == "__main__":
+    setup_seed(args.this_rank)
+
+    manager = initiate_channel()
     manager.connect()
 
     q = manager.get_queue()  # queue for parameter_server signal process
@@ -752,7 +705,7 @@ if __name__ == "__main__":
 
     splitTrainRatio = []
     client_cfg = {}
-    
+
     # Initialize PS - client communication channel
     world_size = len(workers) + 1
     this_rank = args.this_rank
@@ -800,5 +753,4 @@ if __name__ == "__main__":
     init_myprocesses(this_rank, world_size, model, entire_train_data, test_data,
                                           q, param_q, stop_flag,
                                           run, args.backend, client_cfg)
-
 
