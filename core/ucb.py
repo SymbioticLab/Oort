@@ -130,7 +130,7 @@ class UCB(object):
 
         moving_reward, staleness, allloss = [], [], {}
         expectation_reward = self.getExpectation()
-
+        
         for sampledId in orderedKeys:
             if self.totalArms[sampledId][0] > 0:
                 creward = self.totalArms[sampledId][0]
@@ -148,7 +148,7 @@ class UCB(object):
                 numOfExploited += 1
 
                 sc = (creward - min_reward)/float(range_reward) \
-                    + self.alpha*((cur_time-self.totalArms[key][1]) - min_staleness)/float(range_staleness) #math.sqrt(0.1*math.log(cur_time)/self.totalArms[key][1]) #self.alpha*((cur_time-self.totalArms[key][1]) - min_staleness)/float(range_staleness) #math.sqrt(0.1*math.log(cur_time)/self.totalArms[key][1]) # temporal-uncertainty
+                    + self.alpha*((cur_time-self.totalArms[key][1]) - min_staleness)/float(range_staleness) #math.sqrt(0.1*math.log(cur_time)/self.totalArms[key][1]) # temporal-uncertainty
 
                     #self.alpha*((cur_time-self.totalArms[key][1]) - min_staleness)/float(range_staleness)
 

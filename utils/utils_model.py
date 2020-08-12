@@ -175,6 +175,19 @@ def test_model(rank, model, test_data, criterion=nn.NLLLoss(), tokenizer=None):
             correct += acc[0].item()
             top_5 += acc[1].item()
 
+        elif args.task == 'text_clf':
+            (inputs, masks) = data
+            inputs, masks, target = Variable(inputs).cuda(), Variable(masks).cuda(), Variable(target).cuda()
+
+            output = cmodel(inputs, masks)
+            loss = criterion(output, target)
+
+            test_loss += loss.data.item()  # Variable.data
+            acc = accuracy(output, target, topk=(1, 2))
+
+            correct += acc[0].item()
+            top_5 += acc[1].item()
+
         elif args.task == 'voice':
             (inputs, target, input_percentages, target_sizes) = data
 

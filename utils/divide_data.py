@@ -265,8 +265,6 @@ class DataPartitioner(object):
             numOfClients = len(self.clientToData)
 
         else:
-            #logging.info("====partitionTraceNLP slice_index is {}".format(self.data.slice_index))
-
             # data share the same index with labels
             cut_off_clients = len(self.data.slice_index)
             for index, sample in enumerate(self.data.slice_index):
@@ -298,10 +296,10 @@ class DataPartitioner(object):
 
         self.get_JSD(overallNumSamples/float(totalNumOfSamples), self.classPerWorker, [0] * numOfClients)
 
-    def partitionTraceVoice(self):
+    def partitionTraceBase(self):
         clientToData = {}
         clientNumSamples = {}
-        numOfLabels = 28
+        numOfLabels = self.args.num_class
 
         clientToData = self.data.client_mapping
         for clientId in clientToData:
@@ -311,7 +309,6 @@ class DataPartitioner(object):
         self.classPerWorker = np.zeros([numOfClients, numOfLabels])
 
         for clientId in range(numOfClients):
-            #logging.info(clientId)
             self.classPerWorker[clientId] = clientNumSamples[clientId]
             self.rng.shuffle(clientToData[clientId])
             self.partitions.append(clientToData[clientId])
@@ -324,23 +321,24 @@ class DataPartitioner(object):
     def partitionDataByDefault(self, sizes, sequential, ratioOfClassWorker, filter_class, _args):
         if self.is_trace and not self.args.enforce_random:
             # use the real trace, thus no need to partition
-            if self.task == 'voice':
-                self.partitionTraceVoice()
-
-            elif self.task != 'nlp' and self.task != 'tag':
-                # read the serialized sampleToClient file
+            if self.task == 'nlp':
+                self.partitionTraceNLP()
+            elif self.task == 'speech' or self.task == 'cv':
                 dataToClient = OrderedDict()
 
                 with open(self.dataMapFile, 'rb') as db:
                     dataToClient = pickle.load(db)
+                    
                 if self.task == 'speech':
                     self.partitionTraceSpeech(dataToClient=dataToClient)
                 else:
                     self.partitionTraceCV(dataToClient=dataToClient)
             else:
-                self.partitionTraceNLP()
+                self.partitionTraceBase()
         else:
-            self.partitionData(sizes=sizes, sequential=sequential, ratioOfClassWorker=ratioOfClassWorker, filter_class=filter_class, args=_args)
+            self.partitionData(sizes=sizes, sequential=sequential, 
+                               ratioOfClassWorker=ratioOfClassWorker, 
+                               filter_class=filter_class, args=_args)
 
     def partitionData(self, sizes=None, sequential=0, ratioOfClassWorker=None, filter_class=0, args = None):
         targets = self.getTargets()

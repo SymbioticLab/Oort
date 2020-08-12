@@ -95,51 +95,6 @@ def scan_models(path):
     return model_paths
 
 # ================== Scorer =================== #
-def run_forward_pass(model, test_data):
-    test_loss = 0.
-    test_len = 0.
-    totalLoss = None
-    # we want avg{Loss^2}
-
-    model.eval()
-
-    criterion = torch.nn.CrossEntropyLoss(reduction='none').to(device=device) if args.task != 'tag' else torch.nn.BCEWithLogitsLoss(reduction='none').to(device=device)
-   
-    gradientSamples = []
-
-    for data, target in test_data:
-        data, target = Variable(data).to(device=device), Variable(target).to(device=device)
- 
-        if args.model != 'inception_v3':
-            output = model(data)
-
-            if args.model == 'googlenet':
-                loss1 = criterion(output, target)
-                loss2 = criterion(aux1, target)
-                loss3 = criterion(aux2, target)
-                loss = loss1 + 0.3 * (loss2 + loss3)
-            else:
-                loss = criterion(output, target)
-        else:
-            output, aux_outputs = model(data)
-            loss1 = criterion(output, target)
-            loss2 = criterion(aux_outputs, target)
-            loss = loss1 + 0.3*loss2
-
-        #loss = criterion(output, target)
-
-        for l in loss.tolist():
-            test_loss += l**2
-        # loss = criterion(output, target)
-        # test_loss += loss.data.item()
-
-        test_len += len(target)
-
-    # loss function averages over batch size
-    #test_loss /= float(len(test_data))
-
-    return (test_loss/float(test_len))
-
 
 def collate(examples: List[torch.Tensor]):
     global tokenizer
@@ -183,7 +138,7 @@ def run_client(clientId, cmodel, iters, learning_rate, argdicts = {}):
 
     curBatch = -1
 
-    if args.task != 'nlp':
+    if args.task != 'nlp' and args.task != 'text_clf':
         optimizer = MySGD(cmodel.parameters(), lr=learning_rate, momentum=0.9, weight_decay=5e-4)
     else:
         no_decay = ["bias", "LayerNorm.weight"]
@@ -225,7 +180,6 @@ def run_client(clientId, cmodel, iters, learning_rate, argdicts = {}):
         [train_data_itr, curBatch, total_batch_size, epo] = global_data_iter[clientId]
 
     local_trained = 0
-    numOfPreWarmUp = 1
     epoch_train_loss = None
     comp_duration = 0.
     norm_gradient = 0.
@@ -238,15 +192,16 @@ def run_client(clientId, cmodel, iters, learning_rate, argdicts = {}):
     numOfTries = 5
 
     input_sizes, target_sizes, output_sizes = None, None, None
+    masks = None
 
     cmodel = cmodel.to(device=device)
     cmodel.train()
-    # TODO: if indeed enforce FedAvg, we will run fixed number of epochs, instead of iterations
 
+    # TODO: if indeed enforce FedAvg, we will run fixed number of epochs, instead of iterations
     for itr in range(iters):
         it_start = time.time()
-
         fetchSuccess = False
+
         while not fetchSuccess and numOfFailures < numOfTries:
             try:
                 try:
@@ -254,11 +209,12 @@ def run_client(clientId, cmodel, iters, learning_rate, argdicts = {}):
                         # target is None in this case
                         (data, _) = next(train_data_itr_list[0])
                         data, target = mask_tokens(data, tokenizer, args) if args.mlm else (data, data)
-
+                    elif args.task == 'text_clf':
+                        (data, masks, target) = next(train_data_itr_list[0])
+                        masks = Variable(masks).to(device=device)
                     elif args.task == 'voice':
                         (data, target, input_percentages, target_sizes), _ = next(train_data_itr_list[0])
                         input_sizes = input_percentages.mul_(int(data.size(3))).int()
-
                     else:
                         (data, target) = next(train_data_itr_list[0])
 
@@ -296,11 +252,10 @@ def run_client(clientId, cmodel, iters, learning_rate, argdicts = {}):
         data = Variable(data).to(device=device)
         if args.task != 'voice':
             target = Variable(target).to(device=device)
-
-        local_trained += len(target)
-
         if args.task == 'speech':
             data = torch.unsqueeze(data, 1)
+
+        local_trained += len(target)
 
         comp_start = time.time()
 
@@ -308,51 +263,30 @@ def run_client(clientId, cmodel, iters, learning_rate, argdicts = {}):
             outputs = cmodel(data, masked_lm_labels=target) if args.mlm else cmodel(data, labels=target)
             loss = outputs[0]
             #torch.nn.utils.clip_grad_norm_(cmodel.parameters(), args.max_grad_norm)
+        elif args.task == 'text_clf':
+            output = cmodel(data, masks)
+            loss = criterion(output, target)
         elif args.task == 'voice':
             outputs, output_sizes = cmodel(data, input_sizes)
             outputs = outputs.transpose(0, 1).float()  # TxNxH
             loss = criterion(outputs, target, output_sizes, target_sizes).to(device=device)
         else:
-            if args.model != 'inception_v3':
-                if args.model == 'googlenet':
-                    output, aux1, aux2 = cmodel(data)
-                    loss1 = criterion(output, target)
-                    loss2 = criterion(aux1, target)
-                    loss3 = criterion(aux2, target)
-                    loss = loss1 + 0.3 * (loss2 + loss3)
-                else:
-                    output = cmodel(data)
-                    loss = criterion(output, target)
-            else:
-                output, aux_outputs = cmodel(data)
-                loss1 = criterion(output, target)
-                loss2 = criterion(aux_outputs, target)
-                loss = loss1 + 0.4*loss2
+            output = cmodel(data)
+            loss = criterion(output, target)
 
         temp_loss = 0.
         loss_cnt = 1.
-        # if args.task != 'nlp':
-        if args.task == 'tag':
-            #if itr >= (iters - total_batch_size - 1):
-            for l in loss.tolist():
-                for i in l:
-                    temp_loss += i**2
-                    loss_cnt += 1
-            loss_cnt -= 1
-        else:
-            #if itr >= (iters - total_batch_size - 1):
-            loss_list = loss.tolist()
-            for l in loss_list:
-                temp_loss += l**2
+        
+        #if itr >= (iters - total_batch_size - 1):
+        loss_list = loss.tolist()
+        for l in loss_list:
+            temp_loss += l**2
 
-            loss_cnt = len(loss_list)
-
-        #epoch_train_loss += temp_loss
+        loss_cnt = len(loss_list)
 
         temp_loss = temp_loss/float(loss_cnt)
 
         # only measure the loss of the last epoch
-
         if itr >= (iters - total_batch_size - 1):
             if epoch_train_loss is None:
                 epoch_train_loss = temp_loss
@@ -366,7 +300,7 @@ def run_client(clientId, cmodel, iters, learning_rate, argdicts = {}):
         loss = torch.mean(loss)
         loss.backward()
 
-        if args.task != 'nlp':
+        if args.task != 'nlp' and args.task != 'text_clf':
             delta_w = optimizer.get_delta_w(learning_rate)
 
             if not args.proxy_avg:
@@ -428,7 +362,6 @@ def run_client(clientId, cmodel, iters, learning_rate, argdicts = {}):
     isSuccess = True
     if count > 0:
         speed = time_spent/float(count) 
-        #epoch_train_loss /= float(loss_cnt)
     else:
         isSuccess = False
         logging.info("====Failed to run client {}".format(clientId))
@@ -753,4 +686,3 @@ if __name__ == "__main__":
     init_myprocesses(this_rank, world_size, model, entire_train_data, test_data,
                                           q, param_q, stop_flag,
                                           run, args.backend, client_cfg)
-

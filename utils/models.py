@@ -4,6 +4,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 from torch.autograd import Variable
 import math
+from transformers import BertModel
 
 class MnistCNN(nn.Module):
     """ CNN Network architecture. """
@@ -643,3 +644,35 @@ class MnasNet(nn.Module):
                 n = m.weight.size(1)
                 m.weight.data.normal_(0, 0.01)
                 m.bias.data.zero_()
+
+
+class SentimentClassifier(nn.Module):
+    def __init__(self, num_classes, model_name='albert-base-v2'):
+        super(SentimentClassifier, self).__init__()
+        self.bert_layer = BertModel.from_pretrained(model_name)
+
+        # perturb the pre-trained model
+        for p in self.bert_layer.parameters():
+            p = torch.randn(p.shape) * 0.01
+
+        self.cls_layer = nn.Linear(768, num_classes)
+        self.m = nn.LogSoftmax(dim=1)
+
+    def forward(self, seq, attn_masks):
+        '''
+        Inputs:
+            -seq : Tensor of shape [B, T] containing token ids of sequences
+            -attn_masks : Tensor of shape [B, T] containing attention masks to be used to avoid contribution of PAD tokens
+        '''
+
+        #Feeding the input to BERT model to obtain contextualized representations
+        cont_reps, _ = self.bert_layer(seq, attention_mask = attn_masks)
+
+        #Obtaining the representation of [CLS] head
+        cls_rep = cont_reps[:, 0]
+
+        #Feeding cls_rep to the classifier layer
+        logits = self.cls_layer(cls_rep)
+
+        return self.m(logits)
+

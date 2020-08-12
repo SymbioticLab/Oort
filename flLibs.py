@@ -29,7 +29,6 @@ from utils.divide_data import partition_dataset, select_dataset, DataPartitioner
 from utils.models import *
 from utils.utils_data import get_data_transform
 from utils.utils_model import MySGD, test_model
-from utils.crosslossprox import CrossEntropyLossProx
 from utils.nlp import *
 from utils.inception import *
 from utils.stackoverflow import *
@@ -39,6 +38,8 @@ from utils.speech import *
 from utils.resnet_speech import *
 from utils.femnist import *
 from clientSampler import ClientSampler
+from utils.yogi import *
+import utils.dataloaders as fl_loader
 
 # for voice
 from utils.voice_model import DeepSpeech, supported_rnns
@@ -54,7 +55,7 @@ def init_dataset():
     global tokenizer
 
     outputClass = {'Mnist': 10, 'cifar10': 10, "imagenet": 1000, 'emnist': 47, 
-                    'openImg': 596, 'google_speech': 35, 'femnist': 62
+                    'openImg': 596, 'google_speech': 35, 'femnist': 62, 'yelp': 5
                 }
 
     logging.info("====Initialize the model")
@@ -63,6 +64,8 @@ def init_dataset():
         # we should train from scratch
         config = AutoConfig.from_pretrained(os.path.join(args.data_dir, 'albert-base-v2-config.json'))
         model = AutoModelWithLMHead.from_config(config)
+    elif args.task == 'text_clf':
+        model = SentimentClassifier(num_classes=outputClass[args.data_set])
     elif args.task == 'tag-one-sample':
         # Load LR model for tag prediction
         model = LogisticRegression(args.vocab_token_size, args.vocab_tag_size)
@@ -168,6 +171,10 @@ def init_dataset():
             train_dataset = stackoverflow(args.data_dir, train=True)
             test_dataset = stackoverflow(args.data_dir, train=False)
         
+        elif args.data_set == 'yelp':
+            train_dataset = fl_loader.TextSentimentDataset(args.data_dir, train=True, tokenizer=tokenizer, max_len=args.block_size)
+            test_dataset = fl_loader.TextSentimentDataset(args.data_dir, train=False, tokenizer=tokenizer, max_len=args.block_size)
+
         elif args.data_set == 'google_speech':
             bkg = '_background_noise_'
             data_aug_transform = transforms.Compose([ChangeAmplitude(), ChangeSpeedAndPitchAudio(), FixAudioLength(), ToSTFT(), StretchAudioOnSTFT(), TimeshiftAudioOnSTFT(), FixSTFTDimension()])
@@ -199,7 +206,8 @@ def init_dataset():
                                           speed_volume_perturb=False,
                                           spec_augment=False)
         else:
-            print('DataSet must be {}!'.format(['Mnist', 'Cifar', 'openImg', 'blog', 'stackoverflow', 'speech']))
+            print('DataSet must be {}!'.format(['Mnist', 'Cifar', 'openImg', 'blog', 'stackoverflow', 'speech', 'yelp']))
             sys.exit(-1)
 
     return model, train_dataset, test_dataset
+

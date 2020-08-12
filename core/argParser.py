@@ -19,7 +19,7 @@ parser.add_argument('--pacer_step', type=int, default=9999999999)
 parser.add_argument('--capacity_bin', type=bool, default=True)
 parser.add_argument('--exploration_alpha', type=float, default=0.3)
 parser.add_argument('--exploration_factor', type=float, default=0.9)
-parser.add_argument('--exploration_decay', type=float, default=0.98)
+parser.add_argument('--exploration_decay', type=float, default=0.95)
 parser.add_argument('--fixed_clients', type=bool, default=False)
 parser.add_argument('--user_trace', type=str, default=None)
 
@@ -47,7 +47,7 @@ parser.add_argument('--overcommit', type=float, default=1.0)
 parser.add_argument('--model_size', type=float, default=0)
 parser.add_argument('--sample_window', type=float, default=5.0)
 parser.add_argument('--round_threshold', type=float, default=101)
-parser.add_argument('--round_penalty', type=float, default=0.5)
+parser.add_argument('--round_penalty', type=float, default=2.0)
 parser.add_argument('--test_only', type=bool, default=False)
 
 # The configuration of different hyper-parameters for training
@@ -86,7 +86,7 @@ parser.add_argument('--zipf_alpha', type=str, default='5')
 parser.add_argument('--timeout', type=float, default=9999999)
 parser.add_argument('--full_gradient_interval', type=int, default=20)
 parser.add_argument('--is_even_avg', type=bool, default=True)
-parser.add_argument('--sample_seed', type=int, default=123) #123 #233
+parser.add_argument('--sample_seed', type=int, default=233) #123 #233
 parser.add_argument('--test_train_data', type=bool, default=False)
 parser.add_argument('--enforce_random', type=bool, default=False)
 parser.add_argument('--test_ratio', type=float, default=1.0)
@@ -94,7 +94,7 @@ parser.add_argument('--min_learning_rate', type=float, default=1e-4)
 parser.add_argument('--loss_decay', type=float, default=0.2)
 parser.add_argument('--skip_partition', type=bool, default=False)
 parser.add_argument('--exploration_min', type=float, default=0.2)
-parser.add_argument('--cut_off_util', type=float, default=0.9)
+parser.add_argument('--cut_off_util', type=float, default=0.95)
 
 # for yogi
 parser.add_argument('--gradient_policy', type=str, default='')
