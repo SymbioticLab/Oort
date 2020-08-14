@@ -21,6 +21,7 @@ from torchvision import datasets, transforms
 import torchvision.models as tormodels
 from torch.utils.data.sampler import WeightedRandomSampler
 from torch_baidu_ctc import CTCLoss
+from transformers import AlbertForSequenceClassification
 
 # libs from FLBench
 from core.argParser import args
@@ -47,7 +48,7 @@ from utils.voice_data_loader import SpectrogramDataset
 
 # shared functions of aggregator and clients
 # initiate for nlp
-tokenizer = AlbertTokenizer.from_pretrained('albert-base-v2') if args.task =='nlp' else None
+tokenizer = AlbertTokenizer.from_pretrained('albert-base-v2', do_lower_case=True) if args.task =='nlp' else None
 modelDir = os.getcwd() + "/../../models/"  + args.model
 modelPath = modelDir+'/'+str(args.model)+'.pth.tar' if args.model_path is None else args.model_path
 
@@ -65,7 +66,13 @@ def init_dataset():
         config = AutoConfig.from_pretrained(os.path.join(args.data_dir, 'albert-base-v2-config.json'))
         model = AutoModelWithLMHead.from_config(config)
     elif args.task == 'text_clf':
-        model = SentimentClassifier(num_classes=outputClass[args.data_set])
+        model = AlbertForSequenceClassification.from_pretrained(
+              args.data_dir,  # Use the 12-layer BERT model, with an uncased vocab.
+              num_labels = outputClass[args.data_set], # The number of output labels--2 for binary classification.
+                              # You can increase this for multi-class tasks.   
+              output_attentions = False, # Whether the model returns attentions weights.
+              output_hidden_states = False, # Whether the model returns all hidden-states.
+          )
     elif args.task == 'tag-one-sample':
         # Load LR model for tag prediction
         model = LogisticRegression(args.vocab_token_size, args.vocab_tag_size)
@@ -210,4 +217,3 @@ def init_dataset():
             sys.exit(-1)
 
     return model, train_dataset, test_dataset
-

@@ -148,7 +148,7 @@ class UCB(object):
                 numOfExploited += 1
 
                 sc = (creward - min_reward)/float(range_reward) \
-                    + self.alpha*((cur_time-self.totalArms[key][1]) - min_staleness)/float(range_staleness) #math.sqrt(0.1*math.log(cur_time)/self.totalArms[key][1]) # temporal-uncertainty
+                    + math.sqrt(0.1*math.log(cur_time)/self.totalArms[key][1]) #self.alpha*((cur_time-self.totalArms[key][1]) - min_staleness)/float(range_staleness) #math.sqrt(0.1*math.log(cur_time)/self.totalArms[key][1]) # temporal-uncertainty
 
                     #self.alpha*((cur_time-self.totalArms[key][1]) - min_staleness)/float(range_staleness)
 
@@ -253,5 +253,4 @@ class UCB(object):
         _avg = sum(aList)/float(len(aList))
 
         return float(_max), float(_min), float(_range), float(_avg)
-
 
