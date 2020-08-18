@@ -134,12 +134,14 @@ def test_model(rank, model, test_data, criterion=nn.NLLLoss(), tokenizer=None):
 
     for data, target in test_data:
         if args.task == 'nlp':
+
             data, target = mask_tokens(data, tokenizer, args) if args.mlm else (data, data)
             data, target = Variable(data).cuda(), Variable(target).cuda()
             
-            outputs = model(data, masked_lm_labels=target) if args.mlm else model(data, labels=target)
+            outputs = model(data, masked_lm_labels=target, loss_type='mean') if args.mlm else model(data, labels=target, loss_type='mean')
 
-            loss = criterion(outputs[1].view(-1, 30000), target.view(-1))
+            loss = outputs[0]
+            #criterion(outputs[1].view(-1, 30000), target.view(-1))
             test_loss += loss.data.item()
             perplexity_loss += loss.data.item()
 
@@ -178,11 +180,10 @@ def test_model(rank, model, test_data, criterion=nn.NLLLoss(), tokenizer=None):
         elif args.task == 'text_clf':
             (inputs, masks) = data
             inputs, masks, target = Variable(inputs).cuda(), Variable(masks).cuda(), Variable(target).cuda()
+            loss, output = model(inputs, token_type_ids=None, attention_mask=masks, labels=target, loss_type='mean')
 
-            output = cmodel(inputs, masks)
-            loss = criterion(output, target)
-
-            test_loss += loss.data.item()  # Variable.data
+            #loss = torch.mean(loss)
+            test_loss += loss.item()  # Variable.data
             acc = accuracy(output, target, topk=(1, 2))
 
             correct += acc[0].item()

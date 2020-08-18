@@ -1,21 +1,29 @@
 from torch.utils.data import Dataset
 import torch
+import os
+import pandas as pd
 
 # This loader works for Amazon/Yelp Review
 class TextSentimentDataset(Dataset):
-    def __init__(self, df, maxlen, tokenizer=None):
-        self.df = df
+    def __init__(self, data_path, max_len, train=True, tokenizer=None):
+
+        file = 'training.csv' if train else 'testing.csv'
+
+        self.df = pd.read_csv(os.path.join(data_path, file), delimiter=',')
         # A reset reindexes from 1 to len(df), the shuffled df frames are sparse.
         self.df.reset_index(drop=True, inplace=True)
         self.tokenizer = tokenizer
-        self.maxlen = maxlen
+        self.maxlen = max_len
         self.client_mapping = {}
+        self.targets = []
 
         # initiate the (sample, client) pairs
         for row in self.df.itertuples():
             (sample_id, client_id, score, text) = row
             if client_id not in self.client_mapping:
                 self.client_mapping[client_id] = []
+
+            self.targets.append(int(score))
             self.client_mapping[client_id].append(sample_id)
 
     def __len__(self):
@@ -50,3 +58,4 @@ class TextSentimentDataset(Dataset):
         attn_mask = (tokens_ids_tensor != 0).long()
 
         return (tokens_ids_tensor, attn_mask), label
+

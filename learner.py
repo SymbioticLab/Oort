@@ -210,7 +210,7 @@ def run_client(clientId, cmodel, iters, learning_rate, argdicts = {}):
                         (data, _) = next(train_data_itr_list[0])
                         data, target = mask_tokens(data, tokenizer, args) if args.mlm else (data, data)
                     elif args.task == 'text_clf':
-                        (data, masks, target) = next(train_data_itr_list[0])
+                        (data, masks), target = next(train_data_itr_list[0])
                         masks = Variable(masks).to(device=device)
                     elif args.task == 'voice':
                         (data, target, input_percentages, target_sizes), _ = next(train_data_itr_list[0])
@@ -233,7 +233,7 @@ def run_client(clientId, cmodel, iters, learning_rate, argdicts = {}):
                             collate_fn=collate_fn
                         )
 
-                    logging.info(f"====Error {str(ex)}")
+                    #logging.info(f"====Error {str(ex)}")
                     train_data_itr_list = [iter(tempData)]
 
             except Exception as e:
@@ -264,8 +264,8 @@ def run_client(clientId, cmodel, iters, learning_rate, argdicts = {}):
             loss = outputs[0]
             #torch.nn.utils.clip_grad_norm_(cmodel.parameters(), args.max_grad_norm)
         elif args.task == 'text_clf':
-            output = cmodel(data, masks)
-            loss = criterion(output, target)
+            loss, logits = cmodel(data, token_type_ids=None, attention_mask=masks, labels=target)
+            #loss = criterion(output, target)
         elif args.task == 'voice':
             outputs, output_sizes = cmodel(data, input_sizes)
             outputs = outputs.transpose(0, 1).float()  # TxNxH
@@ -277,6 +277,7 @@ def run_client(clientId, cmodel, iters, learning_rate, argdicts = {}):
         temp_loss = 0.
         loss_cnt = 1.
         
+        #logging.info("Loss to list is {}".format(loss))
         #if itr >= (iters - total_batch_size - 1):
         loss_list = loss.tolist()
         for l in loss_list:
@@ -297,8 +298,7 @@ def run_client(clientId, cmodel, iters, learning_rate, argdicts = {}):
 
         # ========= Define the backward loss ==============
         optimizer.zero_grad()
-        loss = torch.mean(loss)
-        loss.backward()
+        loss.mean().backward()
 
         if args.task != 'nlp' and args.task != 'text_clf':
             delta_w = optimizer.get_delta_w(learning_rate)
@@ -335,7 +335,7 @@ def run_client(clientId, cmodel, iters, learning_rate, argdicts = {}):
         del global_data_iter[rmClient]
 
     # save the state of this client if # of batches > iters, since we want to pass over all samples at least one time
-    if total_batch_size > iters * 10 and len(train_data_itr_list) > 0 and args.task != 'nlp':
+    if total_batch_size > iters * 10 and len(train_data_itr_list) > 0:
         global_data_iter[clientId] = [train_data_itr_list[0], curBatch, total_batch_size, argdicts['iters']]
     else:
         if args.num_loaders > 0:
@@ -378,7 +378,7 @@ def run(rank, model, train_data, test_data, queue, param_q, stop_flag, client_cf
     if args.task == 'voice':
         criterion = CTCLoss(reduction='mean').to(device=device)
     else:
-        criterion = torch.nn.CrossEntropyLoss(reduction='mean').to(device=device) 
+        criterion = torch.nn.CrossEntropyLoss().to(device=device) 
    
     global_trainDB = train_data
     startTime = time.time()

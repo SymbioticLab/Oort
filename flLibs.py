@@ -48,7 +48,11 @@ from utils.voice_data_loader import SpectrogramDataset
 
 # shared functions of aggregator and clients
 # initiate for nlp
-tokenizer = AlbertTokenizer.from_pretrained('albert-base-v2', do_lower_case=True) if args.task =='nlp' else None
+tokenizer = None
+
+if args.task == 'nlp' or args.task == 'text_clf':
+    tokenizer = AlbertTokenizer.from_pretrained('albert-base-v2', do_lower_case=True)
+    
 modelDir = os.getcwd() + "/../../models/"  + args.model
 modelPath = modelDir+'/'+str(args.model)+'.pth.tar' if args.model_path is None else args.model_path
 
@@ -66,13 +70,23 @@ def init_dataset():
         config = AutoConfig.from_pretrained(os.path.join(args.data_dir, 'albert-base-v2-config.json'))
         model = AutoModelWithLMHead.from_config(config)
     elif args.task == 'text_clf':
-        model = AlbertForSequenceClassification.from_pretrained(
-              args.data_dir,  # Use the 12-layer BERT model, with an uncased vocab.
-              num_labels = outputClass[args.data_set], # The number of output labels--2 for binary classification.
-                              # You can increase this for multi-class tasks.   
-              output_attentions = False, # Whether the model returns attentions weights.
-              output_hidden_states = False, # Whether the model returns all hidden-states.
-          )
+        config = AutoConfig.from_pretrained(os.path.join(args.data_dir, 'albert-base-v2-config.json'))
+        config.num_labels = outputClass[args.data_set]
+        config.output_attentions = False
+        config.output_hidden_states = False
+        model = AlbertForSequenceClassification(config)
+        # model = AlbertForSequenceClassification.from_pretrained(
+        #       args.data_dir,  # Use the 12-layer BERT model, with an uncased vocab.
+        #       num_labels = outputClass[args.data_set], # The number of output labels--2 for binary classification.
+        #                       # You can increase this for multi-class tasks.   
+        #       output_attentions = False, # Whether the model returns attentions weights.
+        #       output_hidden_states = False, # Whether the model returns all hidden-states.
+        #   )
+
+        # randomize model weights
+        # for idx, param in enumerate(model.parameters()):
+        #     param.data = torch.randn(param.data.shape) * 0.01
+
     elif args.task == 'tag-one-sample':
         # Load LR model for tag prediction
         model = LogisticRegression(args.vocab_token_size, args.vocab_tag_size)
@@ -217,3 +231,4 @@ def init_dataset():
             sys.exit(-1)
 
     return model, train_dataset, test_dataset
+
