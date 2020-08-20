@@ -3,6 +3,7 @@ import warnings
 import os
 import os.path
 import torch
+import glob
 import time
 import json
 import pickle
@@ -36,22 +37,20 @@ class reddit():
         self.train = train  # training set or test set
         self.root = root
         
-        self.train_file = './train'
-        self.test_file = './test'
+        self.train_file = 'train'
+        self.test_file = 'test'
         self.train = train
 
         self.vocab_tokens_size = 10000
         self.vocab_tags_size = 500
 
         # load data and targets
-        self.raw_data, self.raw_targets, self.dict = self.load_file(self.root, self.train)
+        self.raw_data, self.dict = self.load_file(self.root, self.train)
 
         if not self.train:
             self.raw_data = self.raw_data[:100000]
-            self.raw_targets = self.raw_targets[:100000]
         else:
             self.raw_data = self.raw_data[:10000000]
-            self.raw_targets = self.raw_targets[:10000000]
 
         # we can't enumerate the raw data, thus generating artificial data to cheat the divide_data_loader
         self.data = [-1, len(self.dict)]
@@ -72,12 +71,11 @@ class reddit():
         tokens = F.one_hot(tokens, self.vocab_tokens_size).float()
         tokens = tokens.mean(0)
 
-        tags = self.raw_targets[index][0]
         # tags = torch.tensor(tags, dtype=torch.long)
         # tags = F.one_hot(tags, self.vocab_tags_size).float()
         # tags = tags.sum(0)
 
-        return tokens, tags
+        return tokens
 
     def __mapping_dict__(self):
         return self.dict
@@ -103,15 +101,15 @@ class reddit():
 
     def load_token_vocab(self, vocab_size, path):
         tokens_file = "reddit_vocab.pkl"
-        with open(path + tokens_file, 'rb') as f:
+        with open(os.path.join(path, tokens_file), 'rb') as f:
             tokens = pickle.load(f)
         return tokens[:vocab_size]
 
     def load_file(self, path, is_train):
-        file_name = self.train_file if self.train else self.test_file
+        file_name = os.path.join(path, 'train') if self.train else os.path.join(path, 'test') 
 
         # check whether we have generated the cache file before
-        cache_path = "./train_cache"
+        cache_path = os.path.join(path, "train_cache") if self.train else os.path.join(path, "test_cache")
 
         text= []
         mapping_dict = {}
@@ -121,7 +119,6 @@ class reddit():
             # dump the cache
             with open(cache_path, 'rb') as fin:
                 text = pickle.load(fin)
-                target_tags = pickle.load(fin)
                 mapping_dict = pickle.load(fin)
         else:
             print("====Load {} from scratch".format(file_name))
@@ -133,17 +130,18 @@ class reddit():
             client_data_list = []
             # Load the traning/testing data
             if self.train:
-                train_files = glob.glob(file_name + "/*.json")
+                train_files = sorted(glob.glob(file_name + "/*.json"))
                 
-                for f in train_files:
+                for f in train_files[:2]:
+                    print("========Loading {}=========".format(f))
                     with open(f, 'rb') as cin:
                         data = json.load(cin)
-                    data_list.append(cin)
+                    client_data_list.append(data)
 
             else:
-                with open(path + "/test.json", 'rb') as cin:
+                with open(os.path.join(file_name, "test.json"), 'rb') as cin:
                     data = json.load(cin)
-                data_list.append(cin)
+                client_data_list.append(data)
                 
 
 
@@ -152,14 +150,14 @@ class reddit():
             start_time = time.time()
 
             for client_data in client_data_list:
-                client_list = client_data['user']
+                client_list = client_data['users']
 
                 for clientId, client in enumerate(client_list):
                     tokens_list = list(client_data['user_data'][client]['x'])
 
                     for tokens in tokens_list:
                         
-                        tokens_list = [vocab_tokens_dict[s] for s in (tokens.decode("utf-8").split()) if s in vocab_tokens_dict]
+                        tokens_list = [vocab_tokens_dict[s] for s in (tokens.split()) if s in vocab_tokens_dict]
                         if not tokens_list:
                             continue
 
@@ -180,12 +178,13 @@ class reddit():
                             pickle.dump(text, fout)
                             pickle.dump(mapping_dict, fout)
 
-                        #print("====Dump for {} clients".format(clientId))
+                        print("====Dump for {} clients".format(clientId))
 
             # dump the cache
             with open(cache_path, 'wb') as fout:
                 pickle.dump(text, fout)
                 pickle.dump(mapping_dict, fout)
 
-        return text, target_tags, mapping_dict
+        return text, mapping_dict
+
 
