@@ -111,38 +111,46 @@ class TextDataset(Dataset):
             logger.info("Loading features from cached file %s", cached_features_file)
             with open(cached_features_file, "rb") as handle:
                 self.examples = pickle.load(handle)
-                self.slice_index = pickle.load(handle)
+                self.client_mapping = pickle.load(handle)
         else:
             logger.info("Creating features from dataset file at %s", directory)
 
             self.examples = []
-            self.slice_index = []
+            self.client_mapping = {}
+            sample_id = -1
+            user_id = -1
 
             if is_folder == False:
                 files = [file_path]
             else:
                 files = [os.path.join(file_path, entry.name) for entry in os.scandir(file_path) if '_cached_lm_' not in entry.name]
 
+            # make sure files are ordered
+            files = sorted(files)
+            
             for file in files:
                 with open(file, encoding="utf-8") as f:
                     text = f.read()
 
                 tokenized_text = tokenizer.convert_tokens_to_ids(tokenizer.tokenize(text))
 
-                individual_size = 0
-                for i in range(0, len(tokenized_text) - block_size + 1, block_size):  # Truncate in block of block_size
-                    self.examples.append(tokenizer.build_inputs_with_special_tokens(tokenized_text[i : i + block_size]))
-                    individual_size += 1
+                if len(tokenized_text) > 0:
+                    user_id += 1
+                    self.client_mapping[user_id] = []
 
-                self.slice_index.append(individual_size)
+                for i in range(0, len(tokenized_text) - block_size + 1, block_size):  # Truncate in block of block_size
+                    sample_id += 1
+                    self.examples.append(tokenizer.build_inputs_with_special_tokens(tokenized_text[i : i + block_size]))
+                    self.client_mapping[user_id].append(sample_id)
+
             # Note that we are loosing the last truncated example here for the sake of simplicity (no padding)
             # If your dataset is small, first you should loook for a bigger one :-) and second you
             # can change this behavior by adding (model specific) padding.
 
             logger.info("Saving features into cached file %s", cached_features_file)
             with open(cached_features_file, "wb") as handle:
-                pickle.dump(self.examples, handle, protocol=pickle.HIGHEST_PROTOCOL)
-                pickle.dump(self.slice_index, handle, protocol=pickle.HIGHEST_PROTOCOL)
+                pickle.dump(self.examples, handle, protocol=-1)
+                pickle.dump(self.client_mapping, handle, protocol=-1)
 
         self.data = self.examples
         self.targets = [0 for i in range(len(self.data))]
@@ -854,3 +862,4 @@ def main():
             results.update(result)
 
     return results
+

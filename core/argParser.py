@@ -22,6 +22,7 @@ parser.add_argument('--exploration_factor', type=float, default=0.9)
 parser.add_argument('--exploration_decay', type=float, default=0.95)
 parser.add_argument('--fixed_clients', type=bool, default=False)
 parser.add_argument('--user_trace', type=str, default=None)
+parser.add_argument('--release_cache', type=bool, default=False)
 
 # The configuration of model and dataset
 parser.add_argument('--data_dir', type=str, default='~/cifar10/')
@@ -68,7 +69,7 @@ parser.add_argument('--resampling_interval', type=int, default=99999999)
 parser.add_argument('--sequential', type=str, default='0')
 parser.add_argument('--single_sim', type=int, default=0)
 parser.add_argument('--filter_class', type=int, default=0)
-parser.add_argument('--num_class', type=int, default=0)
+parser.add_argument('--num_class', type=int, default=10)
 parser.add_argument('--learning_rate', type=float, default=0.04)
 parser.add_argument('--model_avg', type=bool, default=False)
 parser.add_argument('--input_dim', type=int, default=0)
@@ -280,3 +281,4 @@ parser.add_argument('--no-bidirectional', dest='bidirectional', action='store_fa
 
 
 args = parser.parse_args()
+

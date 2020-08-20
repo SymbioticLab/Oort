@@ -20,6 +20,7 @@ class TextSentimentDataset(Dataset):
         # initiate the (sample, client) pairs
         for row in self.df.itertuples():
             (sample_id, client_id, score, text) = row
+            client_id = int(client_id) - 1
             if client_id not in self.client_mapping:
                 self.client_mapping[client_id] = []
 
@@ -58,4 +59,3 @@ class TextSentimentDataset(Dataset):
         attn_mask = (tokens_ids_tensor != 0).long()
 
         return (tokens_ids_tensor, attn_mask), label
-

@@ -181,6 +181,18 @@ class DataPartitioner(object):
 
         return indices
 
+    def loadFilterInfoBase(self):
+        indices = []
+
+        try:
+            for client in self.data.client_mapping:
+                if len(self.data.client_mapping[client]) < args.filter_less or len(self.data.client_mapping[client]) > args.filter_more:
+                    indices += self.data.client_mapping[client]
+        except Exception as e:
+            pass
+
+        return indices
+
     def partitionTraceCV(self, dataToClient):
         clientToData = {}
         clientNumSamples = {}
@@ -251,50 +263,17 @@ class DataPartitioner(object):
         base = 0
         numOfClients = 0
 
-        if self.args.task == 'tag':
-            numOfLabels = self.args.num_class
-            for index, cId in enumerate(self.data.dict.keys()):
-                clientId = cId
-                labelId = self.data.targets[index]
+        numOfLabels = self.args.num_class
+        for index, cId in enumerate(self.data.dict.keys()):
+            clientId = cId
+            labelId = self.data.targets[index]
 
-                if clientId not in clientToData:
-                    clientToData[clientId] = []
-                    clientNumSamples[clientId] = [0] * numOfLabels
-                clientToData[clientId].append(index)
+            if clientId not in clientToData:
+                clientToData[clientId] = []
+                clientNumSamples[clientId] = [0] * numOfLabels
+            clientToData[clientId].append(index)
 
-            numOfClients = len(self.clientToData)
-
-        else:
-            # data share the same index with labels
-            cut_off_clients = len(self.data.slice_index)
-            for index, sample in enumerate(self.data.slice_index):
-                clientId = index
-                labelId = 0
-
-                if clientId not in clientToData:
-                    if base + sample > self.data_len:
-                        cut_off_clients = index - 1
-                        break
-
-                    clientToData[clientId] = [base+i for i in range(sample)]
-                    clientNumSamples[clientId] = [0] * numOfLabels
-                    base += sample
-
-                clientNumSamples[clientId][labelId] += sample
-
-            numOfClients = cut_off_clients #len(self.data.slice_index)
-
-        self.classPerWorker = np.zeros([numOfClients, numOfLabels])
-
-        for clientId in range(numOfClients):
-            self.classPerWorker[clientId] = clientNumSamples[clientId]
-            self.rng.shuffle(clientToData[clientId])
-            self.partitions.append(clientToData[clientId])
-
-        overallNumSamples = np.asarray(self.classPerWorker.sum(axis=0)).reshape(-1)
-        totalNumOfSamples = self.classPerWorker.sum()
-
-        self.get_JSD(overallNumSamples/float(totalNumOfSamples), self.classPerWorker, [0] * numOfClients)
+        numOfClients = len(self.clientToData)
 
     def partitionTraceBase(self):
         clientToData = {}
@@ -306,7 +285,7 @@ class DataPartitioner(object):
             clientNumSamples[clientId] = [1] * numOfLabels
         
         numOfClients = len(clientToData.keys())
-        self.classPerWorker = np.zeros([numOfClients, numOfLabels])
+        self.classPerWorker = np.zeros([numOfClients+1, numOfLabels])
 
         for clientId in range(numOfClients):
             self.classPerWorker[clientId] = clientNumSamples[clientId]
@@ -321,9 +300,7 @@ class DataPartitioner(object):
     def partitionDataByDefault(self, sizes, sequential, ratioOfClassWorker, filter_class, _args):
         if self.is_trace and not self.args.enforce_random:
             # use the real trace, thus no need to partition
-            if self.task == 'nlp':
-                self.partitionTraceNLP()
-            elif self.task == 'speech' or self.task == 'cv':
+            if self.task == 'speech' or self.task == 'cv':
                 dataToClient = OrderedDict()
 
                 with open(self.dataMapFile, 'rb') as db:
@@ -365,10 +342,10 @@ class DataPartitioner(object):
             indicesToRm = set()
             indexes = None
             if self.args.filter_less != 0 and self.isTest is False:
-                if self.task != 'nlp':
+                if self.task == 'cv':
                     indicesToRm = set(self.loadFilterInfo())
                 else:
-                    indicesToRm = set(self.loadFilterInfoNLP())
+                    indicesToRm = set(self.loadFilterInfoBase())
 
                 indexes = [x for x in range(0, data_len) if x not in indicesToRm]
                 # we need to remove those with less than certain number of samples
@@ -552,4 +529,5 @@ def select_dataset(rank: int, partition: DataPartitioner, batch_size: int, isTes
         return DataLoader(partition, batch_size=batch_size, shuffle=True, pin_memory=False, num_workers=numOfThreads, drop_last=dropLast, timeout=timeOut)#, worker_init_fn=np.random.seed(12))
     else:
         return DataLoader(partition, batch_size=batch_size, shuffle=True, pin_memory=False, num_workers=numOfThreads, drop_last=dropLast, timeout=timeOut, collate_fn=collate_fn)#, worker_init_fn=np.random.seed(12))
+
 

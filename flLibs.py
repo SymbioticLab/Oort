@@ -231,4 +231,3 @@ def init_dataset():
             sys.exit(-1)
 
     return model, train_dataset, test_dataset
-

@@ -335,7 +335,7 @@ def run_client(clientId, cmodel, iters, learning_rate, argdicts = {}):
         del global_data_iter[rmClient]
 
     # save the state of this client if # of batches > iters, since we want to pass over all samples at least one time
-    if total_batch_size > iters * 10 and len(train_data_itr_list) > 0:
+    if total_batch_size > iters * 10 and len(train_data_itr_list) > 0 and not args.release_cache:
         global_data_iter[clientId] = [train_data_itr_list[0], curBatch, total_batch_size, argdicts['iters']]
     else:
         if args.num_loaders > 0:
