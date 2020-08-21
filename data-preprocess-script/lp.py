@@ -341,7 +341,8 @@ def run_heuristic(requirement, _raw_data, systems, distr):
     print(f"cut_off_clients is {cut_off_clients}")
     select_clients = None
 
-    cut_off_required = 200 #max(budget * 0.1, 100)
+    # we would like to use at least cut_off_required clients
+    cut_off_required = 200 
 
     start_time = time.time()
     while True:
@@ -438,49 +439,49 @@ is_heuristic = True #True
 budgets = [100, 500, 1000, 1500, 2000, 2500, 3000, 3500, 4000, 4500, 5000]
 
 gc.disable()
-#data, systems, distr = load_profiles('/mnt/so/so_data_distr', 'clientprofile', 'so_global_distr')
-data, systems, distr = load_profiles('openImg_size.txt', 'clientprofile', 'openImg_global_distr')
+data, systems, distr = load_profiles('/mnt/so/so_data_distr', 'clientprofile', 'so_global_distr')
+#data, systems, distr = load_profiles('openImg_size.txt', 'clientprofile', 'openImg_global_distr')
 
 gc.enable()
 
 
-# budget = 500
+budget = 500
+output_file = 'class_heuristic_result' if is_heuristic else 'optimal_result'
+with open(output_file, 'w') as fout:
+    classes = [i*10**exp for exp in range(1, 5) for i in range(1, 9)]
+    for i in classes:
+        num_of_class_interest = i
 
-# output_file = 'class_heuristic_result' if is_heuristic else 'optimal_result'
-# with open(output_file, 'w') as fout:
-#     classes = [i*10**exp for exp in range(1, 5) for i in range(1, 9)]
-#     for i in classes:
-#         num_of_class_interest = i
+        print(f"====Start to run {i} class")
+        req = sum(distr[:i]) * 0.01
+        sol = run_heuristic(req, data, systems, distr) if is_heuristic else run_lp(req, data, systems, distr)
 
-#         print(f"====Start to run {i} class")
-#         req = sum(distr[:i]) * 0.01
-#         sol = run_heuristic(req, data, systems, distr) if is_heuristic else run_lp(req, data, systems, distr)
+        fout.writelines(f'data_trans_size: {data_trans_size}, class: {i}, requirement: {req}, end-to-end: {sum(sol[:-2]):.3f}, details: {sol} \n')
 
-#         fout.writelines(f'data_trans_size: {data_trans_size}, class: {i}, requirement: {req}, end-to-end: {sum(sol[:-2]):.3f}, details: {sol} \n')
+        print(f'====data_trans_size: {data_trans_size}, class: {i}, requirement: {req}, end-to-end: {sum(sol[:-2]):.3f}s, details: {sol}\n')
+        if sol[-1] == -1:
+            print(f"====Terminate with {i}")
+            break
 
-#         print(f'====data_trans_size: {data_trans_size}, class: {i}, requirement: {req}, end-to-end: {sum(sol[:-2]):.3f}s, details: {sol}\n')
-#         if sol[-1] == -1:
-#             print(f"====Terminate with {i}")
-#             break
+        gc.collect()
 
-#         gc.collect()
+# greedy_only = False
 
-greedy_only = False
+# for item in budgets:
+#     budget = item
+#     output_file = str(budget)+'_heuristic_result' if is_heuristic else 'optimal_result'
 
-for item in budgets:
-    budget = item
-    output_file = str(budget)+'_heuristic_result' if is_heuristic else 'optimal_result'
+#     with open(output_file, 'w') as fout:
+#         for i in requirements:
+#             print(f"====Start to run {i} requirements")
+#             sol = run_heuristic(i, data, systems, distr) if is_heuristic else run_lp(i, data, systems, distr)
 
-    with open(output_file, 'w') as fout:
-        for i in requirements:
-            print(f"====Start to run {i} requirements")
-            sol = run_heuristic(i, data, systems, distr) if is_heuristic else run_lp(i, data, systems, distr)
+#             fout.writelines(f'data_trans_size: {data_trans_size}, budget: {budget}, requirement: {i}, end-to-end: {sum(sol[:-2]):.3f}, details: {sol} \n')
 
-            fout.writelines(f'data_trans_size: {data_trans_size}, budget: {budget}, requirement: {i}, end-to-end: {sum(sol[:-2]):.3f}, details: {sol} \n')
+#             print(f'====data_trans_size: {data_trans_size}, budget: {budget}, requirement: {i}, end-to-end: {sum(sol[:-2]):.3f}s, details: {sol}\n')
+#             if sol[-1] == -1:
+#                 print(f"====Terminate with {i}")
+#                 break
 
-            print(f'====data_trans_size: {data_trans_size}, budget: {budget}, requirement: {i}, end-to-end: {sum(sol[:-2]):.3f}s, details: {sol}\n')
-            if sol[-1] == -1:
-                print(f"====Terminate with {i}")
-                break
+#             gc.collect()
 
-            gc.collect()
