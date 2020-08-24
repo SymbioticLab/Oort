@@ -2,73 +2,50 @@
 from fl_client_libs import *
 
 initiate_client_setting()
+gpu_id = str(0)
 
-#device = torch.device(args.to_device)
-#torch.set_num_threads(int(args.threads))
+# logging.info("=====MASTER_ADDR: {}, MASTER_PORT: {}, visible GPUs: {}, available counts: {}, gpu_id: {}"
+#                 .format(args.ps_ip, args.ps_port, os.environ['CUDA_VISIBLE_DEVICES'], 
+#                         torch.cuda.device_count(), gpu_id))
 
-entire_train_data = None
+for i in range(3, -1, -1):
+    try:
+        device = torch.device('cuda:'+str(i))
+        torch.cuda.set_device(i)
+        logging.info(f'====end up with cuda device {torch.rand(1).to(device=device)}')
+        break
+    except Exception as e:
+        assert(i != 0)
+
+# device = torch.device('cuda')
+# torch.cuda.set_device('cuda:'+gpu_id)
+
+world_size = 0
+global_trainDB = None
+global_testDB = None
+last_model_tensors = []
+nextClientIds = None
+global_data_iter = {}
+global_client_profile = {}
+global_optimizers = {}
+sampledClientSet = set()
+
+workers = [int(v) for v in str(args.learners).split('-')]
+
 os.environ['MASTER_ADDR'] = args.ps_ip
 os.environ['MASTER_PORT'] = args.ps_port
 os.environ['NCCL_SOCKET_IFNAME'] = 'ib0'
 os.environ['GLOO_SOCKET_IFNAME'] = 'vlan260'
 os.environ['NCCL_DEBUG'] = 'INFO'
 
-# os.environ['OMP_NUM_THREADS'] = args.threads
-# os.environ['MKL_NUM_THREADS'] = args.threads
-
-# # try to pick the right gpus
-
-# cudaPrefix = 'cuda:'
-# logging.info("====CUDA_VISIBLE_DEVICES is {}, {}".format(os.environ["CUDA_VISIBLE_DEVICES"], torch.cuda.device_count()))
-
-# deviceId = 0#int(os.environ["CUDA_VISIBLE_DEVICES"])
-# torch.cuda.set_device(cudaPrefix+str(deviceId))
-# device = cudaPrefix+str(deviceId) #torch.device(0)
-
-# logging.info("====Pick gpu {}, {}".format(deviceId, device))
-# logging.info(f"====NCCL config ip: {args.ps_ip}, port: {args.ps_port}")
-
-device = None
-deviceId = None
-sampledClientSet = set()
-
-# try to pick the right gpus
-cudaPrefix = 'cuda:'
-for i in range(3, -1, -1):
-    try:
-        device = torch.device(cudaPrefix+str(i))
-        torch.cuda.set_device(i)
-        deviceId = i
-        logging.info(f'====end up with cuda device {torch.rand(1).to(device=device)}')
-        break
-    except Exception as e:
-        # no gpus available
-        if i == 0:
-            logging.info(e)
-            deviceId = None
-            logging.info('Turn to CPU device ...')
-            device = 'cpu'
-        else:
-            continue
-
-world_size = 0
-global_trainDB = None
-last_model_tensors = []
-nextClientIds = None
-global_data_iter = {}
-global_client_profile = {}
-global_optimizers = {}
-
-workers = [int(v) for v in str(args.learners).split('-')]
-
 logging.info("===== Experiment start =====")
 
-def report_data_info(rank, queue, entire_train_data):
-    global nextClientIds
+def report_data_info(rank, queue):
+    global nextClientIds, global_trainDB
 
     # report data information to the clientSampler master
     queue.put({
-        rank: [entire_train_data.getDistance(), entire_train_data.getSize()]
+        rank: [global_trainDB.getDistance(), global_trainDB.getSize()]
     })
 
     clientIdToRun = torch.zeros([world_size - 1], dtype=torch.int).to(device=device)
@@ -76,11 +53,10 @@ def report_data_info(rank, queue, entire_train_data):
     nextClientIds = [clientIdToRun[args.this_rank - 1].item()]
 
 def init_myprocesses(rank, size, model,
-                   train_dataset, test_dataset,
                    q, param_q, stop_flag,
                    fn, backend, client_cfg):
     print("====Worker: init_myprocesses")
-    fn(rank, model, train_dataset, test_dataset, q, param_q, stop_flag, client_cfg)
+    fn(rank, model, q, param_q, stop_flag, client_cfg)
 
 def scan_models(path):
     files = os.listdir(path)
@@ -287,8 +263,8 @@ def run_client(clientId, cmodel, iters, learning_rate, argdicts = {}):
 
         temp_loss = temp_loss/float(loss_cnt)
 
-        # only measure the loss of the last epoch
-        if itr >= (iters - total_batch_size - 1):
+        # only measure the loss of the first epoch
+        if itr < total_batch_size:# >= (iters - total_batch_size - 1):
             if epoch_train_loss is None:
                 epoch_train_loss = temp_loss
             else:
@@ -369,10 +345,10 @@ def run_client(clientId, cmodel, iters, learning_rate, argdicts = {}):
     #logging.info("====Epoch epoch_train_loss is {}".format(epoch_train_loss))
     return model_param, epoch_train_loss, local_trained, str(speed) + '_' + str(count), time_cost, isSuccess
 
-def run(rank, model, train_data, test_data, queue, param_q, stop_flag, client_cfg):
+def run(rank, model, queue, param_q, stop_flag, client_cfg):
     logging.info("====Worker: Start running")
 
-    global nextClientIds, global_trainDB, last_model_tensors
+    global nextClientIds, global_trainDB, global_testDB, last_model_tensors
     criterion = None 
 
     if args.task == 'voice':
@@ -380,7 +356,6 @@ def run(rank, model, train_data, test_data, queue, param_q, stop_flag, client_cf
     else:
         criterion = torch.nn.CrossEntropyLoss().to(device=device) 
    
-    global_trainDB = train_data
     startTime = time.time()
 
     # Fetch the initial parameters from the server side (we called it parameter_server)
@@ -566,7 +541,7 @@ def run(rank, model, train_data, test_data, queue, param_q, stop_flag, client_cf
                                       )
                     test_loss, acc, acc_5, testResults = test_model(rank, model, rank_train_data, criterion=criterion, tokenizer=tokenizer)
                 else:
-                    test_loss, acc, acc_5, testResults = test_model(rank, model, test_data, criterion=criterion, tokenizer=tokenizer)
+                    test_loss, acc, acc_5, testResults = test_model(rank, model, global_testDB, criterion=criterion, tokenizer=tokenizer)
     
                 logging.info("After aggregation epoch {}, CumulTime {}, eval_time {}, test_loss {}, test_accuracy {}, test_5_accuracy {} \n"
                             .format(epoch, round(time.time() - startTime, 4), round(time.time() - evalStart, 4), test_loss, acc, acc_5))
@@ -591,7 +566,7 @@ def run(rank, model, train_data, test_data, queue, param_q, stop_flag, client_cf
 
         if time.time() - last_test > args.test_interval:
             last_test = time.time()
-            test_loss, acc = test_model(rank, model, test_data, criterion=criterion)
+            test_loss, acc = test_model(rank, model, global_testDB, criterion=criterion)
             
             logging.info("For epoch {}, CumulTime {}, test_loss {}, test_accuracy {} \n"
                 .format(epoch, time.time() - startTime, test_loss, acc))
@@ -620,6 +595,8 @@ def initiate_channel():
     return manager
 
 if __name__ == "__main__":
+    #global global_trainDB, global_testDB
+
     setup_seed(args.this_rank)
 
     manager = initiate_channel()
@@ -653,7 +630,7 @@ if __name__ == "__main__":
     dataConf = os.path.join(args.data_dir, 'sampleConf') if args.data_set == 'imagenet' else None
 
     logging.info("==== Starting training data partitioner =====")
-    entire_train_data = DataPartitioner(data=train_dataset, splitConfFile=dataConf, 
+    global_trainDB = DataPartitioner(data=train_dataset, splitConfFile=dataConf, 
                         numOfClass=args.num_class, dataMapFile=args.data_mapfile)
     logging.info("==== Finished training data partitioner =====")
 
@@ -661,11 +638,11 @@ if __name__ == "__main__":
     distributionParam = [float(x) for x in args.zipf_alpha.split('-')]
 
     for i in range(args.duplicate_data):
-        partition_dataset(entire_train_data, workers, splitTrainRatio, dataDistribution[i], 
+        partition_dataset(global_trainDB, workers, splitTrainRatio, dataDistribution[i], 
                                     filter_class=args.filter_class, arg = {'balanced_client':0, 'param': distributionParam[i]})
-    entire_train_data.log_selection()
+    global_trainDB.log_selection()
 
-    report_data_info(this_rank, q, entire_train_data)
+    report_data_info(this_rank, q)
     splitTestRatio = []
 
     logging.info("==== Starting testing data partitioner =====")
@@ -680,9 +657,13 @@ if __name__ == "__main__":
         collate_fn = voice_collate_fn
 
     partition_dataset(testsetPartitioner, [i for i in range(world_size-1)], splitTestRatio)
-    test_data = select_dataset(this_rank, testsetPartitioner, batch_size=args.test_bsz, isTest=True, collate_fn=collate_fn)
+    global_testDB = select_dataset(this_rank, testsetPartitioner, batch_size=args.test_bsz, isTest=True, collate_fn=collate_fn)
 
     stop_flag = Value(c_bool, False)
-    init_myprocesses(this_rank, world_size, model, entire_train_data, test_data,
+
+    # no need to keep the raw data
+    del train_dataset, test_dataset
+
+    init_myprocesses(this_rank, world_size, model,
                                           q, param_q, stop_flag,
                                           run, args.backend, client_cfg)

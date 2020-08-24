@@ -188,6 +188,11 @@ class DataPartitioner(object):
             for client in self.data.client_mapping:
                 if len(self.data.client_mapping[client]) < args.filter_less or len(self.data.client_mapping[client]) > args.filter_more:
                     indices += self.data.client_mapping[client]
+
+                    # remove the metadata 
+                    for idx in self.data.client_mapping[client]:
+                        self.data[idx] = None
+
         except Exception as e:
             pass
 
@@ -291,6 +296,11 @@ class DataPartitioner(object):
             self.classPerWorker[clientId] = clientNumSamples[clientId]
             self.rng.shuffle(clientToData[clientId])
             self.partitions.append(clientToData[clientId])
+
+            if len(clientToData[client]) < args.filter_less or len(clientToData[client]) > args.filter_more:
+                # mask the raw data
+                for idx in clientToData[clientId]:
+                    self.data[idx] = None
 
         overallNumSamples = np.asarray(self.classPerWorker.sum(axis=0)).reshape(-1)
         totalNumOfSamples = self.classPerWorker.sum()
@@ -461,6 +471,7 @@ class DataPartitioner(object):
         logging.info('========= End of Class/Worker =========\n')
 
     def log_selection(self):
+
         # totalLabels = [0 for i in range(len(self.classPerWorker[0]))]
         # logging.info("====Total # of workers is :{}, w/ {} labels, {}, {}".format(len(self.classPerWorker), len(self.classPerWorker[0]), len(self.partitions), len(self.workerDistance)))
 
@@ -478,6 +489,10 @@ class DataPartitioner(object):
         # logging.info("Total selected samples is: {}, with {}\n".format(str(sum(totalLabels)), repr(totalLabels)))
         # logging.info("=====================================\n")
 
+        # remove unused variables
+
+        self.classPerWorker = None
+        self.numOfLabels = None
         pass
 
     def use(self, partition, istest, is_rank, fractional):
@@ -529,5 +544,4 @@ def select_dataset(rank: int, partition: DataPartitioner, batch_size: int, isTes
         return DataLoader(partition, batch_size=batch_size, shuffle=True, pin_memory=False, num_workers=numOfThreads, drop_last=dropLast, timeout=timeOut)#, worker_init_fn=np.random.seed(12))
     else:
         return DataLoader(partition, batch_size=batch_size, shuffle=True, pin_memory=False, num_workers=numOfThreads, drop_last=dropLast, timeout=timeOut, collate_fn=collate_fn)#, worker_init_fn=np.random.seed(12))
-
 

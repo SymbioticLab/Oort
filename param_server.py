@@ -1,60 +1,35 @@
 # -*- coding: utf-8 -*-
 from fl_aggregator_libs import *
 
-#device = torch.device(args.to_device)
-
 initiate_aggregator_setting()
+
+# logging.info("=====MASTER_ADDR: {}, MASTER_PORT: {}, visible GPUs: {}, available counts: {}"
+#                 .format(args.ps_ip, args.ps_port, os.environ['CUDA_VISIBLE_DEVICES'], torch.cuda.device_count()))
+
+for i in range(3, -1, -1):
+    try:
+        device = torch.device('cuda:'+str(i))
+        torch.cuda.set_device(i)
+        logging.info(f'====end up with cuda device {torch.rand(1).to(device=device)}')
+        break
+    except Exception as e:
+        assert(i != 0)
+
+# gpu_id = str(0)
+# device = torch.device('cuda')
+# torch.cuda.set_device('cuda:'+gpu_id)
 
 entire_train_data = None
 sample_size_dic = {}
 
 staleness_file = logDir + 'staleness.txt'
+sampledClientSet = set()
 
 os.environ['MASTER_ADDR'] = args.ps_ip
 os.environ['MASTER_PORT'] = args.ps_port
 os.environ['NCCL_SOCKET_IFNAME'] = 'ib0'
 os.environ['GLOO_SOCKET_IFNAME'] = 'vlan260'
 os.environ['NCCL_DEBUG'] = 'INFO'
-
-# cudaPrefix = 'cuda:'
-# logging.info("====CUDA_VISIBLE_DEVICES is {}, {}".format(os.environ["CUDA_VISIBLE_DEVICES"], torch.cuda.device_count()))
-
-# deviceId = 0#int(os.environ["CUDA_VISIBLE_DEVICES"])
-# #torch.cuda.set_device(deviceId)
-# device = cudaPrefix+str(deviceId) #torch.device(0)
-
-# logging.info("====Pick gpu {}, {}".format(torch.cuda.current_device(), device))
-# logging.info(f"====NCCL config ip: {args.ps_ip}, port: {args.ps_port}")
-
-device = None
-deviceId = None
-sampledClientSet = set()
-
-# try to pick the right gpus
-cudaPrefix = 'cuda:'
-for i in range(3, -1, -1):
-    try:
-        device = torch.device(cudaPrefix+str(i))
-        torch.cuda.set_device(i)
-        deviceId = i
-        logging.info(torch.rand(1).to(device=device))
-        break
-    except Exception as e:
-        # no gpus available
-        if i == 0:
-            logging.info(e)
-            deviceId = None
-            logging.info('Turn to CPU device ...')
-            device = 'cpu'
-        else:
-            continue
-
-
-# os.environ['OMP_NUM_THREADS'] = args.threads
-# os.environ['MKL_NUM_THREADS'] = args.threads
-
-#torch.set_num_threads(int(args.threads))
-#torch.cuda.set_device(args.gpu_device)
 
 def initiate_sampler_query(queue, numOfClients):
     # Initiate the clientSampler 
@@ -76,6 +51,7 @@ def initiate_sampler_query(queue, numOfClients):
     initial_time = time.time()
     clientId = 1
     passed = False
+    num_client_profile = max(1, len(global_client_profile))
 
     # In this simulation, we run data split on each worker, which amplifies the # of datasets
     # Waiting for the data information from clients, or timeout
@@ -91,7 +67,8 @@ def initiate_sampler_query(queue, numOfClients):
 
                 for index, dis in enumerate(distanceVec):
                     # since the worker rankId starts from 1, we also configure the initial dataId as 1
-                    systemProfile = global_client_profile[clientId] if clientId in global_client_profile else [1.0, 1.0]
+                    mapped_id = max(1, clientId%num_client_profile)
+                    systemProfile = global_client_profile[mapped_id] if mapped_id in global_client_profile else [1.0, 1.0]
                     clientSampler.registerClient(rank_src, clientId, dis, sizeVec[index], speed=systemProfile)
                     clientSampler.registerDuration(clientId, 
                         batch_size=args.batch_size, upload_epoch=args.upload_epoch, 
@@ -531,3 +508,4 @@ if __name__ == "__main__":
                 )
 
     manager.shutdown()
+
