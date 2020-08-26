@@ -50,6 +50,7 @@ parser.add_argument('--sample_window', type=float, default=5.0)
 parser.add_argument('--round_threshold', type=float, default=101)
 parser.add_argument('--round_penalty', type=float, default=2.0)
 parser.add_argument('--test_only', type=bool, default=False)
+parser.add_argument('--malicious_clients', type=float, default=0)
 
 # The configuration of different hyper-parameters for training
 parser.add_argument('--epochs', type=int, default=2000)
@@ -281,4 +282,3 @@ parser.add_argument('--no-bidirectional', dest='bidirectional', action='store_fa
 
 
 args = parser.parse_args()
-

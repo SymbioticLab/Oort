@@ -30,6 +30,10 @@ global_client_profile = {}
 global_optimizers = {}
 sampledClientSet = set()
 
+# for malicious experiments only
+malicious_clients = set()
+flip_label_mapping = {}
+
 workers = [int(v) for v in str(args.learners).split('-')]
 
 os.environ['MASTER_ADDR'] = args.ps_ip
@@ -40,17 +44,51 @@ os.environ['NCCL_DEBUG'] = 'INFO'
 
 logging.info("===== Experiment start =====")
 
+# =================== Label flipper ================ #
+def generate_flip_mapping(num_of_labels, random_seed=0):
+    global flip_label_mapping
+
+    from random import Random
+
+    rng = Random()
+    rng.seed(random_seed)
+
+    label_mapping = list(range(num_of_labels))
+    rng.shuffle(label_mapping)
+
+    flip_label_mapping = {x: label_mapping[x] for x in range(num_of_labels)}
+
+def generate_malicious_clients(compromised_ratio, num_of_clients, random_seed=0):
+    global malicious_clients
+
+    from random import Random
+
+    rng = Random()
+    rng.seed(random_seed)
+
+    shuffled_client_ids = list(range(num_of_clients))
+    rng.shuffle(shuffled_client_ids)
+
+    trunc_len = int(compromised_ratio * num_of_clients)
+    malicious_clients = set(shuffled_client_ids[:trunc_len])
+
+# =================== Report client information ================ #
 def report_data_info(rank, queue):
     global nextClientIds, global_trainDB
 
+    client_div = global_trainDB.getDistance()
     # report data information to the clientSampler master
     queue.put({
-        rank: [global_trainDB.getDistance(), global_trainDB.getSize()]
+        rank: [client_div, global_trainDB.getSize()]
     })
 
     clientIdToRun = torch.zeros([world_size - 1], dtype=torch.int).to(device=device)
     dist.broadcast(tensor=clientIdToRun, src=0)
     nextClientIds = [clientIdToRun[args.this_rank - 1].item()]
+
+    if args.malicious_clients > 0:
+        generate_malicious_clients(args.malicious_clients, len(client_div))
+        generate_flip_mapping(args.num_class)
 
 def init_myprocesses(rank, size, model,
                    q, param_q, stop_flag,
@@ -109,8 +147,11 @@ def voice_collate_fn(batch):
 
     return (inputs, targets, input_percentages, target_sizes), None
 
+# =================== simulating different clients =====================#
+
 def run_client(clientId, cmodel, iters, learning_rate, argdicts = {}):
     global global_trainDB, global_data_iter, last_model_tensors, tokenizer
+    global malicious_clients, flip_label_mapping
 
     curBatch = -1
 
@@ -121,13 +162,13 @@ def run_client(clientId, cmodel, iters, learning_rate, argdicts = {}):
         optimizer_grouped_parameters = [
             {
                 "params": [p for n, p in cmodel.named_parameters() if not any(nd in n for nd in no_decay)],
-                "weight_decay": args.weight_decay,
+                "weight_decay": 5e-4,
             },
             {"params": [p for n, p in cmodel.named_parameters() if any(nd in n for nd in no_decay)], "weight_decay": 0.0},
         ]
-        optimizer = AdamW(optimizer_grouped_parameters, lr=learning_rate, eps=args.adam_epsilon)
+        optimizer = AdamW(optimizer_grouped_parameters, lr=learning_rate, eps=args.adam_epsilon, weight_decay=5e-4)
 
-    criterion = None 
+    criterion = None
 
     if args.task == 'voice':
         criterion = CTCLoss(reduction='none').to(device=device)
@@ -169,6 +210,7 @@ def run_client(clientId, cmodel, iters, learning_rate, argdicts = {}):
 
     input_sizes, target_sizes, output_sizes = None, None, None
     masks = None
+    is_malicious = True if clientId in malicious_clients else False
 
     cmodel = cmodel.to(device=device)
     cmodel.train()
@@ -224,6 +266,10 @@ def run_client(clientId, cmodel, iters, learning_rate, argdicts = {}):
 
         numOfFailures = 0
         curBatch = curBatch + 1
+
+        # flip the label if the client is malicious
+        if is_malicious:
+            target = [flip_label_mapping[x] for x in target]
 
         data = Variable(data).to(device=device)
         if args.task != 'voice':

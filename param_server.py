@@ -182,6 +182,7 @@ def run(model, queue, param_q, stop_signal, clientSampler):
     sumDeltaWeights = []
     clientWeightsCache = {}
     last_sampled_clients = None
+    last_model_parameters = [torch.clone(p.data) for p in model.parameters()]
 
     gradient_controller = None
     # initiate yogi if necessary
@@ -236,6 +237,9 @@ def run(model, queue, param_q, stop_signal, clientSampler):
 
                         epoch_train_loss += ratioSample * iteration_loss[i]
                         isSelected = True if clientId in sampledClientSet else False
+
+                        gradient_l2_norm = 0
+
                         # apply the update into the global model if the client is involved
                         for idx, param in enumerate(model.parameters()):
                             model_weight = torch.from_numpy(delta_ws[idx]).to(device=device)
@@ -247,6 +251,8 @@ def run(model, queue, param_q, stop_signal, clientSampler):
                                     sumDeltaWeights.append(model_weight * ratioSample)
                                 else:
                                     sumDeltaWeights[idx] += model_weight * ratioSample
+
+                            gradient_l2_norm += ((model_weight-last_model_parameters[idx]).norm(2)**2).item()
 
                         # bias term for global speed
                         virtual_c = virtualClientClock[clientId] if clientId in virtualClientClock else 1.
@@ -261,7 +267,7 @@ def run(model, queue, param_q, stop_signal, clientSampler):
                         if args.score_mode == "loss":
                             clientUtility = math.sqrt(iteration_loss[i]) * size_of_sample_bin
                         elif args.score_mode == "norm":
-                            clientUtility = math.sqrt(iteration_loss[i]) * size_of_sample_bin
+                            clientUtility = math.sqrt(gradient_l2_norm) * size_of_sample_bin
                         elif args.score_mode == "size":
                             clientUtility = size_of_sample_bin
                         else:
@@ -430,6 +436,7 @@ def run(model, queue, param_q, stop_signal, clientSampler):
 
                     dist.broadcast(tensor=torch.tensor(clientIdsToRun, dtype=torch.int).to(device=device), src=0)
                     dist.broadcast(tensor=torch.tensor(clientsList, dtype=torch.int).to(device=device), src=0)
+                    last_model_parameters = [torch.clone(p.data) for p in model.parameters()]
 
                     if global_update % args.display_step == 0:
                         logging.info("Handle Wight {} | Send {}".format(handle_dur, time.time() - send_start))
@@ -508,4 +515,3 @@ if __name__ == "__main__":
                 )
 
     manager.shutdown()
-

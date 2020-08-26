@@ -297,10 +297,10 @@ class DataPartitioner(object):
             self.rng.shuffle(clientToData[clientId])
             self.partitions.append(clientToData[clientId])
 
-            if len(clientToData[client]) < args.filter_less or len(clientToData[client]) > args.filter_more:
-                # mask the raw data
-                for idx in clientToData[clientId]:
-                    self.data[idx] = None
+            # if len(clientToData[clientId]) < args.filter_less or len(clientToData[clientId]) > args.filter_more:
+            #     # mask the raw data
+            #     for idx in clientToData[clientId]:
+            #         self.data[idx] = None
 
         overallNumSamples = np.asarray(self.classPerWorker.sum(axis=0)).reshape(-1)
         totalNumOfSamples = self.classPerWorker.sum()
@@ -544,4 +544,5 @@ def select_dataset(rank: int, partition: DataPartitioner, batch_size: int, isTes
         return DataLoader(partition, batch_size=batch_size, shuffle=True, pin_memory=False, num_workers=numOfThreads, drop_last=dropLast, timeout=timeOut)#, worker_init_fn=np.random.seed(12))
     else:
         return DataLoader(partition, batch_size=batch_size, shuffle=True, pin_memory=False, num_workers=numOfThreads, drop_last=dropLast, timeout=timeOut, collate_fn=collate_fn)#, worker_init_fn=np.random.seed(12))
+
 

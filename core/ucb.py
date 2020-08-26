@@ -124,9 +124,11 @@ class UCB(object):
 
         orderedKeys = [x for x in list(self.totalArms.keys()) if int(x) in feasible_clients]
 
-        if self.round_threshold < 101:
+        if self.round_threshold < 100.:
             sortedDuration = sorted([self.totalArms[key][5] for key in list(self.totalArms.keys())])
             self.round_prefer_duration = sortedDuration[min(int(len(sortedDuration) * self.round_threshold/100.), len(sortedDuration)-1)]
+        else:
+            self.round_prefer_duration = 2147483647.
 
         moving_reward, staleness, allloss = [], [], {}
         expectation_reward = self.getExpectation()
@@ -253,4 +255,3 @@ class UCB(object):
         _avg = sum(aList)/float(len(aList))
 
         return float(_max), float(_min), float(_range), float(_avg)
-
