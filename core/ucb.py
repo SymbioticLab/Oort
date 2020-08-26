@@ -113,16 +113,38 @@ class UCB(object):
 
         return sum_reward/sum_count
 
+    def get_blacklist(self):
+        blacklist = []
+
+        if args.blacklist_rounds != -1:
+            sorted_client_ids = sorted(list(self.totalArms), reverse=True, key=lambda k:self.totalArms[k][2])
+
+            for clientId in sorted_client_ids:
+                if self.totalArms[clientId][2] > args.blacklist_rounds:
+                    blacklist.append(clientId)
+                else:
+                    break
+
+            # we need to back up if we have blacklisted all clients
+            predefined_max_len = args.blacklist_max_len * len(self.totalArms)
+            if len(blacklist) > predefined_max_len:
+                logging.info("====Warning: exceeds the blacklist threshold")
+                blacklist = blacklist[:predefined_max_len]
+
+        return set(blacklist)
+
     def getTopK(self, numOfSamples, cur_time, feasible_clients):
         self.training_round = cur_time
+        blacklist = self.get_blacklist()
 
         self.pacer()
+
         # normalize the score of all arms: Avg + Confidence
         scores = {}
         numOfExploited = 0
         exploreLen = 0
 
-        orderedKeys = [x for x in list(self.totalArms.keys()) if int(x) in feasible_clients]
+        orderedKeys = [x for x in list(self.totalArms.keys()) if int(x) in feasible_clients and int(x) not in blacklist]
 
         if self.round_threshold < 100.:
             sortedDuration = sorted([self.totalArms[key][5] for key in list(self.totalArms.keys())])
@@ -139,14 +161,13 @@ class UCB(object):
                 moving_reward.append(creward)
                 staleness.append(cur_time - self.totalArms[sampledId][1])
 
-        max_reward, min_reward, range_reward, avg_reward = self.get_norm(moving_reward)
-        max_staleness, min_staleness, range_staleness, avg_staleness = self.get_norm(staleness, thres=1)
-        
+        max_reward, min_reward, range_reward, avg_reward, clip_value = self.get_norm(moving_reward, args.clip_bound)
+        max_staleness, min_staleness, range_staleness, avg_staleness, _ = self.get_norm(staleness, thres=1)
 
         for key in orderedKeys:
             # we have played this arm before
             if self.totalArms[key][2] > 0:
-                creward = self.totalArms[key][0]
+                creward = min(self.totalArms[key][0], clip_value)
                 numOfExploited += 1
 
                 sc = (creward - min_reward)/float(range_reward) \
@@ -243,10 +264,10 @@ class UCB(object):
     def getAllMetrics(self):
         return self.totalArms
 
-    def get_norm(self, aList, thres=0):
+    def get_norm(self, aList, clip_bound=1.0, thres=0):
         aList = sorted(aList)
-        # _95th = aList[int(len(aList)*0.95)]
-        # _5th = aList[int(len(aList)*0.05)]
+        clip_value = aList[min(int(len(aList)*clip_bound), len(aList)-1)]
+        #_5th = aList[int(len(aList)*0.05)]
 
         # return _95th, _5th, max((_95th - _5th), thres)
         _max = max(aList)
@@ -254,4 +275,4 @@ class UCB(object):
         _range = max(_max - _min, thres)
         _avg = sum(aList)/float(len(aList))
 
-        return float(_max), float(_min), float(_range), float(_avg)
+        return float(_max), float(_min), float(_range), float(_avg), float(clip_value)

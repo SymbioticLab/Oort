@@ -51,6 +51,9 @@ parser.add_argument('--round_threshold', type=float, default=101)
 parser.add_argument('--round_penalty', type=float, default=2.0)
 parser.add_argument('--test_only', type=bool, default=False)
 parser.add_argument('--malicious_clients', type=float, default=0)
+parser.add_argument('--clip_bound', type=float, default=1.0)
+parser.add_argument('--blacklist_rounds', type=int, default=-1)
+parser.add_argument('--blacklist_max_len', type=float, default=0.3)
 
 # The configuration of different hyper-parameters for training
 parser.add_argument('--epochs', type=int, default=2000)
