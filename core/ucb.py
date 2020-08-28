@@ -30,6 +30,7 @@ class UCB(object):
         self.exploitClients = []
         self.exploreClients = []
         self.successfullClients = set()
+        self.blacklist = None
 
         np2.random.seed(sample_seed)
 
@@ -113,20 +114,27 @@ class UCB(object):
 
         return sum_reward/sum_count
 
+    def get_median_reward(self):
+        feasible_rewards = [self.totalArms[x][0] for x in list(self.totalArms.keys()) if int(x) not in self.blacklist]
+        median_idx = int(len(feasible_rewards) * 0.5)
+        median = sorted(feasible_rewards)[median_idx]
+
+        return median
+
     def get_blacklist(self):
         blacklist = []
 
-        if args.blacklist_rounds != -1:
+        if self.args.blacklist_rounds != -1:
             sorted_client_ids = sorted(list(self.totalArms), reverse=True, key=lambda k:self.totalArms[k][2])
 
             for clientId in sorted_client_ids:
-                if self.totalArms[clientId][2] > args.blacklist_rounds:
+                if self.totalArms[clientId][2] > self.args.blacklist_rounds:
                     blacklist.append(clientId)
                 else:
                     break
 
             # we need to back up if we have blacklisted all clients
-            predefined_max_len = args.blacklist_max_len * len(self.totalArms)
+            predefined_max_len = self.args.blacklist_max_len * len(self.totalArms)
             if len(blacklist) > predefined_max_len:
                 logging.info("====Warning: exceeds the blacklist threshold")
                 blacklist = blacklist[:predefined_max_len]
@@ -135,7 +143,7 @@ class UCB(object):
 
     def getTopK(self, numOfSamples, cur_time, feasible_clients):
         self.training_round = cur_time
-        blacklist = self.get_blacklist()
+        self.blacklist = self.get_blacklist()
 
         self.pacer()
 
@@ -144,7 +152,7 @@ class UCB(object):
         numOfExploited = 0
         exploreLen = 0
 
-        orderedKeys = [x for x in list(self.totalArms.keys()) if int(x) in feasible_clients and int(x) not in blacklist]
+        orderedKeys = [x for x in list(self.totalArms.keys()) if int(x) in feasible_clients and int(x) not in self.blacklist]
 
         if self.round_threshold < 100.:
             sortedDuration = sorted([self.totalArms[key][5] for key in list(self.totalArms.keys())])
@@ -161,7 +169,7 @@ class UCB(object):
                 moving_reward.append(creward)
                 staleness.append(cur_time - self.totalArms[sampledId][1])
 
-        max_reward, min_reward, range_reward, avg_reward, clip_value = self.get_norm(moving_reward, args.clip_bound)
+        max_reward, min_reward, range_reward, avg_reward, clip_value = self.get_norm(moving_reward, self.args.clip_bound)
         max_staleness, min_staleness, range_staleness, avg_staleness, _ = self.get_norm(staleness, thres=1)
 
         for key in orderedKeys:
@@ -276,3 +284,4 @@ class UCB(object):
         _avg = sum(aList)/float(len(aList))
 
         return float(_max), float(_min), float(_range), float(_avg), float(clip_value)
+

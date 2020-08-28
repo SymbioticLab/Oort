@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
 from fl_aggregator_libs import *
+from random import Random
 
 initiate_aggregator_setting()
 
@@ -184,6 +185,9 @@ def run(model, queue, param_q, stop_signal, clientSampler):
     last_sampled_clients = None
     last_model_parameters = [torch.clone(p.data) for p in model.parameters()]
 
+    # random component to generate noise
+    median_reward = 1.
+
     gradient_controller = None
     # initiate yogi if necessary
     if args.gradient_policy == 'yogi':
@@ -272,7 +276,13 @@ def run(model, queue, param_q, stop_signal, clientSampler):
                             clientUtility = size_of_sample_bin
                         else:
                             clientUtility = (1.0 - clientSampler.getClient(clientId).distance)
-                            
+                        
+                        # add noise to the utility
+                        if args.noise_factor > 0:
+                            noise = np.random.normal(0, args.noise_factor * median_reward, 1)[0]
+                            clientUtility += noise
+                            clientUtility = max(1e-2, clientUtility)
+
                         clientSampler.registerScore(clientId, clientUtility, auxi=math.sqrt(iteration_loss[i]),
                                                     time_stamp=epoch_count, duration=virtual_c
                                       )
@@ -447,6 +457,9 @@ def run(model, queue, param_q, stop_signal, clientSampler):
 
                     sumDeltaWeights = []
                     clientWeightsCache = {}
+
+                    if args.noise_factor > 0:
+                        median_reward = clientSampler.get_median_reward()
 
                     gc.collect()
 

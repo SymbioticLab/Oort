@@ -72,20 +72,9 @@ def init_dataset():
     elif args.task == 'text_clf':
         config = AutoConfig.from_pretrained(os.path.join(args.data_dir, 'albert-base-v2-config.json'))
         config.num_labels = outputClass[args.data_set]
-        config.output_attentions = False
-        config.output_hidden_states = False
+        # config.output_attentions = False
+        # config.output_hidden_states = False
         model = AlbertForSequenceClassification(config)
-        # model = AlbertForSequenceClassification.from_pretrained(
-        #       args.data_dir,  # Use the 12-layer BERT model, with an uncased vocab.
-        #       num_labels = outputClass[args.data_set], # The number of output labels--2 for binary classification.
-        #                       # You can increase this for multi-class tasks.   
-        #       output_attentions = False, # Whether the model returns attentions weights.
-        #       output_hidden_states = False, # Whether the model returns all hidden-states.
-        #   )
-
-        # randomize model weights
-        # for idx, param in enumerate(model.parameters()):
-        #     param.data = torch.randn(param.data.shape) * 0.01
 
     elif args.task == 'tag-one-sample':
         # Load LR model for tag prediction
@@ -193,8 +182,8 @@ def init_dataset():
             test_dataset = stackoverflow(args.data_dir, train=False)
         
         elif args.data_set == 'yelp':
-            train_dataset = fl_loader.TextSentimentDataset(args.data_dir, train=True, tokenizer=tokenizer, max_len=args.block_size)
-            test_dataset = fl_loader.TextSentimentDataset(args.data_dir, train=False, tokenizer=tokenizer, max_len=args.block_size)
+            train_dataset = fl_loader.TextSentimentDataset(args.data_dir, train=True, tokenizer=tokenizer, max_len=args.clf_block_size)
+            test_dataset = fl_loader.TextSentimentDataset(args.data_dir, train=False, tokenizer=tokenizer, max_len=args.clf_block_size)
 
         elif args.data_set == 'google_speech':
             bkg = '_background_noise_'

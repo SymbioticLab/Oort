@@ -51,9 +51,11 @@ parser.add_argument('--round_threshold', type=float, default=101)
 parser.add_argument('--round_penalty', type=float, default=2.0)
 parser.add_argument('--test_only', type=bool, default=False)
 parser.add_argument('--malicious_clients', type=float, default=0)
-parser.add_argument('--clip_bound', type=float, default=1.0)
+parser.add_argument('--clip_bound', type=float, default=0.98)
 parser.add_argument('--blacklist_rounds', type=int, default=-1)
 parser.add_argument('--blacklist_max_len', type=float, default=0.3)
+parser.add_argument('--noise_factor', type=float, default=0)
+
 
 # The configuration of different hyper-parameters for training
 parser.add_argument('--epochs', type=int, default=2000)
@@ -99,7 +101,10 @@ parser.add_argument('--min_learning_rate', type=float, default=1e-4)
 parser.add_argument('--loss_decay', type=float, default=0.2)
 parser.add_argument('--skip_partition', type=bool, default=False)
 parser.add_argument('--exploration_min', type=float, default=0.2)
-parser.add_argument('--cut_off_util', type=float, default=0.95)
+parser.add_argument('--cut_off_util', type=float, default=0.9)
+
+# for text clf
+parser.add_argument('--clf_block_size', type=int, default=100)
 
 # for yogi
 parser.add_argument('--gradient_policy', type=str, default='')

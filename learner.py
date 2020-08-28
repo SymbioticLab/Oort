@@ -58,6 +58,8 @@ def generate_flip_mapping(num_of_labels, random_seed=0):
 
     flip_label_mapping = {x: label_mapping[x] for x in range(num_of_labels)}
 
+    logging.info("====Flip label mapping is: \n{}".format(flip_label_mapping))
+
 def generate_malicious_clients(compromised_ratio, num_of_clients, random_seed=0):
     global malicious_clients
 
@@ -71,6 +73,8 @@ def generate_malicious_clients(compromised_ratio, num_of_clients, random_seed=0)
 
     trunc_len = int(compromised_ratio * num_of_clients)
     malicious_clients = set(shuffled_client_ids[:trunc_len])
+
+    logging.info("====Malicious clients are: \n{}".format(malicious_clients))
 
 # =================== Report client information ================ #
 def report_data_info(rank, queue):
@@ -269,7 +273,8 @@ def run_client(clientId, cmodel, iters, learning_rate, argdicts = {}):
 
         # flip the label if the client is malicious
         if is_malicious:
-            target = [flip_label_mapping[x] for x in target]
+            for idx, x in enumerate(target):
+                target[idx] = flip_label_mapping[int(x.item())]
 
         data = Variable(data).to(device=device)
         if args.task != 'voice':
@@ -344,10 +349,10 @@ def run_client(clientId, cmodel, iters, learning_rate, argdicts = {}):
 
         comp_duration = (time.time() - comp_start)
     
-        logging.info('For client {}, upload iter {}, epoch {}, Batch {}/{}, Loss:{} | TotalTime: {} | CompTime: {} | DataLoader: {} | epoch_train_loss: {}\n'
+        logging.info('For client {}, upload iter {}, epoch {}, Batch {}/{}, Loss:{} | TotalTime: {} | CompTime: {} | DataLoader: {} | epoch_train_loss: {} | malicious: {}\n'
                     .format(clientId, argdicts['iters'], int(curBatch/total_batch_size),
                     (curBatch % total_batch_size), total_batch_size, temp_loss, 
-                    round(time.time() - it_start, 4), round(comp_duration, 4), round(comp_start - it_start, 4), epoch_train_loss))
+                    round(time.time() - it_start, 4), round(comp_duration, 4), round(comp_start - it_start, 4), epoch_train_loss, is_malicious))
 
     # remove the one with LRU
     if len(global_client_profile) > args.max_iter_store:

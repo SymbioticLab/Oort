@@ -188,4 +188,7 @@ class ClientSampler(object):
     def getClientReward(self, clientId):
         return self.ucbSampler.getClientReward(clientId)
 
-
+    def get_median_reward(self):
+        if self.mode == 'bandit':
+            return self.ucbSampler.get_median_reward()
+        return 0.
