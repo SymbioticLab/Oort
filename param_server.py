@@ -460,6 +460,8 @@ def run(model, queue, param_q, stop_signal, clientSampler):
 
                     if args.noise_factor > 0:
                         median_reward = clientSampler.get_median_reward()
+                        logging.info('For epoch: {}, median_reward: {}, dev: {}'
+                                        .format(epoch_count, median_reward, median_reward*args.noise_factor))
 
                     gc.collect()
 

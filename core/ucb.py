@@ -116,11 +116,16 @@ class UCB(object):
 
     def get_median_reward(self):
         feasible_rewards = [self.totalArms[x][0] for x in list(self.totalArms.keys()) if int(x) not in self.blacklist]
-        median_idx = int(len(feasible_rewards) * 0.5)
-        median = sorted(feasible_rewards)[median_idx]
-
-        return median
-
+        #median_idx = int(len(feasible_rewards) * 0.5)
+        #median = sorted(feasible_rewards)[median_idx]
+        #return median
+        
+        # we report mean instead of median
+        if len(feasible_rewards) > 0:
+            return sum(feasible_rewards)/float(len(feasible_rewards))
+            
+        return 0
+        
     def get_blacklist(self):
         blacklist = []
 
@@ -284,4 +289,3 @@ class UCB(object):
         _avg = sum(aList)/float(len(aList))
 
         return float(_max), float(_min), float(_range), float(_avg), float(clip_value)
-

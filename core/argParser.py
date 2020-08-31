@@ -150,7 +150,7 @@ parser.add_argument(
 )
 
 parser.add_argument(
-    "--mlm", action="store_true", help="Train with masked-language modeling loss instead of language modeling."
+    "--mlm", type=bool, default=True, help="Train with masked-language modeling loss instead of language modeling."
 )
 parser.add_argument(
     "--mlm_probability", type=float, default=0.1, help="Ratio of tokens to mask for masked language modeling loss"
@@ -290,3 +290,4 @@ parser.add_argument('--no-bidirectional', dest='bidirectional', action='store_fa
 
 
 args = parser.parse_args()
+
