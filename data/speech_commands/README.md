@@ -12,6 +12,6 @@ in each file name. If a speaker contributed multiple utterances of the same word
 to each individual.
 
 
-# Acknowledgement
+# References
  This dataset is covered in more detail at [https://arxiv.org/abs/1804.03209](https://arxiv.org/abs/1804.03209) and Its original location is at
 [http://download.tensorflow.org/data/speech_commands_v0.02.tar.gz](http://download.tensorflow.org/data/speech_commands_v0.02.tar.gz).
