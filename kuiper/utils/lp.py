@@ -146,7 +146,7 @@ def run_heuristic(request_list, data_distrbution, system_perf, budget, data_tran
     '''Stage 3: the rest is LP'''
     start_time = time.time()
 
-    result, sol, lp_duration = lp_gurobi(tempdata, tempsys, budget, preference, data_trans_size, 
+    result, sol, lp_duration = lp_gurobi(tempdata, tempsys, budget, preference_dict, data_trans_size, 
                                     init_values=init_values, request_budget=False, gap=0.25)
 
     finish_time = time.time()
