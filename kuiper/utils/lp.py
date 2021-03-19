@@ -67,16 +67,16 @@ def select_by_sorted_num(raw_datas, pref, budget):
     return clientsTaken, is_success
 
 
-def run_heuristic(request_list, data_distrbution, system_perf, budget, data_trans_size):
+def run_select_by_category(request_list, data_distribution, client_info, budget, model_size):
     '''
     @ request_list: [num_requested_samples_class_x for class_x in requested_x];
     @ data_distribution: numpy.array([client_id, num_samples_class_x]) -> size: num_of_clients x num_of_interested_class
-    @ system_perf: [[computation_speed, communication_speed] for client in clients]
+    @ client_info: [[computation_speed, communication_speed] for client in clients]
     '''
 
-    data = np.copy(data_distrbution)
+    data = np.copy(data_distribution)
 
-    num_of_class = len(data_distrbution[0]) 
+    num_of_class = len(data_distribution[0]) 
     num_of_clients = len(data)
 
     raw_data = np.copy(data)
@@ -130,7 +130,7 @@ def run_heuristic(request_list, data_distrbution, system_perf, budget, data_tran
     '''Stage 2: extract information of subset clients'''
     select_client_list = list(select_clients.keys())
     tempdata = raw_data[select_client_list, :]
-    tempsys = [system_perf[i] for i in select_client_list]
+    tempsys = [client_info[i] for i in select_client_list]
 
     # load initial value
     init_values = {}
@@ -146,7 +146,7 @@ def run_heuristic(request_list, data_distrbution, system_perf, budget, data_tran
     '''Stage 3: the rest is LP'''
     start_time = time.time()
 
-    result, sol, lp_duration = lp_gurobi(tempdata, tempsys, budget, preference_dict, data_trans_size, 
+    result, sol, lp_duration = lp_gurobi(tempdata, tempsys, budget, preference_dict, model_size, 
                                     init_values=init_values, request_budget=False, gap=0.25)
 
     finish_time = time.time()
@@ -156,4 +156,3 @@ def run_heuristic(request_list, data_distrbution, system_perf, budget, data_tran
 
     # [TODO]
     return result
-
