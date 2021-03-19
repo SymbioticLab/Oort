@@ -307,7 +307,7 @@ def run_heuristic(requirement, _raw_data, systems, distr):
     # data, systems, distr = load_profiles('so_data_distr', 'clientprofile', 'so_global_distr')
     data = np.copy(_raw_data)
 
-    num_of_class = num_of_class_interest #596 #len(data[0])
+    num_of_class = num_of_class_interest 
     num_of_clients = len(data)
     distr = distr[:num_of_class]
     sum_distr = sum(distr)
@@ -392,7 +392,7 @@ def run_heuristic(requirement, _raw_data, systems, distr):
     start_time = time.time()
 
     if not greedy_only:
-        result, sol, lp_duration = lp_solver(tempdata, tempsys, budget, preference, data_trans_size, init_values=init_values, request_budget=False, gap=gap_bar)
+        result, sol, lp_duration = lp_gurobi(tempdata, tempsys, budget, preference, data_trans_size, init_values=init_values, request_budget=False, gap=gap_bar)
     else:
         result = greedy_result(select_clients, sys_prof)
         return [augTime, 0., result, 0., len(select_clients)]
