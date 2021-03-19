@@ -5,7 +5,7 @@ from gurobipy import *
 import time, sys, gc
 from queue import PriorityQueue
 from numpy import *
-from lp_solver import *
+from lp_gurobi import *
 
 sys.stdout.flush()
 

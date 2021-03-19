@@ -6,14 +6,6 @@ from gurobipy import *
 import time, sys
 
 
-def lp_solver(datas, systems, budget, preference, data_trans_size, init_values = None, time_limit = None, read_flag = False, write_flag = False, request_budget = True, gap = None, solver = 'gurobi'):
-    if solver == 'gurobi':
-        return lp_gurobi(datas, systems, budget, preference, data_trans_size, init_values, time_limit, read_flag, write_flag, request_budget, gap=gap)
-    else:
-        return lp_cplex(datas, systems, budget, preference, data_trans_size, init_values, time_limit, read_flag, write_flag, gap, request_budget)
-
-
-
 def lp_gurobi(datas, systems, budget, preference, data_trans_size, init_values = None, time_limit = None, read_flag = False, write_flag = False, request_budget=True, gap = None):
 
     num_of_clients = len(datas)

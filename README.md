@@ -27,9 +27,14 @@ Before attempting to install Kuiper, you must have the following installed:
 * transformers xx
   * TODO: add instructions
 
+Run the following commands to install kuiper and download the [datasets](https://www.dropbox.com/sh/lti7j1g4a1jgr4r/AAD802HuoxjZi8Xy7xXZbDs8a?dl=0).
 
-
-download.sh (this will download and decompress ~76GB data to corresponding folders)
+```
+git clone https://github.com/SymbioticLab/Kuiper
+cd Kuiper
+python setup.py install  # install kuiper
+./data/download.sh -A    # download all datasets (See ./download.sh -h on how to download a subset of datasets)
+```
 
 # Run Experiments
 
