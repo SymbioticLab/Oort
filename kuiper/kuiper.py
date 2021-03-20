@@ -241,12 +241,16 @@ class _training_selector(object):
 
         return set(blacklist)
 
-    def select_participant(self, num_of_clients):
+    def select_participant(self, num_of_clients, feasible_clients=None):
         '''
         @ num_of_clients: # of clients selected
         '''
+        viable_clients = feasible_clients if feasible_clients is not None else set([x for x in self.totalArms.keys() if self.totalArms[x]['status']])
+        return self.getTopK(num_of_clients, self.training_round+1, viable_clients)
 
-        return self.getTopK(num_of_clients, self.training_round+1, [x for x in self.totalArms.keys() if self.totalArms[x]['status']])
+    def update_duration(self, clientId, duration):
+        if clientId in self.totalArms:
+            self.totalArms[clientId]['duration'] = duration
 
     def getTopK(self, numOfSamples, cur_time, feasible_clients):
         self.training_round = cur_time
@@ -271,8 +275,8 @@ class _training_selector(object):
         moving_reward, staleness, allloss = [], [], {}
         
         for clientId in orderedKeys:
-            if self.totalArms[clientId]['score'] > 0:
-                creward = self.totalArms[clientId]['score']
+            if self.totalArms[clientId]['reward'] > 0:
+                creward = self.totalArms[clientId]['reward']
                 moving_reward.append(creward)
                 staleness.append(cur_time - self.totalArms[clientId]['time_stamp'])
 
@@ -357,13 +361,13 @@ class _training_selector(object):
         top_k_score = []
         for i in range(min(3, len(pickedClients))):
             clientId = pickedClients[i]
-            _score = (self.totalArms[clientId]['score'] - min_reward)/float(range_reward)
+            _score = (self.totalArms[clientId]['reward'] - min_reward)/float(range_reward)
             _staleness = math.sqrt(0.1*math.log(cur_time)/self.totalArms[clientId]['time_stamp']) #self.alpha*((cur_time-self.totalArms[clientId][1]) - min_staleness)/float(range_staleness)
             top_k_score.append(self.totalArms[clientId] + [_score, _staleness])
 
         last_exploit = pickedClients[exploitLen-1]
         top_k_score.append(self.totalArms[last_exploit] + \
-            [(self.totalArms[last_exploit]['score'] - min_reward)/float(range_reward), self.alpha*((cur_time-self.totalArms[last_exploit]['time_stamp']) - min_staleness)/float(range_staleness)])
+            [(self.totalArms[last_exploit]['reward'] - min_reward)/float(range_reward), self.alpha*((cur_time-self.totalArms[last_exploit]['time_stamp']) - min_staleness)/float(range_staleness)])
 
         logging.info("At time {}, UCB exploited {}, augment_factor {}, exploreLen {}, un-explored {}, indeed un-explored {}, exploration {}, round_threshold {}, top-k score is {}"
             .format(cur_time, numOfExploited, augment_factor/exploitLen, exploreLen, len(self.totalArms) - numOfExploited, len(self.unexplored), self.exploration, self.round_threshold, top_k_score))
@@ -371,7 +375,16 @@ class _training_selector(object):
 
         return pickedClients
 
-    def getClientReward(self, armId):
+    def get_median_reward(self):
+        feasible_rewards = [self.totalArms[x]['reward'] for x in list(self.totalArms.keys()) if int(x) not in self.blacklist]
+        
+        # we report mean instead of median
+        if len(feasible_rewards) > 0:
+            return sum(feasible_rewards)/float(len(feasible_rewards))
+            
+        return 0
+
+    def get_client_reward(self, armId):
         return self.totalArms[armId]
 
     def getAllMetrics(self):
