@@ -3,20 +3,23 @@ import math, numpy
 
 
 def create_training_selector():
-    return "training selector"
+    return _training_selector()
 
+def create_testing_selector(data_distribution=None, client_info=None, model_size=None):
+    return _testing_selector(data_distribution, client_info, model_size)
 
+class _training_selector:
+    def __init__():
+        pass
 
-
-def create_testing_selector():
-    return "testing selector"
-
-class testing_selector:
+class _testing_selector:
     """Kuiper's testing selector
 
     We provide two kinds of selector:
-    select_by_deviation: 
-    select_by_category: 
+    select_by_deviation: testing participant selection that preserves data representativeness.
+    select_by_category: testing participant selection that enforce developer's requirement on
+        distribution of the testing set. Note that this selector is avaliable only if the client
+        info is provided.
 
     Attributes:
         client_info: Optional; A dictionary that stores client id to client profile(system speech and
@@ -24,14 +27,14 @@ class testing_selector:
             needs 153ms to run a single sample inference and their network bandwidth is 2209 Kbps.
         model_size: Optional; the size of the model(i.e., the data transfer size) in kb
         data_distribution: Optional; individual data characteristics(distribution). 
-
     """
     def __init__(self, data_distribution=None, client_info=None, model_size=None):
         """Inits testing selector."""
         self.client_info = client_info
         self.model_size = model_size
         self.data_distribution = data_distribution
-        self.client_list = list(range(len(client_info)))
+        if self.client_info:
+            self.client_idx_list = list(range(len(client_info)))
     
 
     def update_client_info(self, client_ids, client_profile):
@@ -51,13 +54,18 @@ class testing_selector:
         """
         return 0
     
-    def hoeffding_bound(self, dev_tolerance, capacity_range, total_num_clients, confidence=0.8):
-        '''
-        @ dev_tolerance: maximum deviation from the empirical (E[X])
-        @ capacity_range: maximum - minimum
-        @ total_num_clients: total number of feasible clients
-        @ confidence: Pr[|X - E[X]| < dev_tolerance] > confidence 
-        '''
+    def _hoeffding_bound(self, dev_tolerance, capacity_range, total_num_clients, confidence=0.8):
+        """Use hoeffding bound to cap the deviation from E[X]
+
+        Args:
+            dev_tolerance: maximum deviation from the empirical (E[X])
+            capacity_range: the global max-min range of number of samples across all clients
+            total_num_clients: total number of feasible clients
+            confidence: Optional; Pr[|X - E[X]| < dev_tolerance] > confidence
+        
+        Returns:
+            The estimated number of participant needed to satisfy developer's requirement
+        """
 
         factor = (1.0 - 2*total_num_clients/math.log(1-math.pow(confidence, 1)) \
                                     * (dev_tolerance/float(capacity_range)) ** 2)
@@ -65,8 +73,8 @@ class testing_selector:
 
         return n
 
-    def select_by_deviation(self, dev_target, range_of_capacity, max_num_clients, 
-        confidence=0.8, overcommit=1.1):
+    def select_by_deviation(self, dev_target, range_of_capacity, total_num_clients, 
+            confidence=0.8, overcommit=1.1):
         """Testing selector that preserves data representativeness.
 
         Given the developer-specified tolerance `dev_target`, Kuiper can estimate the number 
@@ -76,13 +84,14 @@ class testing_selector:
         Args:
             dev_target: developer-specified tolerance
             range_of_capacity: the global max-min range of number of samples across all clients
-            TODO: 
+            confidence: Optional; Pr[|X - E[X]| < dev_tolerance] > confidence
+            overcommit: Optional; to handle stragglers  
 
         Returns:
-            The estimated number of participant needed to satisfy developer's requirement
+            A list of selected participants
         """
-        num_of_selected = self.hoeffding_bound(dev_target, range_of_capacity, max_num_clients, confidence=0.8)
-        selected_client_ids = numpy.random.choice(self.client_list, replacement=False, size=num_of_selected*overcommit)
+        num_of_selected = self._hoeffding_bound(dev_target, range_of_capacity, total_num_clients, confidence=0.8)
+        selected_client_ids = numpy.random.choice(self.client_idx_list, replacement=False, size=num_of_selected*overcommit)
         return selected_client_ids
     
     def select_by_category(self, request_list, max_num_clients=None):
