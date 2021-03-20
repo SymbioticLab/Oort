@@ -14,7 +14,7 @@ for i in range(3, -1, -1):
         logging.info(f'====end up with cuda device {torch.rand(1).to(device=device)}')
         break
     except Exception as e:
-        assert(i != 0)
+        assert i != 0, 'Can not find a feasible GPU'
 
 # gpu_id = str(0)
 # device = torch.device('cuda')
@@ -23,7 +23,6 @@ for i in range(3, -1, -1):
 entire_train_data = None
 sample_size_dic = {}
 
-staleness_file = logDir + 'staleness.txt'
 sampledClientSet = set()
 
 os.environ['MASTER_ADDR'] = args.ps_ip
@@ -143,8 +142,6 @@ def run(model, queue, param_q, stop_signal, clientSampler):
     global logDir, sampledClientSet
 
     logging.info("====PS: get in run()")
-
-    f_staleness = open(staleness_file, 'w')
     
     model = model.to(device=device)
 
@@ -213,7 +210,6 @@ def run(model, queue, param_q, stop_signal, clientSampler):
                     logging.info("====Worker {} has completed all its data computation!".format(rank_src))
                     learner_staleness.pop(rank_src)
                     if (len(learner_staleness) == 0):
-                        f_staleness.close()
                         stop_signal.put(1)
                         break
                     continue
@@ -308,10 +304,6 @@ def run(model, queue, param_q, stop_signal, clientSampler):
                     if test_results[updateEpoch][-1] == len(workers):
                         top_1_str = 'top_1: '
                         top_5_str = 'top_5: '
-
-                        if args.task == 'tag':
-                            top_1_str = 'all-or-nothing: '
-                            top_5_str = 'accuracy: '
 
                         try:
                             logging.info("====After aggregation in epoch: {}, virtual_clock: {}, {}: {} % ({}), {}: {} % ({}), test loss: {}, test len: {}"
@@ -467,7 +459,6 @@ def run(model, queue, param_q, stop_signal, clientSampler):
 
                 # The training stop
                 if(epoch_count >= args.epochs):
-                    f_staleness.close()
                     stop_signal.put(1)
                     logging.info('Epoch is done: {}'.format(epoch_count))
                     break
@@ -480,7 +471,6 @@ def run(model, queue, param_q, stop_signal, clientSampler):
 
         e_time = time.time()
         if (e_time - s_time) >= float(args.timeout):
-            f_staleness.close()
             stop_signal.put(1)
             print('Time up: {}, Stop Now!'.format(e_time - s_time))
             break
