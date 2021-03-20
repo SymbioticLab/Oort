@@ -31,6 +31,7 @@ class testing_selector:
         self.client_info = client_info
         self.model_size = model_size
         self.data_distribution = data_distribution
+        self.client_list = list(range(len(client_info)))
     
 
     def update_client_info(self, client_ids, client_profile):
@@ -81,7 +82,7 @@ class testing_selector:
             The estimated number of participant needed to satisfy developer's requirement
         """
         num_of_selected = self.hoeffding_bound(dev_target, range_of_capacity, max_num_clients, confidence=0.8)
-        selected_client_ids = numpy.random.choice(client_lists, replacement=False, size=num_of_selected*overcommit)
+        selected_client_ids = numpy.random.choice(self.client_list, replacement=False, size=num_of_selected*overcommit)
         return selected_client_ids
     
     def select_by_category(self, request_list, max_num_clients=None):
