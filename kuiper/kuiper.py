@@ -1,5 +1,5 @@
 from .utils.lp import *
-
+import math, numpy
 
 
 def create_training_selector():
@@ -50,7 +50,22 @@ class testing_selector:
         """
         return 0
     
-    def select_by_deviation(self, dev_target, range_of_capacity, max_num_clients):
+    def hoeffding_bound(self, dev_tolerance, capacity_range, total_num_clients, confidence=0.8):
+        '''
+        @ dev_tolerance: maximum deviation from the empirical (E[X])
+        @ capacity_range: maximum - minimum
+        @ total_num_clients: total number of feasible clients
+        @ confidence: Pr[|X - E[X]| < dev_tolerance] > confidence 
+        '''
+
+        factor = (1.0 - 2*total_num_clients/math.log(1-math.pow(confidence, 1)) \
+                                    * (dev_tolerance/float(capacity_range)) ** 2)
+        n = (total_num_clients+1.0)/factor
+
+        return n
+
+    def select_by_deviation(self, dev_target, range_of_capacity, max_num_clients, 
+        confidence=0.8, overcommit=1.1):
         """Testing selector that preserves data representativeness.
 
         Given the developer-specified tolerance `dev_target`, Kuiper can estimate the number 
@@ -65,7 +80,8 @@ class testing_selector:
         Returns:
             The estimated number of participant needed to satisfy developer's requirement
         """
-        selected_client_ids = []
+        num_of_selected = self.hoeffding_bound(dev_target, range_of_capacity, max_num_clients, confidence=0.8)
+        selected_client_ids = numpy.random.choice(client_lists, replacement=False, size=num_of_selected*overcommit)
         return selected_client_ids
     
     def select_by_category(self, request_list, max_num_clients=None):
