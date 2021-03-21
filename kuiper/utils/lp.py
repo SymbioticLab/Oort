@@ -67,7 +67,7 @@ def select_by_sorted_num(raw_datas, pref, budget):
     return clientsTaken, is_success
 
 
-def run_select_by_category(request_list, data_distribution, client_info, budget, model_size):
+def run_select_by_category(request_list, data_distribution, client_info, budget, model_size, greedy_heuristic=True):
     '''
     @ request_list: [num_requested_samples_class_x for class_x in requested_x];
     @ data_distribution: numpy.array([client_id, num_samples_class_x]) -> size: num_of_clients x num_of_interested_class
@@ -80,79 +80,85 @@ def run_select_by_category(request_list, data_distribution, client_info, budget,
     num_of_clients = len(data)
 
     raw_data = np.copy(data)
-
+    init_values = None
     preference_dict = {idx:p for idx, p in enumerate(request_list)}
 
-    # sort clients by # of samples
-    sum_sample_per_client = data.sum(axis=1) 
-    global_distribution = data.sum(axis=0)
-    top_clients = sorted(range(num_of_clients), reverse=True, key=lambda k:np.sum(sum_sample_per_client[k]))
+    if greedy_heuristic:
+        # sort clients by # of samples
+        sum_sample_per_client = data.sum(axis=1) 
+        global_distribution = data.sum(axis=0)
+        top_clients = sorted(range(num_of_clients), reverse=True, key=lambda k:np.sum(sum_sample_per_client[k]))
 
-    # decide the cut-off
-    ratio_of_rep = max([request_list[i]/float(global_distribution[i]) * 5.0 for i in range(len(request_list))])
-    cut_off_clients = min(int(ratio_of_rep * num_of_clients + 1), num_of_clients)
+        # decide the cut-off
+        ratio_of_rep = max([request_list[i]/float(global_distribution[i]) * 5.0 for i in range(len(request_list))])
+        cut_off_clients = min(int(ratio_of_rep * num_of_clients + 1), num_of_clients)
 
-    print(f"cut_off_clients is {cut_off_clients}")
-    select_clients = None
+        print(f"cut_off_clients is {cut_off_clients}")
+        select_clients = None
 
-    # we would like to use at least cut_off_required clients
-    cut_off_required = min(200, budget) 
+        # we would like to use at least cut_off_required clients
+        cut_off_required = min(200, budget) 
 
-    start_time = time.time()
-    while True:
-        tempData = data[top_clients[:cut_off_clients], :]
-        clientsTaken, is_success = select_by_sorted_num(tempData, preference_dict, budget)
+        start_time = time.time()
+        while True:
+            tempData = data[top_clients[:cut_off_clients], :]
+            clientsTaken, is_success = select_by_sorted_num(tempData, preference_dict, budget)
 
-        if is_success:
-            # paraphrase the client IDs given cut_off
-            select_clients = {top_clients[k]:clientsTaken[k] for k in clientsTaken.keys()}
+            if is_success:
+                # paraphrase the client IDs given cut_off
+                select_clients = {top_clients[k]:clientsTaken[k] for k in clientsTaken.keys()}
 
-            # pad the budget
-            if len(select_clients) < cut_off_required:
-                for client in top_clients:
-                    if client not in select_clients:
-                        select_clients[client] = {}
+                # pad the budget
+                if len(select_clients) < cut_off_required:
+                    for client in top_clients:
+                        if client not in select_clients:
+                            select_clients[client] = {}
 
-                    if len(select_clients) == cut_off_required:
-                        break
-            break
-        else:
-            # Multiply the cut-off clients by two for better heuristic
-            if cut_off_clients == num_of_clients:
-                logging.warning(f"Testing Selector: Running out of budget {budget}. Please increase your budget.")
-                return None
-            cut_off_clients = min(cut_off_clients * 2, num_of_clients)
-            logging.info(f"Testing Selector: Augmenting the cut_off_clients to {cut_off_clients} in heuristic")
+                        if len(select_clients) == cut_off_required:
+                            break
+                break
+            else:
+                # Multiply the cut-off clients by two for better heuristic
+                if cut_off_clients == num_of_clients:
+                    logging.warning(f"Testing Selector: Running out of budget {budget}. Please increase your budget.")
+                    return None
+                cut_off_clients = min(cut_off_clients * 2, num_of_clients)
+                logging.info(f"Testing Selector: Augmenting the cut_off_clients to {cut_off_clients} in heuristic")
 
-    augTime = time.time() - start_time
-    logging.info(f"Testing Selector: Client augmentation took {augTime:.2f} sec to pick {len(select_clients)} clients")
+        augTime = time.time() - start_time
+        logging.info(f"Testing Selector: Client augmentation took {augTime:.2f} sec to pick {len(select_clients)} clients")
+
+        select_client_list = list(select_clients.keys())
+
+        # load initial value
+        init_values = {}
+
+        for clientId in range(len(tempdata)):
+            for cl in range(len(tempdata[0])):
+                init_values[(clientId, cl)] = 0
+
+        for idx, key in enumerate(select_client_list):
+            for cl in select_clients[key]:
+                init_values[(idx, cl)] = select_clients[key][cl]
+
+    else:
+        select_client_list = list(range(num_of_clients))
 
     '''Stage 2: extract information of subset clients'''
-    select_client_list = list(select_clients.keys())
+    
     tempdata = raw_data[select_client_list, :]
     tempsys = [client_info[i] for i in select_client_list]
-
-    # load initial value
-    init_values = {}
-
-    for clientId in range(len(tempdata)):
-        for cl in range(len(tempdata[0])):
-            init_values[(clientId, cl)] = 0
-
-    for idx, key in enumerate(select_client_list):
-        for cl in select_clients[key]:
-            init_values[(idx, cl)] = select_clients[key][cl]
 
     '''Stage 3: the rest is LP'''
     start_time = time.time()
 
-    result, sol, lp_duration = lp_gurobi(tempdata, tempsys, budget, preference_dict, model_size, 
+    result, test_duration, lp_duration = lp_gurobi(tempdata, tempsys, budget, preference_dict, model_size, 
                                     init_values=init_values, request_budget=False, gap=0.25)
 
     finish_time = time.time()
     lp_solver_duration = finish_time - start_time
 
-    print(f"LP solver took {finish_time - start_time:.2f} sec")
+    logging.info(f"LP solver took {finish_time - start_time:.2f} sec")
 
     # [TODO]
-    return result
+    return result, test_duration, lp_duration

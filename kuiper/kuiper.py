@@ -94,7 +94,7 @@ class _testing_selector:
         selected_client_ids = numpy.random.choice(self.client_idx_list, replacement=False, size=num_of_selected*overcommit)
         return selected_client_ids
     
-    def select_by_category(self, request_list, max_num_clients=None):
+    def select_by_category(self, request_list, max_num_clients=None, greedy_heuristic=True):
         """Testing selection based on requested number of samples per category.
 
         When individual data characteristics(distribution) is provided, Kuiper can 
@@ -104,7 +104,7 @@ class _testing_selector:
             request_list: a list that specifies the desired number of samples per category. 
                 i.e., [num_requested_samples_class_x for class_x in request_list]. 
             max_num_clients: Optional; the maximum number of participants .
-
+            greedy_heuristic: Optional; whether to use Kuiper-based solver. Otherwise, Mix-Integer Linear Programming
         Returns:
             A list of selected participants ids.
 
@@ -113,9 +113,9 @@ class _testing_selector:
             cannot be satisfied(e.g., max_num_clients too small).
         """
         # TODO: Add error handling
-        selected_client_ids = run_select_by_category(request_list, self.data_distribution, 
-            self.client_info, max_num_clients, self.model_size)
-        return selected_client_ids
+        client_sample_matrix, test_duration, lp_duration = run_select_by_category(request_list, self.data_distribution, 
+            self.client_info, max_num_clients, self.model_size, greedy_heuristic)
+        return client_sample_matrix, test_duration, lp_duration
 
 
 class _training_selector(object):
