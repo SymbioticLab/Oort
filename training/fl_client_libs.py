@@ -1,7 +1,8 @@
 # package for client
 from flLibs import *
 
-logDir = os.getcwd() + "/../../models/" + args.model + '/' + args.time_stamp + '/learner/'
+job_name = args.job_name if args.job_name is not None else args.time_stamp
+logDir = os.path.join(log_path, args.model, job_name, 'worker') #os.getcwd() + "/../../models/" + args.model + '/' + job_name+ '/learner/'
 logFile = logDir + 'log_'+str(args.this_rank)
 
 def init_logging():

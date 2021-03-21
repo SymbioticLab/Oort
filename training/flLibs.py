@@ -52,8 +52,8 @@ tokenizer = None
 
 if args.task == 'nlp' or args.task == 'text_clf':
     tokenizer = AlbertTokenizer.from_pretrained('albert-base-v2', do_lower_case=True)
-    
-modelDir = os.getcwd() + "/../../models/"  + args.model
+
+modelDir = os.path.join(log_path, args.model)#os.getcwd() + "/../../models/"  + args.model
 modelPath = modelDir+'/'+str(args.model)+'.pth.tar' if args.model_path is None else args.model_path
 
 def init_dataset():

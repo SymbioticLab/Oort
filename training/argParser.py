@@ -1,6 +1,9 @@
 import argparse
 
 parser = argparse.ArgumentParser()
+parser.add_argument('--job_name', type=str, default=None)
+parser.add_argument('--log_path', type=str, default='./log')
+
 # The basic configuration of the cluster
 parser.add_argument('--ps_ip', type=str, default='127.0.0.1')
 parser.add_argument('--ps_port', type=str, default='29501')
@@ -14,7 +17,7 @@ parser.add_argument('--to_device', type=str, default='cuda')
 parser.add_argument('--time_stamp', type=str, default='logs')
 parser.add_argument('--task', type=str, default='cv')
 parser.add_argument('--pacer_delta', type=float, default=10)
-parser.add_argument('--pacer_step', type=int, default=9999999999)
+parser.add_argument('--pacer_step', type=int, default=20)
 parser.add_argument('--capacity_bin', type=bool, default=True)
 parser.add_argument('--exploration_alpha', type=float, default=0.3)
 parser.add_argument('--exploration_factor', type=float, default=0.9)
@@ -35,7 +38,7 @@ parser.add_argument('--sample_mode', type=str, default='random')
 parser.add_argument('--score_mode', type=str, default='loss')
 parser.add_argument('--proxy_avg', type=bool, default=False)
 parser.add_argument('--proxy_mu', type=float, default=0.1)
-parser.add_argument('--filter_less', type=int, default=0)
+parser.add_argument('--filter_less', type=int, default=32)
 parser.add_argument('--filter_more', type=int, default=1e5)
 parser.add_argument('--forward_pass', type=bool, default=False)
 parser.add_argument('--run_all', type=bool, default=False)
@@ -100,7 +103,7 @@ parser.add_argument('--min_learning_rate', type=float, default=1e-4)
 parser.add_argument('--loss_decay', type=float, default=0.2)
 parser.add_argument('--skip_partition', type=bool, default=False)
 parser.add_argument('--exploration_min', type=float, default=0.2)
-parser.add_argument('--cut_off_util', type=float, default=0.9)
+parser.add_argument('--cut_off_util', type=float, default=0.7)
 
 # for text clf
 parser.add_argument('--clf_block_size', type=int, default=100)

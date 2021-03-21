@@ -1,6 +1,4 @@
-# An unique identifier for the head node and workers of this cluster.
-cluster_name: kuiper_training
-
+# Configuration file of Kuiper training experiment
 
 # ========== Cluster configuration ========== 
 # ip address of the parameter server (need 1 GPU)
@@ -22,6 +20,14 @@ auth:
     ssh_private_key: ~/.ssh/id_rsa
 
 # ========== Additional job configuration ========== 
-# Default parameters are specified in argParser.py
+# Default parameters are specified in argParser.py, wherein more description of the parameter can be found
 job_conf: 
+    - job_name: shufflenet_kuiper
+    - log_path: ./log
     - test_bsz: 64
+    - data_dir: ~/dataset/openImg
+    - eval_interval: 20   # how many runs to run a testing
+    - model_size: 98304   # Update of shuffleNet is ~ 6MB. This number is profiled.
+    - sample_mode: kuiper # "random"/"kuiper" in client selection
+    - model: shufflenet_v2_x2_0
+    

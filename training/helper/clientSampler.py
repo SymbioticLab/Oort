@@ -14,7 +14,7 @@ class clientSampler(object):
         self.filter_less = args.filter_less
         self.filter_more = args.filter_more
 
-        self.ucbSampler = create_training_selector(args=args, sample_seed=sample_seed) if self.mode == "bandit" else None
+        self.ucbSampler = create_training_selector(args=args, sample_seed=sample_seed) if self.mode != 'random' else None
         self.feasibleClients = []
         self.rng = Random()
         self.rng.seed(sample_seed)
