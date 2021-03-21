@@ -7,14 +7,14 @@ initiate_aggregator_setting()
 # logging.info("=====MASTER_ADDR: {}, MASTER_PORT: {}, visible GPUs: {}, available counts: {}"
 #                 .format(args.ps_ip, args.ps_port, os.environ['CUDA_VISIBLE_DEVICES'], torch.cuda.device_count()))
 
-for i in range(3, -1, -1):
+for i in range(torch.cuda.device_count()):
     try:
         device = torch.device('cuda:'+str(i))
         torch.cuda.set_device(i)
         logging.info(f'====end up with cuda device {torch.rand(1).to(device=device)}')
         break
     except Exception as e:
-        assert i != 0, 'Can not find a feasible GPU'
+        assert i == torch.cuda.device_count()-1, 'Can not find a feasible GPU'
 
 # gpu_id = str(0)
 # device = torch.device('cuda')

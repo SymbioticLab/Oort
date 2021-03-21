@@ -1,0 +1,27 @@
+# An unique identifier for the head node and workers of this cluster.
+cluster_name: kuiper_training
+
+
+# ========== Cluster configuration ========== 
+# ip address of the parameter server (need 1 GPU)
+ps_ip: node-1.scaleml.gaia-pg0.wisc.cloudlab.us
+
+# ip address of each worker:# of gpus on this worker
+# Note that if we collocate ps and worker, then we need to decrease this number of gpus by 1
+# E.g., master node has 4 GPUs, then 1 for the ps, and worker should be set to: worker:3
+worker_ips:
+    - node-2.scaleml.gaia-pg0.wisc.cloudlab.us:3 # worker_ip: # of gpus
+    - node-3.scaleml.gaia-pg0.wisc.cloudlab.us:3
+    - node-4.scaleml.gaia-pg0.wisc.cloudlab.us:3
+    - node-5.scaleml.gaia-pg0.wisc.cloudlab.us:3
+
+exp_path: ~/Kuiper/training
+
+auth:
+    ssh_user: kuiper
+    ssh_private_key: ~/.ssh/id_rsa
+
+# ========== Additional job configuration ========== 
+# Default parameters are specified in argParser.py
+job_conf: 
+    - test_bsz: 64
