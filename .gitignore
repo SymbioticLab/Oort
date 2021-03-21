@@ -1,4 +1,6 @@
 *.tar.gz
 *.zip
 *.h5
+__py*/
+eval_data/
 .DS_Store
