@@ -64,10 +64,16 @@ cd figure
 python plot_figure16.py     # x seconds
 ```
 
-<img src="https://github.com/SymbioticLab/Kuiper/blob/master/figure/ref/figure16a.pdf" width="400">
-
+This will produce plots close to Figure 16 (`figure/ref/figure16a.png` and `figure/ref/figure16b.png`) on page 12 of the paper. You might notice some variation compared to the original figure due to random seeds.
 
 ### Figure 17 - Enforcing Diverse Data Distribution 
+
+```
+cd figure
+python plot_figure17.py     # x seconds
+```
+This will produce plots close to Figure 17 (`figure/ref/figure17a.png` and `figure/ref/figure17b.png`) on page 12 of the paper. 
+
 
 <!-- The output of the experiments will validate the following claims:
 - Table 1: `results/tab1.csv` reproduces Table 1 on Page 5.
