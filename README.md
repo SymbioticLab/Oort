@@ -50,6 +50,23 @@ python setup.py install  # install kuiper
 
 # Validate Results
 
+The output of the experiment will validate the following major claims in our paper:
+
+
+## Training
+
+## Testing
+
+### Preserving Data Representativeness - Figure 16
+
+```
+cd figures
+python plot_figure16.py     # x seconds
+```
+
+
+### Enforcing Diverse Data Distribution - Figure 17
+
 <!-- The output of the experiments will validate the following claims:
 - Table 1: `results/tab1.csv` reproduces Table 1 on Page 5.
 - Figure 2: `results/plot2.pdf` reproduces the plot in Figure 2 on Page 8.
