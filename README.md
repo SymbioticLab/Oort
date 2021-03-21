@@ -57,15 +57,17 @@ The output of the experiment will validate the following major claims in our pap
 
 ## Testing
 
-### Preserving Data Representativeness - Figure 16
+### Figure 16 - Preserving Data Representativeness 
 
 ```
-cd figures
+cd figure
 python plot_figure16.py     # x seconds
 ```
 
+<img src="https://github.com/SymbioticLab/Kuiper/blob/master/figure/ref/figure16a.pdf" width="400">
 
-### Enforcing Diverse Data Distribution - Figure 17
+
+### Figure 17 - Enforcing Diverse Data Distribution 
 
 <!-- The output of the experiments will validate the following claims:
 - Table 1: `results/tab1.csv` reproduces Table 1 on Page 5.
