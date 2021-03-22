@@ -167,5 +167,3 @@ def process_dev(data_file):
 
 norm_dev, Ns = process_dev(data_file='../data/open_images_samples_f16.pkl')
 plot([norm_dev], array(Ns), linelabels = [''],  label = "Deviation Target", y_label='\# of Sampled Clients', name='figure16.pdf')
-
-
