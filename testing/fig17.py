@@ -6,6 +6,7 @@ import time, sys, gc
 from queue import PriorityQueue
 from numpy import *
 import sys
+import logging
 sys.path.insert(0,'..')
 from kuiper import create_testing_selector
 
@@ -15,6 +16,9 @@ from matplotlib import rc
 
 rc('font',**{'family':'serif','serif':['Times']})
 rc('text', usetex=True)
+
+#logging.basicConfig(format='%(asctime)s - %(message)s', level=logging.INFO)
+
 
 def plot_cdf(datas, linelabels = None, label = None, y_label = "CDF", name = "ss"):
     _fontsize = 9
@@ -91,27 +95,35 @@ def run_query():
 
     selector = create_testing_selector(data_distribution=data, client_info=systems, model_size=65536)
 
-    #============ Run MILP =============#
-    # E2E = test_durationn + lp_overhead
-    lp_results = []
-    for budget in budgets:
-        for req in query_samples:
-            req_list = req * distr
-            client_sample_matrix, test_duration, lp_overhead = selector.select_by_category(
-                                        req_list, max_num_clients=budget, greedy_heuristic=False)
-            lp_results.append(test_duration+lp_overhead)
-
 
     #============ Run Kuiper  =============#
     kuiper_results = []
     for budget in budgets:
         for req in query_samples:
+            #logging.info("Running budget " + str(budget) + " query_samples " + str(req))
+            print("Running budget " + str(budget) + " query_samples " + str(req))
             req_list = req * distr
             client_sample_matrix, test_duration, lp_overhead = selector.select_by_category(
                                         req_list, max_num_clients=budget, greedy_heuristic=True)
-            kuiper_results.append(test_duration+lp_overhead)
+            if test_duration != -1:
+                kuiper_results.append(test_duration+lp_overhead)
+
+    #============ Run MILP =============#
+    # E2E = test_durationn + lp_overhead
+    lp_results = []
+    for budget in budgets:
+        for req in query_samples:
+            #logging.info("Running budget " + str(budget) + " query_samples " + str(req))
+            print("Running budget " + str(budget) + " query_samples " + str(req))
+            req_list = req * distr
+            client_sample_matrix, test_duration, lp_overhead = selector.select_by_category(
+                                        req_list, max_num_clients=budget, greedy_heuristic=False)
+            if test_duration != -1:
+                lp_results.append(test_duration+lp_overhead)
+
+
 
     #============ Plot E2E time =============#
-    plot_cdf([kuiper_results, lp_results], ['Kuiper', 'MILP'], "Overhead (s)", "CDF across Queries", "testing_e2e.pdf")
+    plot_cdf([kuiper_results, lp_results], ['Kuiper', 'MILP'], "End-to-End Time (s)", "CDF across Queries", "testing_e2e.pdf")
 
 run_query()

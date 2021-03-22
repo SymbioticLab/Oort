@@ -35,7 +35,7 @@ def lp_gurobi(data, systems, budget, preference, data_trans_size, init_values = 
     m.addConstrs((quantity[i] <= data[i[0]][i[1]] for i in quantity), name='capacity_'+str(i))
 
     # Binary var indicates the selection status
-    status = m.addVars([i for i in range(num_of_clients)], vtype = GRB.BINARY, name = 'status') 
+    status = m.addVars([i for i in range(num_of_clients)], vtype = GRB.BINARY, name = 'status')
     for i in range(num_of_clients):
         m.addGenConstrIndicator(status[i], False, quantity.sum(i, '*') <= 0)
 

@@ -26,7 +26,7 @@ class _testing_selector:
             network bandwidth) mapping. For example, {1: [153.0, 2209.61]} indicates that client 1
             needs 153ms to run a single sample inference and their network bandwidth is 2209 Kbps.
         model_size: Optional; the size of the model(i.e., the data transfer size) in kb
-        data_distribution: Optional; individual data characteristics(distribution). 
+        data_distribution: Optional; individual data characteristics(distribution).
     """
     def __init__(self, data_distribution=None, client_info=None, model_size=None):
         """Inits testing selector."""
@@ -35,25 +35,25 @@ class _testing_selector:
         self.data_distribution = data_distribution
         if self.client_info:
             self.client_idx_list = list(range(len(client_info)))
-    
+
 
     def update_client_info(self, client_ids, client_profile):
         """Update clients' profile(system speed and network bandwidth)
 
         Since the clients' info is dynamic, developers can use this function
-        to update clients' profile. If the client id does not exist, Kuiper will 
+        to update clients' profile. If the client id does not exist, Kuiper will
         create a new entry for this client.
 
         Args:
             client_ids: A list of client ids whose profile needs to be updated
-            client_info: Updated information about client profile, formatted as 
+            client_info: Updated information about client profile, formatted as
                 a list of pairs(speed, bw)
-        
+
         Raises:
             Raises an error if len(client_ids) != len(client_info)
         """
         return 0
-    
+
     def _hoeffding_bound(self, dev_tolerance, capacity_range, total_num_clients, confidence=0.8):
         """Use hoeffding bound to cap the deviation from E[X]
 
@@ -62,7 +62,7 @@ class _testing_selector:
             capacity_range: the global max-min range of number of samples across all clients
             total_num_clients: total number of feasible clients
             confidence: Optional; Pr[|X - E[X]| < dev_tolerance] > confidence
-        
+
         Returns:
             The estimated number of participant needed to satisfy developer's requirement
         """
@@ -73,19 +73,19 @@ class _testing_selector:
 
         return n
 
-    def select_by_deviation(self, dev_target, range_of_capacity, total_num_clients, 
+    def select_by_deviation(self, dev_target, range_of_capacity, total_num_clients,
             confidence=0.8, overcommit=1.1):
         """Testing selector that preserves data representativeness.
 
-        Given the developer-specified tolerance `dev_target`, Kuiper can estimate the number 
-        of participants needed such that the deviation from the representative categorical 
+        Given the developer-specified tolerance `dev_target`, Kuiper can estimate the number
+        of participants needed such that the deviation from the representative categorical
         distribution is bounded.
 
         Args:
             dev_target: developer-specified tolerance
             range_of_capacity: the global max-min range of number of samples across all clients
             confidence: Optional; Pr[|X - E[X]| < dev_tolerance] > confidence
-            overcommit: Optional; to handle stragglers  
+            overcommit: Optional; to handle stragglers
 
         Returns:
             A list of selected participants
@@ -93,27 +93,27 @@ class _testing_selector:
         num_of_selected = self._hoeffding_bound(dev_target, range_of_capacity, total_num_clients, confidence=0.8)
         #selected_client_ids = numpy.random.choice(self.client_idx_list, replacement=False, size=num_of_selected*overcommit)
         return num_of_selected
-    
+
     def select_by_category(self, request_list, max_num_clients=None, greedy_heuristic=True):
         """Testing selection based on requested number of samples per category.
 
-        When individual data characteristics(distribution) is provided, Kuiper can 
-        enforce client's request on the number of samples per category. 
+        When individual data characteristics(distribution) is provided, Kuiper can
+        enforce client's request on the number of samples per category.
 
         Args:
-            request_list: a list that specifies the desired number of samples per category. 
-                i.e., [num_requested_samples_class_x for class_x in request_list]. 
+            request_list: a list that specifies the desired number of samples per category.
+                i.e., [num_requested_samples_class_x for class_x in request_list].
             max_num_clients: Optional; the maximum number of participants .
             greedy_heuristic: Optional; whether to use Kuiper-based solver. Otherwise, Mix-Integer Linear Programming
         Returns:
             A list of selected participants ids.
 
         Raises:
-            Raises an error if 1) no client information is provided or 2) the requirement 
+            Raises an error if 1) no client information is provided or 2) the requirement
             cannot be satisfied(e.g., max_num_clients too small).
         """
         # TODO: Add error handling
-        client_sample_matrix, test_duration, lp_duration = run_select_by_category(request_list, self.data_distribution, 
+        client_sample_matrix, test_duration, lp_duration = run_select_by_category(request_list, self.data_distribution,
             self.client_info, max_num_clients, self.model_size, greedy_heuristic)
         return client_sample_matrix, test_duration, lp_duration
 
@@ -126,8 +126,8 @@ class _training_selector(object):
         self.totalArms = OrderedDict()
         self.training_round = 0
 
-        self.exploration = args.exploration_factor 
-        self.decay_factor = args.exploration_decay 
+        self.exploration = args.exploration_factor
+        self.decay_factor = args.exploration_decay
         self.exploration_min = args.exploration_min
         self.alpha = args.exploration_alpha
 
@@ -217,13 +217,13 @@ class _training_selector(object):
 
         self.unexplored.discard(clientId)
         self.successfulClients.add(clientId)
-        
+
 
     def get_blacklist(self):
         blacklist = []
 
         if self.args.blacklist_rounds != -1:
-            sorted_client_ids = sorted(list(self.totalArms), reverse=True, 
+            sorted_client_ids = sorted(list(self.totalArms), reverse=True,
                                         key=lambda k:self.totalArms[k]['count'])
 
             for clientId in sorted_client_ids:
@@ -273,7 +273,7 @@ class _training_selector(object):
             self.round_prefer_duration = float('inf')
 
         moving_reward, staleness, allloss = [], [], {}
-        
+
         for clientId in orderedKeys:
             if self.totalArms[clientId]['reward'] > 0:
                 creward = self.totalArms[clientId]['reward']
@@ -325,7 +325,7 @@ class _training_selector(object):
         pickedClients = list(np2.random.choice(pickedClients, exploitLen, p=[scores[key]/totalSc for key in pickedClients], replace=False))
         self.exploitClients = pickedClients
 
-        # exploration 
+        # exploration
         if len(self.unexplored) > 0:
             _unexplored = [x for x in list(self.unexplored) if int(x) in feasible_clients]
 
@@ -343,7 +343,7 @@ class _training_selector(object):
 
             unexploredSc = float(sum([init_reward[key] for key in pickedUnexploredClients]))
 
-            pickedUnexplored = list(np2.random.choice(pickedUnexploredClients, exploreLen, 
+            pickedUnexplored = list(np2.random.choice(pickedUnexploredClients, exploreLen,
                             p=[init_reward[key]/unexploredSc for key in pickedUnexploredClients], replace=False))
 
             self.exploreClients = pickedUnexplored
@@ -377,11 +377,11 @@ class _training_selector(object):
 
     def get_median_reward(self):
         feasible_rewards = [self.totalArms[x]['reward'] for x in list(self.totalArms.keys()) if int(x) not in self.blacklist]
-        
+
         # we report mean instead of median
         if len(feasible_rewards) > 0:
             return sum(feasible_rewards)/float(len(feasible_rewards))
-            
+
         return 0
 
     def get_client_reward(self, armId):
