@@ -105,6 +105,7 @@ def run_query():
 
     selector = create_testing_selector(data_distribution=data, client_info=systems, model_size=65536)
 
+    failed_queries = []
 
     #============ Run Kuiper  =============#
     kuiper_results = []
@@ -115,14 +116,24 @@ def run_query():
             req_list = req * distr
             client_sample_matrix, test_duration, lp_overhead = selector.select_by_category(
                                         req_list, max_num_clients=budget, greedy_heuristic=True)
+
+            #  test_duration == -1 indicates failure                           
             if test_duration != -1:
                 kuiper_results.append(test_duration+lp_overhead)
+            else: 
+                failed_queries.append((budget, req))
+
 
     #============ Run MILP =============#
     # E2E = test_durationn + lp_overhead
     lp_results = []
     for budget in budgets:
         for req in query_samples:
+            
+            # Skip failed queries
+            if (budget, req) in failed_queries:
+                continue
+
             #logging.info("Running budget " + str(budget) + " query_samples " + str(req))
             print("Running budget " + str(budget) + " query_samples " + str(req))
             req_list = req * distr
