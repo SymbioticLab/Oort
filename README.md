@@ -52,6 +52,13 @@ python setup.py install  # install kuiper
 
 The output of the experiment will validate the following major claims in our paper:
 
+#### 	**FL Training:**
+* Kuiper outperforms existing random participant selection by 1.2×-14.1× in time-to-accuracy performance, while achieving 1.3%-9.8% better final model accuracy (§7.2.1).
+* Kuiper achieves close-to-optimal model efficiency by adaptively striking the trade-off between statistical and system efficiency with different components (§7.2.2).
+* Kuiper outperforms its counterpart over a wide range of parameters and different scales of experiments, while being robust to outliers (§7.2.3).
+#### 	**FL Testing:**
+* Kuiper can serve developer testing criteria on data deviation while reducing costs by bounding the number of participants needed even without individual data characteristics(§7.3.1).
+* With the individual information, Kuiper improves the testing duration by 4.7× w.r.t. Mixed Integer Linear Programming (MILP) solver, and is able to efficiently enforce developer preferences across millions of clients (§7.3.2).
 
 ## Training
 
@@ -60,7 +67,7 @@ The output of the experiment will validate the following major claims in our pap
 ### Figure 16 - Preserving Data Representativeness 
 
 ```
-cd figure
+cd testing
 python plot_figure16.py     # x seconds
 ```
 
@@ -69,7 +76,7 @@ This will produce plots close to Figure 16 (`figure/ref/figure16a.png` and `figu
 ### Figure 17 - Enforcing Diverse Data Distribution 
 
 ```
-cd figure
+cd testing
 python plot_figure17.py     # x seconds
 ```
 This will produce plots close to Figure 17 (`figure/ref/figure17a.png` and `figure/ref/figure17b.png`) on page 12 of the paper. 
