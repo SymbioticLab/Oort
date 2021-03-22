@@ -137,7 +137,7 @@ def process_dev(data_file):
         n = testing_selector.select_by_deviation(dev_target=dev, range_of_capacity=max_min_range,
                                                 total_num_clients=num_of_client, confidence=0.95, overcommit=1.0)
         dev_dicts[dev].append(n)
-        print(n)
+        #print(n)
 
     # strictly sort the dict
     ordered_dev_dicts = OrderedDict()
@@ -162,8 +162,8 @@ def process_dev(data_file):
     global_ys = array(Hoeff_n)
     norm_dev = array(Devs)/max_dev
 
-    print(Ns)
+    #print(Ns)
     return norm_dev, Ns
 
-norm_dev, Ns = process_dev(data_file='../data/open_images_samples_f16.pkl')
+norm_dev, Ns = process_dev(data_file='../data/misc/speech_sample_f16.pkl')
 plot([norm_dev], array(Ns), linelabels = [''],  label = "Deviation Target", y_label='\# of Sampled Clients', name='figure16.pdf')

@@ -81,7 +81,8 @@ cd testing
 python plot_figure17.py     # x seconds
 open figure17.pdf
 ```
-This will produce plots(xxx) close to Figure 17 (`figure/ref/figure17a.png` and `figure/ref/figure17b.png`) on page 12 of the paper. 
+
+This will produce plots close to Figure 17 (`figure/ref/figure17a.png` and `figure/ref/figure17b.png`) on page 12 of the paper. 
 
 
 <!-- The output of the experiments will validate the following claims:

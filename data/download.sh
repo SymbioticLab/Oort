@@ -102,14 +102,12 @@ reddit()
 
 stats()
 {
-    if [ ! -d "${DIR}/stats/" ]; 
+    if [ ! -d "${DIR}/misc/" ]; 
     then
-        echo "Downloading preprocessed dataset stats(about 100MB)..."
-        mkdir ${DIR}/stats
-        wget -O ${DIR}/stats/openimg_distr.pkl https://www.dropbox.com/s/otnxfyfm6dqug9g/openimg_size.pkl?dl=0
-        wget -O ${DIR}/stats/reddit_distr.pkl https://www.dropbox.com/s/c08tnwv479u8h41/reddit_size.pkl?dl=0
-        wget -O ${DIR}/stats/speech_distr.pkl https://www.dropbox.com/s/rjce3wqf4umjcae/speech_size.pkl?dl=0
-        wget -O ${DIR}/stats/stackoverflow_distr.pkl https://www.dropbox.com/s/0yujx9hgybyb4nl/stackoverflow_size.pkl?dl=0
+        echo "Downloading preprocessed dataset stats used to reproduce figures..."
+        mkdir ${DIR}/misc
+        wget -O ${DIR}/misc/speech_samples_f16.pkl https://www.dropbox.com/s/zzkuy48xl68fzhs/speech_samples_f16.pkl?dl=0
+        wget -O ${DIR}/misc/openimg_distr.pkl https://www.dropbox.com/s/pb2aomq7z9nn6vg/openimg_distr.pkl?dl=0
 
         echo -e "${GREEN}Dataset stats downloaded!${NC}"
     else
