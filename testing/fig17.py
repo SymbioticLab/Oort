@@ -5,12 +5,11 @@ from gurobipy import *
 import time, sys, gc
 from queue import PriorityQueue
 from numpy import *
-from lp_solver import *
 import sys
 sys.path.insert(0,'..')
 from kuiper import create_testing_selector
 
-import os  
+import os
 import matplotlib.pyplot as plt
 from matplotlib import rc
 
@@ -63,13 +62,13 @@ def plot_cdf(datas, linelabels = None, label = None, y_label = "CDF", name = "ss
     # Remove frame top and right
     ax.spines['top'].set_visible(False)
     ax.spines['right'].set_visible(False)
-    
+
     plt.tight_layout(pad=0.2, w_pad=0.03, h_pad=0.01)
     plt.savefig(name)
 
-def load_profiles(datafile, sysfile, distrfile):
+def load_profiles(datafile, sysfile):
     # load user data information
-    # num_of_clients x num_of_classes 
+    # num_of_clients x num_of_classes
     datas = pickle.load(open(datafile, 'rb'))
 
     # load user system information
@@ -85,7 +84,7 @@ def run_query():
     """
     Generate queries for fig 17 and plot results
     """
-    data, systems, distr = load_profiles('openImg_dist', 'client_profile')
+    data, systems, distr = load_profiles('openimg_distr.pkl', 'client_profile.pkl')
 
     budgets = [100, 500, 1000, 1500, 2000, 2500, 3000, 3500, 4000, 4500, 5000]
     query_samples = [1000 * i for i in range(1, 11)] + [10000 * i for i in range(2, 20)]
@@ -104,7 +103,7 @@ def run_query():
 
 
     #============ Run Kuiper  =============#
-    kuiper_results = [] 
+    kuiper_results = []
     for budget in budgets:
         for req in query_samples:
             req_list = req * distr

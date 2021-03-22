@@ -91,8 +91,8 @@ class _testing_selector:
             A list of selected participants
         """
         num_of_selected = self._hoeffding_bound(dev_target, range_of_capacity, total_num_clients, confidence=0.8)
-        selected_client_ids = numpy.random.choice(self.client_idx_list, replacement=False, size=num_of_selected*overcommit)
-        return selected_client_ids
+        #selected_client_ids = numpy.random.choice(self.client_idx_list, replacement=False, size=num_of_selected*overcommit)
+        return num_of_selected
     
     def select_by_category(self, request_list, max_num_clients=None, greedy_heuristic=True):
         """Testing selection based on requested number of samples per category.

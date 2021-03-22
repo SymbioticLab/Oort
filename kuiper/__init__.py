@@ -1,1 +1,1 @@
-from .kuiper import training_selector, testing_selector
+from .kuiper import create_training_selector, create_testing_selector

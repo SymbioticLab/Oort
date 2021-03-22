@@ -4,7 +4,7 @@ import gurobipy as gp
 from gurobipy import *
 import time, sys
 from numpy import *
-from lp_gurobi import *
+from .lp_gurobi import *
 import logging
 
 def select_by_sorted_num(raw_datas, pref, budget):
@@ -76,7 +76,7 @@ def run_select_by_category(request_list, data_distribution, client_info, budget,
 
     data = np.copy(data_distribution)
 
-    num_of_class = len(data_distribution[0]) 
+    num_of_class = len(data_distribution[0])
     num_of_clients = len(data)
 
     raw_data = np.copy(data)
@@ -85,7 +85,7 @@ def run_select_by_category(request_list, data_distribution, client_info, budget,
 
     if greedy_heuristic:
         # sort clients by # of samples
-        sum_sample_per_client = data.sum(axis=1) 
+        sum_sample_per_client = data.sum(axis=1)
         global_distribution = data.sum(axis=0)
         top_clients = sorted(range(num_of_clients), reverse=True, key=lambda k:np.sum(sum_sample_per_client[k]))
 
@@ -97,7 +97,7 @@ def run_select_by_category(request_list, data_distribution, client_info, budget,
         select_clients = None
 
         # we would like to use at least cut_off_required clients
-        cut_off_required = min(200, budget) 
+        cut_off_required = min(200, budget)
 
         start_time = time.time()
         while True:
@@ -145,14 +145,14 @@ def run_select_by_category(request_list, data_distribution, client_info, budget,
         select_client_list = list(range(num_of_clients))
 
     '''Stage 2: extract information of subset clients'''
-    
+
     tempdata = raw_data[select_client_list, :]
-    tempsys = [client_info[i] for i in select_client_list]
+    tempsys = [client_info[i+1] for i in select_client_list]
 
     '''Stage 3: the rest is LP'''
     start_time = time.time()
 
-    result, test_duration, lp_duration = lp_gurobi(tempdata, tempsys, budget, preference_dict, model_size, 
+    result, test_duration, lp_duration = lp_gurobi(tempdata, tempsys, budget, preference_dict, model_size,
                                     init_values=init_values, request_budget=False, gap=0.25)
 
     finish_time = time.time()

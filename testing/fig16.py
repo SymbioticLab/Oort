@@ -16,7 +16,7 @@ sys.path.insert(0,'..')
 from kuiper import create_testing_selector
 
 rc('font',**{'family':'serif','serif':['Times']})
-rc('text', usetex=True)
+#rc('text', usetex=True)
 
 N = []
 global_ys = None
@@ -30,7 +30,7 @@ def plot(datas, xs, linelabels = None, label = None, y_label = "CDF", name = "ss
     ax = fig.add_subplot(111)
     plt.ylabel(y_label, fontsize=_fontsize)
     plt.xlabel(label, fontsize=_fontsize)
-    
+
     colors = ['grey', 'black']
 
     linetype = ['-.', '-', '-.', '-', '-' ,':']
@@ -70,7 +70,7 @@ def plot(datas, xs, linelabels = None, label = None, y_label = "CDF", name = "ss
 
     ax.spines['right'].set_visible(False)
     ax.spines['top'].set_visible(False)
-    
+
     plt.xticks([0, 0.25, 0.5, 0.75, 1.0],fontsize=_fontsize)
     plt.yticks([10, 100, 1000], fontsize=_fontsize)
 
@@ -80,16 +80,15 @@ def plot(datas, xs, linelabels = None, label = None, y_label = "CDF", name = "ss
     plt.xlim(0, 1.)
     plt.tight_layout(pad=0.2)
 
-    
+
     ax.spines['right'].set_visible(False)
     ax.spines['top'].set_visible(False)
 
     plt.savefig(name)
 
 
-def get_l1_distance(global_dist, results):
+def get_l1_distance(norm_global, results, N):
     distance = []
-    norm_global = np.array(global_dist)/float(num_of_client)
 
     for sample_num_of_client in N:
         samples = results[sample_num_of_client]
@@ -106,10 +105,12 @@ def load_results(file):
     return data
 
 def process_dev(data_file):
+    global global_xs, global_ys
+
     ''' Result of fig 16(a) -- OpenImage dataset '''
     datas = load_results(data_file)
 
-    num_of_client = datas['clients'] 
+    num_of_client = datas['clients']
     N = datas['sample_n']
     global_data = datas['global_dist']
 
@@ -117,7 +118,7 @@ def process_dev(data_file):
     max_min_range = datas['max_min_range']
 
     # ==============Statistics of random sampling ==================== #
-    distance = get_l1_distance(global_data, datas)
+    distance = get_l1_distance(global_data/float(num_of_client), datas, N)
     dev_dicts = OrderedDict()
 
     dev_max = []
@@ -129,13 +130,14 @@ def process_dev(data_file):
         dev_dicts[max_temp] = [max_runs, N[i]]
 
     hoeff_ns = []
+
     testing_selector = create_testing_selector()
     # Given dev target, output # of participants needed
     for dev in dev_max:
-        n = testing_selector.select_by_deviation(dev_target=dev, range_of_capacity=max_min_range, 
+        n = testing_selector.select_by_deviation(dev_target=dev, range_of_capacity=max_min_range,
                                                 total_num_clients=num_of_client, confidence=0.95, overcommit=1.0)
         dev_dicts[dev].append(n)
-
+        print(n)
 
     # strictly sort the dict
     ordered_dev_dicts = OrderedDict()
@@ -154,13 +156,16 @@ def process_dev(data_file):
         Hoeff_n.append(ordered_dev_dicts[dev][2])
 
 
+
     max_dev = max(ordered_dev_dicts.keys())
     global_xs = list(ordered_dev_dicts.keys())/max_dev
     global_ys = array(Hoeff_n)
     norm_dev = array(Devs)/max_dev
 
+    print(Ns)
     return norm_dev, Ns
 
 norm_dev, Ns = process_dev(data_file='../data/open_images_samples_f16.pkl')
-plot([norm_dev], array(Ns), linelabels = [''],  label = "Deviation Target", y_label='\# of Sampled Clients', name='openimg_dev.pdf')
+plot([norm_dev], array(Ns), linelabels = [''],  label = "Deviation Target", y_label='\# of Sampled Clients', name='figure16.pdf')
+
 
