@@ -17,6 +17,16 @@ rc('font',**{'family':'serif','serif':['Times']})
 rc('text', usetex=True)
 
 def plot_cdf(datas, linelabels = None, label = None, y_label = "CDF", name = "ss"):
+
+    def cdf_transfer(X):
+        X = sorted(X)
+        Y=[]
+        l=len(X)
+        Y.append(float(1)/l)
+        for i in range(2,l+1):
+            Y.append(float(1)/l+Y[i-2])
+        return X, Y
+
     _fontsize = 9
     fig = plt.figure(figsize=(2, 1.6))
     ax = fig.add_subplot(111)
