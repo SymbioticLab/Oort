@@ -1,4 +1,4 @@
-name: torch14
+name: kuiper
 channels:
   - pytorch
   - conda-forge

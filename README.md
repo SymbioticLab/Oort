@@ -17,21 +17,15 @@ Expected runtime: x human-minutes + x compute-minutes
 
 Before attempting to install Kuiper, you must have the following installed:
 
-* Python 3.7
-* gurobipy 9.1.0
-  * `conda install -c gurobi gurobi` ([alternative downloads](https://support.gurobi.com/hc/en-us/articles/360044290292-How-do-I-install-Gurobi-for-Python-))
-  * Request an [academic license](https://www.gurobi.com/downloads/end-user-license-agreement-academic/) if possible. Otherwise, please contact us for a temporary license. 
-  * `grbgetkey [your license]` to install the license 
-* PyTorch 1.1+ 
-  * TODO: add instructions
-* transformers xx
-  * TODO: add instructions
+* [Anaconda Package Manager](https://anaconda.org/)
 
 Run the following commands to install kuiper and download the [datasets](https://www.dropbox.com/sh/lti7j1g4a1jgr4r/AAD802HuoxjZi8Xy7xXZbDs8a?dl=0).
 
 ```
 git clone https://github.com/SymbioticLab/Kuiper
 cd Kuiper
+conda env create -f environment.yml # Install dependencies
+conda activate kuiper
 python setup.py install  # install kuiper
 ./data/download.sh -A    # download all datasets (See ./download.sh -h on how to download a subset of datasets)
 ```
