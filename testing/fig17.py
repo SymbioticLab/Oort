@@ -7,6 +7,7 @@ from queue import PriorityQueue
 from numpy import *
 import sys
 import logging
+import pickle
 sys.path.insert(0,'..')
 from kuiper import create_testing_selector
 
@@ -108,7 +109,8 @@ def run_query():
     failed_queries = []
 
     #============ Run Kuiper  =============#
-    kuiper_results = []
+    kuiper_e2e_result = []
+    kuiper_overhead_result = []
     for budget in budgets:
         for req in query_samples:
             #logging.info("Running budget " + str(budget) + " query_samples " + str(req))
@@ -117,19 +119,20 @@ def run_query():
             client_sample_matrix, test_duration, lp_overhead = selector.select_by_category(
                                         req_list, max_num_clients=budget, greedy_heuristic=True)
 
-            #  test_duration == -1 indicates failure                           
+            #  test_duration == -1 indicates failure
             if test_duration != -1:
-                kuiper_results.append(test_duration+lp_overhead)
-            else: 
+                kuiper_e2e_result.append(test_duration+lp_overhead)
+                kuiper_overhead_result.append(lp_overhead)
+            else:
                 failed_queries.append((budget, req))
-
 
     #============ Run MILP =============#
     # E2E = test_durationn + lp_overhead
-    lp_results = []
+    lp_e2e_result = []
+    lp_overhead_result = []
     for budget in budgets:
         for req in query_samples:
-            
+
             # Skip failed queries
             if (budget, req) in failed_queries:
                 continue
@@ -140,11 +143,20 @@ def run_query():
             client_sample_matrix, test_duration, lp_overhead = selector.select_by_category(
                                         req_list, max_num_clients=budget, greedy_heuristic=False)
             if test_duration != -1:
-                lp_results.append(test_duration+lp_overhead)
+                lp_e2e_result.append(test_duration+lp_overhead)
+                lp_overhead_result.append(lp_overhead)
 
+    results = {}
+    results['kuiper_e2e'] = kuiper_e2e_result
+    results['kuiper_overhead'] = kuiper_overhead_result
+    results['lp_e2e'] = lp_e2e_result
+    results['lp_overhead'] = lp_overhead_result
 
+    with open("figure17_data.pkl", "wb") as fout:
+        pickle.dump(results, fout)
 
     #============ Plot E2E time =============#
-    plot_cdf([kuiper_results, lp_results], ['Kuiper', 'MILP'], "End-to-End Time (s)", "CDF across Queries", "testing_e2e.pdf")
+    #plot_cdf([kuiper_results, lp_results], ['Kuiper', 'MILP'], "End-to-End Time (s)", "CDF across Queries", "testing_e2e.pdf")
 
-run_query()
+if __name__ == '__main__':
+    run_query()
