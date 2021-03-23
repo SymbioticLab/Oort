@@ -18,7 +18,6 @@ Expected runtime: x human-minutes + x compute-minutes
 Before attempting to install Kuiper, you must have the following:
 
 * [Anaconda Package Manager](https://anaconda.org/)
-* Request an Gurobi [academic license](https://www.gurobi.com/downloads/end-user-license-agreement-academic/) if possible. Otherwise, please contact us for a temporary license.
 
 Run the following commands to install kuiper and download the [datasets](https://www.dropbox.com/sh/lti7j1g4a1jgr4r/AAD802HuoxjZi8Xy7xXZbDs8a?dl=0).
 
@@ -27,7 +26,6 @@ git clone https://github.com/SymbioticLab/Kuiper
 cd Kuiper
 conda env create -f environment.yml # Install dependencies
 conda activate kuiper
-grbgetkey [your license] # install gurobi license
 python setup.py install  # install kuiper
 ./data/download.sh -A    # download all datasets (See ./download.sh -h on how to download a subset of datasets)
 ```
@@ -71,6 +69,11 @@ open figure16.pdf
 This will produce plots close to Figure 16 (`figure/ref/figure16a.png` and `figure/ref/figure16b.png`) on page 12 of the paper. You might notice some variation compared to the original figure due to randomness of the experiments.
 
 ### Figure 17 - Enforcing Diverse Data Distribution 
+
+Before running below script, you must install gurobi license by:
+
+* Request an [academic license](https://www.gurobi.com/downloads/end-user-license-agreement-academic/) if possible. Otherwise, please contact us for a temporary license. 
+* `grbgetkey [your license]` to install the license 
 
 ```
 cd testing
