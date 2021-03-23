@@ -15,9 +15,10 @@ This repository contains scripts and instructions for reproducing the experiment
 # Getting Started 
 Expected runtime: x human-minutes + x compute-minutes
 
-Before attempting to install Kuiper, you must have the following installed:
+Before attempting to install Kuiper, you must have the following:
 
 * [Anaconda Package Manager](https://anaconda.org/)
+* Request an Gurobi [academic license](https://www.gurobi.com/downloads/end-user-license-agreement-academic/) if possible. Otherwise, please contact us for a temporary license.
 
 Run the following commands to install kuiper and download the [datasets](https://www.dropbox.com/sh/lti7j1g4a1jgr4r/AAD802HuoxjZi8Xy7xXZbDs8a?dl=0).
 
@@ -26,6 +27,7 @@ git clone https://github.com/SymbioticLab/Kuiper
 cd Kuiper
 conda env create -f environment.yml # Install dependencies
 conda activate kuiper
+grbgetkey [your license] # install gurobi license
 python setup.py install  # install kuiper
 ./data/download.sh -A    # download all datasets (See ./download.sh -h on how to download a subset of datasets)
 ```
