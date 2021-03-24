@@ -8,6 +8,7 @@ from numpy import *
 import sys
 import logging
 import pickle
+import argparse
 sys.path.insert(0,'..')
 from kuiper import create_testing_selector
 
@@ -95,7 +96,7 @@ def load_profiles(datafile, sysfile):
 
     return datas, systems, distr
 
-def run_query():
+def run_query(kuiper_only):
     """
     Generate queries for fig 17 and plot results
     """
@@ -107,6 +108,7 @@ def run_query():
     selector = create_testing_selector(data_distribution=data, client_info=systems, model_size=65536)
 
     failed_queries = []
+    results = {}
 
     #============ Run Kuiper  =============#
     kuiper_e2e_result = []
@@ -116,7 +118,7 @@ def run_query():
             #logging.info("Running budget " + str(budget) + " query_samples " + str(req))
             print("Running budget " + str(budget) + " query_samples " + str(req))
             req_list = req * distr
-            client_sample_matrix, test_duration, lp_overhead = selector.select_by_category(
+            _, test_duration, lp_overhead = selector.select_by_category(
                                         req_list, max_num_clients=budget, greedy_heuristic=True)
 
             #  test_duration == -1 indicates failure
@@ -125,38 +127,51 @@ def run_query():
                 kuiper_overhead_result.append(lp_overhead)
             else:
                 failed_queries.append((budget, req))
-
-    #============ Run MILP =============#
-    # E2E = test_durationn + lp_overhead
-    lp_e2e_result = []
-    lp_overhead_result = []
-    for budget in budgets:
-        for req in query_samples:
-
-            # Skip failed queries
-            if (budget, req) in failed_queries:
-                continue
-
-            #logging.info("Running budget " + str(budget) + " query_samples " + str(req))
-            print("Running budget " + str(budget) + " query_samples " + str(req))
-            req_list = req * distr
-            client_sample_matrix, test_duration, lp_overhead = selector.select_by_category(
-                                        req_list, max_num_clients=budget, greedy_heuristic=False)
-            if test_duration != -1:
-                lp_e2e_result.append(test_duration+lp_overhead)
-                lp_overhead_result.append(lp_overhead)
-
-    results = {}
     results['kuiper_e2e'] = kuiper_e2e_result
     results['kuiper_overhead'] = kuiper_overhead_result
-    results['lp_e2e'] = lp_e2e_result
-    results['lp_overhead'] = lp_overhead_result
 
-    with open("figure17_data.pkl", "wb") as fout:
-        pickle.dump(results, fout)
+    if not kuiper_only:
+        #============ Run MILP =============#
+        # E2E = test_durationn + lp_overhead
+        lp_e2e_result = []
+        lp_overhead_result = []
+        for budget in budgets:
+            for req in query_samples:
 
-    #============ Plot E2E time =============#
-    #plot_cdf([kuiper_results, lp_results], ['Kuiper', 'MILP'], "End-to-End Time (s)", "CDF across Queries", "testing_e2e.pdf")
+                # Skip failed queries
+                if (budget, req) in failed_queries:
+                    continue
+
+                #logging.info("Running budget " + str(budget) + " query_samples " + str(req))
+                print("Running budget " + str(budget) + " query_samples " + str(req))
+                req_list = req * distr
+                _, test_duration, lp_overhead = selector.select_by_category(
+                                            req_list, max_num_clients=budget, greedy_heuristic=False)
+                if test_duration != -1:
+                    lp_e2e_result.append(test_duration+lp_overhead)
+                    lp_overhead_result.append(lp_overhead)
+
+        results['lp_e2e'] = lp_e2e_result
+        results['lp_overhead'] = lp_overhead_result
+
+    # with open("figure17_data.pkl", "wb") as fout:
+    #     pickle.dump(results, fout)
+
+    return results
+
 
 if __name__ == '__main__':
-    run_query()
+
+    parser = argparse.ArgumentParser()
+    parser.add_argument('-k', '--kuiper', action='store_true')
+    args = parser.parse_args()
+
+    results = run_query(args.kuiper)
+    # ============ Plot E2E time and overhead ============= 
+    if args.kuiper:
+        plot_cdf([results['kuiper_e2e']], ['Kuiper'], "End-to-End Time (s)", "CDF across Queries", "figure17a.pdf")
+        plot_cdf([results['kuiper_overhead']], ['Kuiper'], "Overhead (s)", "CDF across Queries", "figure17b.pdf")
+    else:
+        plot_cdf([results['kuiper_e2e'], results['lp_e2e']], ['Kuiper', 'MILP'], "End-to-End Time (s)", "CDF across Queries", "figure17a.pdf")
+        plot_cdf([results['kuiper_overhead'], results['lp_overhead']], ['Kuiper', 'MILP'], "Overhead (s)", "CDF across Queries", "figure17b.pdf")
+        
