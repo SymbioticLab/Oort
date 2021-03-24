@@ -32,15 +32,6 @@ python setup.py install  # install kuiper
 
 # Run Experiments
 
-<!-- * Run `./exp.sh 6 30m 1` to run our tool on only *6 benchmarks* for *30 minutes each* with only *1 repetition*. 
-  - This command takes only **3 hours** to run in total, and produces results that approximate the results shown in the paper.
-  - Since there is only 1 repetition, there will be no error bars in the final plots.
-  - Results will be saved in a directory called `results`.
-
-* Run `./exp.sh 20 24h 10` to replicate the full experiments in the paper
-  - This command takes **200 days** to run 10 reps of all 20 benchmarks for 24 hours each. 
-  - Feel free to tweak the args to produce results with intermediate quality, depending on the time that you have.
-  - Results will be saved in a directory called `results`. -->
 
 # Validate Results
 
@@ -50,6 +41,7 @@ The output of the experiment will validate the following major claims in our pap
 * Kuiper outperforms existing random participant selection by 1.2×-14.1× in time-to-accuracy performance, while achieving 1.3%-9.8% better final model accuracy (§7.2.1) -> Table 1 and Figure 9.
 * Kuiper achieves close-to-optimal model efficiency by adaptively striking the trade-off between statistical and system efficiency with different components (§7.2.2) -> Figure 11 and 12.
 * Kuiper outperforms its counterpart over a wide range of parameters and different scales of experiments, while being robust to outliers (§7.2.3) -> Figure 13, 14 and 15.
+
 #### 	**FL Testing:**
 * Kuiper can serve developer testing criteria on data deviation while reducing costs by bounding the number of participants needed even without individual data characteristics(§7.3.1) —> Figure 16.
 * With the individual information, Kuiper improves the testing duration by 4.7× w.r.t. Mixed Integer Linear Programming (MILP) solver, and is able to efficiently enforce developer preferences across millions of clients (§7.3.2) -> Figure 17.
@@ -80,7 +72,7 @@ python plot_figure16.py     # few seconds
 open figure16.pdf
 ```
 
-This will produce plots close to Figure 16 (`figure/ref/figure16a.png` and `figure/ref/figure16b.png`) on page 12 of the paper. You might notice some variation compared to the original figure due to randomness of the experiments.
+This will produce plots close to Figure 16 (`figure/ref/figure16a.pdf` and `figure/ref/figure16b.pdf`) on page 12 of the paper. You might notice some variation compared to the original figure due to randomness of the experiments.
 
 ### Figure 17 - Enforcing Diverse Data Distribution 
 
@@ -97,18 +89,9 @@ python plot_figure17.py   # > 36 hours
 open figure17a.pdf figure17b.pdf
 ``` 
 
-This will produce plots close to Figure 17 (`figure/ref/figure17a.png` and `figure/ref/figure17b.png`) on page 12 of the paper. You might notice some variation compared to the original figure as we removed a few long-running queries. 
+This will produce plots close to Figure 17 (`figure/ref/figure17a.pdf` and `figure/ref/figure17b.pdf`) on page 12 of the paper. You might notice some variation compared to the original figure as we removed a few long-running queries. 
 
-Note: To save reviewers time, `python plot_figure17.py -k` will only run and plot the lines for kuiper. We hope the runtime will convince you that MILP is extremly slow :) 
-
-
-<!-- The output of the experiments will validate the following claims:
-- Table 1: `results/tab1.csv` reproduces Table 1 on Page 5.
-- Figure 2: `results/plot2.pdf` reproduces the plot in Figure 2 on Page 8.
-- Page 7, para 3: "We outperform the baseline by 2x". See `results/comparison.csv`, where the second column (our performance) should have a value that is twice as much as the third column (baseline).
-
-Our artifact does not validate the following claims:
-- On Page 8, we say X, but this cannot be validated without access to specialized hardware/people, so we leave it out of scope of artifact evaluation. -->
+Note: To save reviewers time, `python plot_figure17.py -k` will only run and plot the lines for Kuiper. We hope the runtime will convince you that MILP is extremly slow :) 
 
 # Repo Structure
 
