@@ -1,6 +1,5 @@
 *.tar.gz
 *.zip
-*.pdf
 *.h5
 *.pkl
 __py*/

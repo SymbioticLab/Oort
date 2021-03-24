@@ -88,14 +88,18 @@ Before running below script, you must install gurobi license by:
 
 * Request an [academic license](https://www.gurobi.com/downloads/end-user-license-agreement-academic/) if possible. Otherwise, please contact us for a temporary license. 
 * `grbgetkey [your license]` to install the license 
+* TODO: maybe latex? 
 
 ```
 cd testing
-python plot_figure17.py     # x seconds
-open figure17.pdf
-```
+python plot_figure17.py   # > 36 hours
+# or python plot_figure17.py -k # x minutes
+open figure17a.pdf figure17b.pdf
+``` 
 
-This will produce plots close to Figure 17 (`figure/ref/figure17a.png` and `figure/ref/figure17b.png`) on page 12 of the paper. 
+This will produce plots close to Figure 17 (`figure/ref/figure17a.png` and `figure/ref/figure17b.png`) on page 12 of the paper. You might notice some variation compared to the original figure as we removed a few long-running queries. 
+
+Note: To save reviewers time, `python plot_figure17.py -k` will only run and plot the lines for kuiper. We hope the runtime will convince you that MILP is extremly slow :) 
 
 
 <!-- The output of the experiments will validate the following claims:
