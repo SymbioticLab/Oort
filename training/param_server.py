@@ -25,18 +25,15 @@ sampledClientSet = set()
 
 os.environ['MASTER_ADDR'] = args.ps_ip
 os.environ['MASTER_PORT'] = args.ps_port
-# os.environ['NCCL_SOCKET_IFNAME'] = 'ib0'
-# os.environ['GLOO_SOCKET_IFNAME'] = 'vlan260'
-# os.environ['NCCL_DEBUG'] = 'INFO'
-
+#os.environ['NCCL_SOCKET_IFNAME'] = 'enp94s0f0'
 def initiate_sampler_query(queue, numOfClients):
     # Initiate the clientSampler
     if args.sampler_path is None:
-        clientSampler = clientSampler(args.sample_mode, args.score_mode, filter=args.filter_less, sample_seed=args.sample_seed)
+        client_sampler = clientSampler(args.sample_mode, args.score_mode, args=args, filter=args.filter_less, sample_seed=args.sample_seed)
     else:
         # load sampler
         with open(args.sampler_path, 'rb') as loader:
-            clientSampler = pickle.load(loader)
+            client_sampler = pickle.load(loader)
 
     # load client profiles
     global_client_profile = {}
@@ -67,8 +64,8 @@ def initiate_sampler_query(queue, numOfClients):
                     # since the worker rankId starts from 1, we also configure the initial dataId as 1
                     mapped_id = max(1, clientId%num_client_profile)
                     systemProfile = global_client_profile[mapped_id] if mapped_id in global_client_profile else [1.0, 1.0]
-                    clientSampler.registerClient(rank_src, clientId, dis, sizeVec[index], speed=systemProfile)
-                    clientSampler.registerDuration(clientId,
+                    client_sampler.registerClient(rank_src, clientId, dis, sizeVec[index], speed=systemProfile)
+                    client_sampler.registerDuration(clientId,
                         batch_size=args.batch_size, upload_epoch=args.upload_epoch,
                         model_size=args.model_size)
 
@@ -78,9 +75,9 @@ def initiate_sampler_query(queue, numOfClients):
 
             collectedClients += 1
 
-    logging.info("====Info of all feasible clients {}".format(clientSampler.getDataInfo()))
+    logging.info("====Info of all feasible clients {}".format(client_sampler.getDataInfo()))
 
-    return clientSampler
+    return client_sampler
 
 def init_myprocesses(rank, size, model, queue, param_q, stop_signal, fn, backend):
     global sampledClientSet
@@ -518,3 +515,4 @@ if __name__ == "__main__":
                 )
 
     manager.shutdown()
+

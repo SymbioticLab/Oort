@@ -20,6 +20,7 @@ auth:
 setup_commands:
     - source ~/.bashrc
     - conda activate kuiper  
+    - export NCCL_SOCKET_IFNAME='enp94s0f0'
 
 # ========== Additional job configuration ========== 
 # Default parameters are specified in argParser.py, wherein more description of the parameter can be found
@@ -29,6 +30,7 @@ job_conf:
     - log_path: ./log
     - total_worker: 100
     - num_class: 596
+    - data_set: openImg 
     - data_dir: /mnt/dataset/open_images
     - data_mapfile: /mnt/dataset/open_images/imageToAuthor # Allocation of data to each client
     - eval_interval: 20   # how many runs to run a testing

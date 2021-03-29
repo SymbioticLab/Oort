@@ -19,7 +19,7 @@ def process_cmd(yaml_file):
 
     ps_ip = yaml_conf['ps_ip']
     worker_ips, total_gpus = [], []
-    
+
     for ip_gpu in yaml_conf['worker_ips']:
         ip, num_gpu = ip_gpu.strip().split(':')
         worker_ips.append(ip)
@@ -30,10 +30,11 @@ def process_cmd(yaml_file):
     job_name = 'kuiper_job'
     submit_user = f"{yaml_conf['auth']['ssh_user']}@" if len(yaml_conf['auth']['ssh_user']) else ""
 
-    job_conf = {'time_stamp':time_stamp, 
+    job_conf = {'time_stamp':time_stamp,
             'total_worker': sum(total_gpus),
-            'ps_port':random.randint(1000, 60000), 
-            'manager_port':random.randint(1000, 60000)}
+            'ps_ip':ps_ip,
+            'ps_port':random.randint(2000, 9000),
+            'manager_port':random.randint(2000, 9000)}
 
     for conf in yaml_conf['job_conf']:
         job_conf.update(conf)
@@ -41,7 +42,7 @@ def process_cmd(yaml_file):
     conf_script = ''
     cmd_prefix = ''
     if yaml_conf['setup_commands'] is not None:
-        cmd_prefix = yaml_conf['setup_commands'][0] + ' & ' 
+        cmd_prefix = yaml_conf['setup_commands'][0] + ' & '
         for item in yaml_conf['setup_commands'][1:]:
             cmd_prefix += (item + ' & ')
 

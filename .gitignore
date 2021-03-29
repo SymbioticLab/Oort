@@ -10,4 +10,6 @@
 /build
 __py*/
 eval_data/
+
+*.swp
 .DS_Store
