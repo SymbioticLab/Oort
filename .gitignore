@@ -2,6 +2,12 @@
 *.zip
 *.h5
 *.pkl
+/log
+*.e
+*.o
+/dist
+*egg-info*/
+/build
 __py*/
 eval_data/
 .DS_Store

@@ -2,8 +2,8 @@
 from flLibs import *
 
 job_name = args.job_name if args.job_name is not None else args.time_stamp
-logDir = os.path.join(log_path, args.model, job_name, 'aggregator')
-logFile = logDir + 'log'
+logDir = os.path.join(args.log_path, args.model, job_name, 'aggregator')
+logFile = os.path.join(logDir, 'log')
 
 def init_logging():
     global logDir

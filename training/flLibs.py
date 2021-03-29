@@ -53,13 +53,13 @@ tokenizer = None
 if args.task == 'nlp' or args.task == 'text_clf':
     tokenizer = AlbertTokenizer.from_pretrained('albert-base-v2', do_lower_case=True)
 
-modelDir = os.path.join(log_path, args.model)#os.getcwd() + "/../../models/"  + args.model
+modelDir = os.path.join(args.log_path, args.model)#os.getcwd() + "/../../models/"  + args.model
 modelPath = modelDir+'/'+str(args.model)+'.pth.tar' if args.model_path is None else args.model_path
 
 def init_dataset():
     global tokenizer
 
-    outputClass = {'Mnist': 10, 'cifar10': 10, "imagenet": 1000, 'emnist': 47, 
+    outputClass = {'Mnist': 10, 'cifar10': 10, "imagenet": 1000, 'emnist': 47,
                     'openImg': 596, 'google_speech': 35, 'femnist': 62, 'yelp': 5
                 }
 
@@ -163,24 +163,24 @@ def init_dataset():
             train_dataset = datasets.EMNIST(args.data_dir, split='balanced', train=True, download=True, transform=transforms.ToTensor())
 
         elif args.data_set == 'femnist':
-            train_transform, test_transform = get_data_transform('mnist') 
+            train_transform, test_transform = get_data_transform('mnist')
             train_dataset = FEMNIST(args.data_dir, train=True, transform=train_transform)
             test_dataset = FEMNIST(args.data_dir, train=False, transform=test_transform)
 
         elif args.data_set == 'openImg':
             transformer_ns = 'openImg' if args.model != 'inception_v3' else 'openImgInception'
-            train_transform, test_transform = get_data_transform(transformer_ns) 
+            train_transform, test_transform = get_data_transform(transformer_ns)
             train_dataset = OPENIMG(args.data_dir, train=True, transform=train_transform)
             test_dataset = OPENIMG(args.data_dir, train=False, transform=test_transform)
 
         elif args.data_set == 'blog':
-            train_dataset = load_and_cache_examples(args, tokenizer, evaluate=False) 
+            train_dataset = load_and_cache_examples(args, tokenizer, evaluate=False)
             test_dataset = load_and_cache_examples(args, tokenizer, evaluate=True)
 
         elif args.data_set == 'stackoverflow':
             train_dataset = stackoverflow(args.data_dir, train=True)
             test_dataset = stackoverflow(args.data_dir, train=False)
-        
+
         elif args.data_set == 'yelp':
             train_dataset = fl_loader.TextSentimentDataset(args.data_dir, train=True, tokenizer=tokenizer, max_len=args.clf_block_size)
             test_dataset = fl_loader.TextSentimentDataset(args.data_dir, train=False, tokenizer=tokenizer, max_len=args.clf_block_size)

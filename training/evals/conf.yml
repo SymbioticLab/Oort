@@ -2,32 +2,36 @@
 
 # ========== Cluster configuration ========== 
 # ip address of the parameter server (need 1 GPU)
-ps_ip: node-1.scaleml.gaia-pg0.wisc.cloudlab.us
+ps_ip: 10.0.0.2
 
 # ip address of each worker:# of gpus on this worker
 # Note that if we collocate ps and worker, then we need to decrease this number of gpus by 1
 # E.g., master node has 4 GPUs, then 1 for the ps, and worker should be set to: worker:3
-worker_ips:
-    - node-2.scaleml.gaia-pg0.wisc.cloudlab.us:3 # worker_ip: # of gpus
-    - node-3.scaleml.gaia-pg0.wisc.cloudlab.us:3
-    - node-4.scaleml.gaia-pg0.wisc.cloudlab.us:3
-    - node-5.scaleml.gaia-pg0.wisc.cloudlab.us:3
+worker_ips: 
+    - 10.0.0.3:1 # worker_ip: # of gpus
 
 exp_path: ~/Kuiper/training
 
 auth:
-    ssh_user: kuiper
+    ssh_user: ""
     ssh_private_key: ~/.ssh/id_rsa
+
+# cmd to run before we can indeed run kuiper (in order)
+setup_commands:
+    - source ~/.bashrc
+    - conda activate kuiper  
 
 # ========== Additional job configuration ========== 
 # Default parameters are specified in argParser.py, wherein more description of the parameter can be found
+max_duration: 24h    # Run this job at most 24 hours
 job_conf: 
-    - job_name: shufflenet_kuiper
+    - job_name: shufflenet_kuiper   # Generate logs under this folder
     - log_path: ./log
-    - test_bsz: 64
-    - data_dir: ~/dataset/openImg
+    - total_worker: 100
+    - num_class: 596
+    - data_dir: /mnt/dataset/open_images
+    - data_mapfile: /mnt/dataset/open_images/imageToAuthor # Allocation of data to each client
     - eval_interval: 20   # how many runs to run a testing
     - model_size: 98304   # Update of shuffleNet is ~ 6MB. This number is profiled.
     - sample_mode: kuiper # "random"/"kuiper" in client selection
     - model: shufflenet_v2_x2_0
-    

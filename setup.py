@@ -5,7 +5,8 @@ setup(
     version="1.0",
     description="Participant selection for efficent federated learning",
     url="https://github.com/SymbioticLab/Kuiper",
-    author="Xiangfeng Zhu and Fan Lai",
-    author_email="xzhu0027@gmail.com",
-    packages=["kuiper"],
+    author="Fan Lai and Xiangfeng Zhu",
+    author_email="fanlai@umich.edu",
+    packages=["kuiper", "kuiper.utils"],
 )
+

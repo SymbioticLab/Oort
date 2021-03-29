@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 from random import Random
-from core.dataloader import DataLoader
-#from torch.utils.data import DataLoader
+#from core.dataloader import DataLoader
+from torch.utils.data import DataLoader
 import numpy as np
 from math import *
 import logging
@@ -11,7 +11,7 @@ from pyemd import emd
 from collections import OrderedDict
 import time
 import pickle, random
-from core.argParser import args
+from argParser import args
 
 class Partition(object):
     """ Dataset partitioning helper """
@@ -37,7 +37,7 @@ class DataPartitioner(object):
         self.rng.seed(seed)
         self.data = data
         self.labels = self.data.targets
-        self.is_trace = False   
+        self.is_trace = False
         self.dataMapFile = None
         self.args = args
         self.isTest = isTest
@@ -166,7 +166,7 @@ class DataPartitioner(object):
 
         except Exception as e:
             logging.info("====Failed to generate indicesToRm, because of {}".format(e))
-            #pass 
+            #pass
 
         return indicesToRm
 
@@ -189,7 +189,7 @@ class DataPartitioner(object):
                 if len(self.data.client_mapping[client]) < args.filter_less or len(self.data.client_mapping[client]) > args.filter_more:
                     indices += self.data.client_mapping[client]
 
-                    # remove the metadata 
+                    # remove the metadata
                     for idx in self.data.client_mapping[client]:
                         self.data[idx] = None
 
@@ -235,7 +235,7 @@ class DataPartitioner(object):
         numOfLabels = 35
 
         # data share the same index with labels
-        
+
         for index, sample in enumerate(self.data.data):
             clientId = dataToClient[sample]
             labelId = self.labels[index]
@@ -246,7 +246,7 @@ class DataPartitioner(object):
 
             clientToData[clientId].append(index)
             clientNumSamples[clientId][labelId] += 1
-        
+
         numOfClients = len(clientToData.keys())
         self.classPerWorker = np.zeros([numOfClients, numOfLabels])
 
@@ -288,7 +288,7 @@ class DataPartitioner(object):
         clientToData = self.data.client_mapping
         for clientId in clientToData:
             clientNumSamples[clientId] = [1] * numOfLabels
-        
+
         numOfClients = len(clientToData.keys())
         self.classPerWorker = np.zeros([numOfClients+1, numOfLabels])
 
@@ -315,7 +315,7 @@ class DataPartitioner(object):
 
                 with open(self.dataMapFile, 'rb') as db:
                     dataToClient = pickle.load(db)
-                    
+
                 if self.task == 'speech':
                     self.partitionTraceSpeech(dataToClient=dataToClient)
                 else:
@@ -323,8 +323,8 @@ class DataPartitioner(object):
             else:
                 self.partitionTraceBase()
         else:
-            self.partitionData(sizes=sizes, sequential=sequential, 
-                               ratioOfClassWorker=ratioOfClassWorker, 
+            self.partitionData(sizes=sizes, sequential=sequential,
+                               ratioOfClassWorker=ratioOfClassWorker,
                                filter_class=filter_class, args=_args)
 
     def partitionData(self, sizes=None, sequential=0, ratioOfClassWorker=None, filter_class=0, args = None):

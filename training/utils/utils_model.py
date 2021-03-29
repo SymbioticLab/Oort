@@ -9,7 +9,7 @@ import torch.optim as optim
 from torch.autograd import Variable
 import numpy as np
 import logging
-from core.argParser import args
+from argParser import args
 from utils.nlp import mask_tokens
 from utils.decoder import GreedyDecoder
 
@@ -137,7 +137,7 @@ def test_model(rank, model, test_data, criterion=nn.NLLLoss(), tokenizer=None):
 
             data, target = mask_tokens(data, tokenizer, args) if args.mlm else (data, data)
             data, target = Variable(data).cuda(), Variable(target).cuda()
-            
+
             outputs = model(data, masked_lm_labels=target, loss_type='mean') if args.mlm else model(data, labels=target, loss_type='mean')
 
             loss = outputs[0]
@@ -168,9 +168,9 @@ def test_model(rank, model, test_data, criterion=nn.NLLLoss(), tokenizer=None):
             data, target = Variable(data).cuda(), Variable(target).cuda()
             data = torch.unsqueeze(data, 1)
 
-            output = model(data) 
+            output = model(data)
             loss = criterion(output, target)
-                
+
             test_loss += loss.data.item()  # Variable.data
             acc = accuracy(output, target, topk=(1, 5))
 
@@ -223,9 +223,9 @@ def test_model(rank, model, test_data, criterion=nn.NLLLoss(), tokenizer=None):
         else:
             data, target = Variable(data).cuda(), Variable(target).cuda()
 
-            output = model(data) 
+            output = model(data)
             loss = criterion(output, target)
-                
+
             test_loss += loss.data.item()  # Variable.data
             acc = accuracy(output, target, topk=(1, 5))
 
@@ -236,7 +236,7 @@ def test_model(rank, model, test_data, criterion=nn.NLLLoss(), tokenizer=None):
 
     if args.task == 'voice':
         correct,  top_5, test_len = float(total_wer), float(total_cer), float(num_tokens)
-        
+
     # loss function averages over batch size
     test_loss /= len(test_data)
     perplexity_loss /= len(test_data)
@@ -244,7 +244,7 @@ def test_model(rank, model, test_data, criterion=nn.NLLLoss(), tokenizer=None):
     sum_loss = test_loss * test_len
 
     # in NLP, we care about the perplexity of the model
-    acc = round(correct / test_len, 4) 
+    acc = round(correct / test_len, 4)
     acc_5 = round(top_5 / test_len, 4)
     test_loss = round(test_loss, 4)
 

@@ -108,4 +108,4 @@ Repo Root
 # Acknowledgements
 
 # Contact
-Xiangfeng Zhu(xzhu0027@gmail.com) and Fan Lai(fanlai@umich.edu)
+Fan Lai(fanlai@umich.edu) and Xiangfeng Zhu(xzhu0027@gmail.com)

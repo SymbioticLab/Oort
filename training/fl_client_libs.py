@@ -2,8 +2,8 @@
 from flLibs import *
 
 job_name = args.job_name if args.job_name is not None else args.time_stamp
-logDir = os.path.join(log_path, args.model, job_name, 'worker') #os.getcwd() + "/../../models/" + args.model + '/' + job_name+ '/learner/'
-logFile = logDir + 'log_'+str(args.this_rank)
+logDir = os.path.join(args.log_path, args.model, job_name, 'worker') #os.getcwd() + "/../../models/" + args.model + '/' + job_name+ '/learner/'
+logFile = os.path.join(logDir, 'log_'+str(args.this_rank))
 
 def init_logging():
     global logDir, logging
