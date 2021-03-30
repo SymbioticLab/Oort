@@ -139,11 +139,9 @@ def run(model, queue, param_q, stop_signal, clientSampler):
     #if not args.load_model:
     for name, param in model.named_parameters():
         dist.broadcast(tensor=param.data.to(device=device), src=0)
-        logging.info(f"====Model parameters name: {name}")
+        #logging.info(f"====Model parameters name: {name}")
 
     workers = [int(v) for v in str(args.learners).split('-')]
-
-    print('Begin!')
 
     epoch_train_loss = 0
     data_size_epoch = 0   # len(train_data), one epoch
@@ -185,6 +183,8 @@ def run(model, queue, param_q, stop_signal, clientSampler):
     # dump the client info
     with open(clientInfoFile, 'wb') as fout:
         pickle.dump(clientSampler.getClientsInfo(), fout)
+
+    training_history = collections.OrderedDict()
 
     while True:
         if not queue.empty():
@@ -301,6 +301,15 @@ def run(model, queue, param_q, stop_signal, clientSampler):
                                     .format(updateEpoch, global_virtual_clock, top_1_str, round(test_results[updateEpoch][0]/test_results[updateEpoch][3]*100.0, 4),
                                     test_results[updateEpoch][0], top_5_str, round(test_results[updateEpoch][1]/test_results[updateEpoch][3]*100.0, 4),
                                     test_results[updateEpoch][1], test_results[updateEpoch][2]/test_results[updateEpoch][3], test_results[updateEpoch][3]))
+                            training_history[updateEpoch] = {'round': updateEpoch, 'clock': global_virtual_clock, 
+                                top_1_str: round(test_results[updateEpoch][0]/test_results[updateEpoch][3]*100.0, 4),
+                                top_5_str: round(test_results[updateEpoch][1]/test_results[updateEpoch][3]*100.0, 4),
+                                'loss': test_results[updateEpoch][2]/test_results[updateEpoch][3],
+                                }
+
+                            with open(os.path.join(logDir, 'training_perf'), 'wb') as fout:
+                                pickle.dump(training_history, fout)
+
                         except Exception as e:
                             logging.info(f"====Error {e}")
 
@@ -511,5 +520,6 @@ if __name__ == "__main__":
                 )
 
     manager.shutdown()
+
 
 

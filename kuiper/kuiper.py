@@ -151,7 +151,8 @@ class _training_selector(object):
 
     def register_client(self, clientId, feedbacks):
         # Initiate the score for arms. [score, time_stamp, # of trials, size of client, auxi, duration]
-        if armId not in self.totalArms:
+        if clientId not in self.totalArms:
+            self.totalArms[clientId] = {}
             self.totalArms[clientId]['reward'] = feedbacks['reward']
             self.totalArms[clientId]['duration'] = feedbacks['duration']
             self.totalArms[clientId]['time_stamp'] = self.training_round

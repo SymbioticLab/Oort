@@ -76,7 +76,6 @@ parser.add_argument('--resampling_interval', type=int, default=99999999)
 parser.add_argument('--sequential', type=str, default='0')
 parser.add_argument('--single_sim', type=int, default=0)
 parser.add_argument('--filter_class', type=int, default=0)
-parser.add_argument('--num_class', type=int, default=10)
 parser.add_argument('--learning_rate', type=float, default=0.04)
 parser.add_argument('--model_avg', type=bool, default=True)
 parser.add_argument('--input_dim', type=int, default=0)
@@ -290,4 +289,9 @@ parser.add_argument('--no-bidirectional', dest='bidirectional', action='store_fa
                     help='Turn off bi-directional RNNs, introduces lookahead convolution')
 
 
+datasetCategories = {'Mnist': 10, 'cifar10': 10, "imagenet": 1000, 'emnist': 47,
+                    'openImg': 596, 'google_speech': 35, 'femnist': 62, 'yelp': 5
+                    }
+
 args = parser.parse_args()
+args.num_class = datasetCategories[args.data_set] if args.data_set in datasetCategories else 10

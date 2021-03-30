@@ -9,6 +9,7 @@ import multiprocessing, threading
 import numpy as np
 from collections import deque
 from collections import OrderedDict
+import collections
 
 # PyTorch libs
 import torch

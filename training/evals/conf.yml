@@ -2,13 +2,13 @@
 
 # ========== Cluster configuration ========== 
 # ip address of the parameter server (need 1 GPU)
-ps_ip: 10.0.0.3
+ps_ip: 10.0.0.4
 
 # ip address of each worker:# of gpus on this worker
 # Note that if we collocate ps and worker, then we need to decrease this number of gpus by 1
 # E.g., master node has 4 GPUs, then 1 for the ps, and worker should be set to: worker:3
 worker_ips: 
-    - 10.0.0.4:1 # worker_ip: # of gpus
+    - 10.0.0.3:1 # worker_ip: # of gpus
 
 exp_path: ~/Kuiper/training
 
@@ -27,12 +27,11 @@ setup_commands:
 job_conf: 
     - job_name: shufflenet_kuiper   # Generate logs under this folder
     - log_path: /users/fanlai/Kuiper/training/evals
-    - total_worker: 100
-    - num_class: 596
+    - total_worker: 5
     - data_set: openImg 
     - data_dir: /mnt/dataset/open_images
-    - data_mapfile: /mnt/dataset/open_images/imageToAuthor # Allocation of data to each client
+    - data_mapfile: /mnt/dataset/open_images/imageToAuthor # Allocation of data to each client, turn to iid setting if not provided
+      #- client_path=: /users/fanlai/Kuiper/data/device_info/client_profile.pkl
     - eval_interval: 20   # how many runs to run a testing
-    - model_size: 98304   # Update of shuffleNet is ~ 6MB. This number is profiled.
     - sample_mode: kuiper # "random"/"kuiper" in client selection
     - model: shufflenet_v2_x2_0

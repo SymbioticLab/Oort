@@ -21,6 +21,7 @@ class clientSampler(object):
         self.count = 0
         self.feasible_samples = 0
         self.user_trace = None
+        self.args = args
 
         if args.user_trace is not None:
             with open(args.user_trace, 'rb') as fin:
@@ -35,15 +36,15 @@ class clientSampler(object):
 
         # remove clients
         if size >= self.filter_less and size <= self.filter_more:
-            print(clientId, size)
+            #print(clientId, size)
 
             self.feasibleClients.append(clientId)
             self.feasible_samples += size
 
-            if self.mode == "bandit":
-                feedbacks = {'reward':min(size, args.upload_epoch*args.batch_size),
+            if self.mode == "kuiper":
+                feedbacks = {'reward':min(size, self.args.upload_epoch*self.args.batch_size),
                             'duration':duration,
-                }
+                            }
                 self.ucbSampler.register_client(clientId, feedbacks=feedbacks)
 
     def getAllClients(self):
@@ -56,7 +57,7 @@ class clientSampler(object):
         return self.Clients[self.getUniqueId(0, clientId)]
 
     def registerDuration(self, clientId, batch_size, upload_epoch, model_size):
-        if self.mode == "bandit":
+        if self.mode == "kuiper":
             roundDuration = self.Clients[self.getUniqueId(0, clientId)].getCompletionTime(
                     batch_size=batch_size, upload_epoch=upload_epoch, model_size=model_size
             )
@@ -73,7 +74,7 @@ class clientSampler(object):
 
     def registerScore(self, clientId, reward, auxi=1.0, time_stamp=0, duration=1., success=True):
         # currently, we only use distance as reward
-        if self.mode == "bandit":
+        if self.mode == "kuiper":
             feedbacks = {
                 'reward': reward,
                 'duration': duration,
@@ -172,7 +173,7 @@ class clientSampler(object):
         pickled_clients = None
         feasible_clients_set = set(feasible_clients)
 
-        if self.mode == "bandit" and self.count > 1:
+        if self.mode == "kuiper" and self.count > 1:
             pickled_clients = self.ucbSampler.select_participant(numOfClients, feasible_clients=feasible_clients_set)
         else:
             self.rng.shuffle(feasible_clients)
@@ -185,7 +186,7 @@ class clientSampler(object):
         return pickled_clients
 
     def getAllMetrics(self):
-        if self.mode == "bandit":
+        if self.mode == "kuiper":
             return self.ucbSampler.getAllMetrics()
         return {}
 
@@ -196,6 +197,7 @@ class clientSampler(object):
         return self.ucbSampler.get_client_reward(clientId)
 
     def get_median_reward(self):
-        if self.mode == 'bandit':
+        if self.mode == 'kuiper':
             return self.ucbSampler.get_median_reward()
         return 0.
+

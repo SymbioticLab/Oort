@@ -5,7 +5,6 @@ logDir = os.path.join(args.log_path, 'logs', args.job_name, args.time_stamp, 'ag
 logFile = os.path.join(logDir, 'log')
 
 def init_logging():
-    logging.info(f"init_logging dir {logDir}")
     if not os.path.isdir(logDir):
         os.makedirs(logDir, exist_ok=True)
 
