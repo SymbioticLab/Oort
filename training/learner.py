@@ -7,7 +7,7 @@ for i in range(torch.cuda.device_count()):
     try:
         device = torch.device('cuda:'+str(i))
         torch.cuda.set_device(i)
-        logging.info(f'====end up with cuda device {torch.rand(1).to(device=device)}')
+        logging.info(f'End up with cuda device {torch.rand(1).to(device=device)}')
         break
     except Exception as e:
         assert i == torch.cuda.device_count()-1, 'Can not find a feasible GPU'
@@ -30,7 +30,7 @@ workers = [int(v) for v in str(args.learners).split('-')]
 
 os.environ['MASTER_ADDR'] = args.ps_ip
 os.environ['MASTER_PORT'] = args.ps_port
-os.environ['NCCL_DEBUG'] = 'INFO'
+# os.environ['NCCL_DEBUG'] = 'INFO'
 
 logging.info("===== Experiment start =====")
 
@@ -146,6 +146,8 @@ def voice_collate_fn(batch):
 def run_client(clientId, cmodel, iters, learning_rate, argdicts = {}):
     global global_trainDB, global_data_iter, last_model_tensors, tokenizer
     global malicious_clients, flip_label_mapping
+
+    logging.info(f"Start to run client {clientId} ...")
 
     curBatch = -1
 
@@ -339,7 +341,7 @@ def run_client(clientId, cmodel, iters, learning_rate, argdicts = {}):
 
         comp_duration = (time.time() - comp_start)
 
-        logging.info('For client {}, upload iter {}, epoch {}, Batch {}/{}, Loss:{} | TotalTime: {} | CompTime: {} | DataLoader: {} | epoch_train_loss: {} | malicious: {}\n'
+        logging.debug('For client {}, upload iter {}, epoch {}, Batch {}/{}, Loss:{} | TotalTime: {} | CompTime: {} | DataLoader: {} | epoch_train_loss: {} | malicious: {}\n'
                     .format(clientId, argdicts['iters'], int(curBatch/total_batch_size),
                     (curBatch % total_batch_size), total_batch_size, temp_loss,
                     round(time.time() - it_start, 4), round(comp_duration, 4), round(comp_start - it_start, 4), epoch_train_loss, is_malicious))
@@ -382,6 +384,8 @@ def run_client(clientId, cmodel, iters, learning_rate, argdicts = {}):
     else:
         isSuccess = False
         logging.info("====Failed to run client {}".format(clientId))
+
+    logging.info(f"Completed to run client {clientId}")
 
     #logging.info("====Epoch epoch_train_loss is {}".format(epoch_train_loss))
     return model_param, epoch_train_loss, local_trained, str(speed) + '_' + str(count), time_cost, isSuccess

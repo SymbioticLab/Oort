@@ -8,7 +8,7 @@ for i in range(torch.cuda.device_count()):
     try:
         device = torch.device('cuda:'+str(i))
         torch.cuda.set_device(i)
-        logging.info(f'====end up with cuda device {torch.rand(1).to(device=device)}')
+        logging.info(f'End up with cuda device {torch.rand(1).to(device=device)}')
         break
     except Exception as e:
         assert i == torch.cuda.device_count()-1, 'Can not find a feasible GPU'
@@ -20,7 +20,7 @@ sampledClientSet = set()
 
 os.environ['MASTER_ADDR'] = args.ps_ip
 os.environ['MASTER_PORT'] = args.ps_port
-os.environ['NCCL_DEBUG'] = 'INFO'
+#os.environ['NCCL_DEBUG'] = 'INFO'
 
 def initiate_sampler_query(queue, numOfClients):
     # Initiate the clientSampler
@@ -248,21 +248,13 @@ def run(model, queue, param_q, stop_signal, clientSampler):
                         # bias term for global speed
                         virtual_c = virtualClientClock[clientId] if clientId in virtualClientClock else 1.
                         clientUtility = 1.
-
                         size_of_sample_bin = 1.
 
                         if args.capacity_bin == True:
                             size_of_sample_bin = min(clientSampler.getClient(clientId).size, args.upload_epoch*args.batch_size)
 
                         # register the score
-                        if args.score_mode == "loss":
-                            clientUtility = math.sqrt(iteration_loss[i]) * size_of_sample_bin
-                        elif args.score_mode == "norm":
-                            clientUtility = math.sqrt(gradient_l2_norm) * size_of_sample_bin
-                        elif args.score_mode == "size":
-                            clientUtility = size_of_sample_bin
-                        else:
-                            clientUtility = (1.0 - clientSampler.getClient(clientId).distance)
+                        clientUtility = math.sqrt(iteration_loss[i]) * size_of_sample_bin
 
                         # add noise to the utility
                         if args.noise_factor > 0:
@@ -301,7 +293,7 @@ def run(model, queue, param_q, stop_signal, clientSampler):
                                     .format(updateEpoch, global_virtual_clock, top_1_str, round(test_results[updateEpoch][0]/test_results[updateEpoch][3]*100.0, 4),
                                     test_results[updateEpoch][0], top_5_str, round(test_results[updateEpoch][1]/test_results[updateEpoch][3]*100.0, 4),
                                     test_results[updateEpoch][1], test_results[updateEpoch][2]/test_results[updateEpoch][3], test_results[updateEpoch][3]))
-                            training_history[updateEpoch] = {'round': updateEpoch, 'clock': global_virtual_clock, 
+                            training_history[updateEpoch] = {'round': updateEpoch, 'clock': global_virtual_clock,
                                 top_1_str: round(test_results[updateEpoch][0]/test_results[updateEpoch][3]*100.0, 4),
                                 top_5_str: round(test_results[updateEpoch][1]/test_results[updateEpoch][3]*100.0, 4),
                                 'loss': test_results[updateEpoch][2]/test_results[updateEpoch][3],
