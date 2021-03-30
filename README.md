@@ -27,7 +27,7 @@ cd Kuiper
 conda env create -f environment.yml # Install dependencies
 conda activate kuiper
 python setup.py install  # install kuiper
-./data/download.sh -A    # download all datasets (See ./download.sh -h on how to download a subset of datasets)
+./data/download.sh -A    # download datasets 
 ```
 
 # Run Experiments
