@@ -124,8 +124,8 @@ while getopts ":hAarotp" option; do
       A )
          speech
          open_images
-         reddit
-         stackoverflow
+        #  reddit
+        #  stackoverflow
          stats
          exit;;
       a )
