@@ -1,4 +1,4 @@
-from .helper.client import Client
+from helper.client import Client
 import math
 from random import Random
 import pickle
@@ -14,7 +14,7 @@ class clientSampler(object):
         self.filter_less = args.filter_less
         self.filter_more = args.filter_more
 
-        self.ucbSampler = create_training_selector(args=args, sample_seed=sample_seed) if self.mode != 'random' else None
+        self.ucbSampler = create_training_selector(args=args) if self.mode != 'random' else None
         self.feasibleClients = []
         self.rng = Random()
         self.rng.seed(sample_seed)
@@ -36,12 +36,12 @@ class clientSampler(object):
         # remove clients
         if size >= self.filter_less and size <= self.filter_more:
             print(clientId, size)
-            
+
             self.feasibleClients.append(clientId)
             self.feasible_samples += size
 
             if self.mode == "bandit":
-                feedbacks = {'reward':min(size, args.upload_epoch*args.batch_size)
+                feedbacks = {'reward':min(size, args.upload_epoch*args.batch_size),
                             'duration':duration,
                 }
                 self.ucbSampler.register_client(clientId, feedbacks=feedbacks)
@@ -66,7 +66,7 @@ class clientSampler(object):
         return self.Clients[self.getUniqueId(0, clientId)].getCompletionTime(
                 batch_size=batch_size, upload_epoch=upload_epoch, model_size=model_size
             )
-        
+
     def registerSpeed(self, hostId, clientId, speed):
         uniqueId = self.getUniqueId(hostId, clientId)
         self.Clients[uniqueId].speed = speed
@@ -81,7 +81,7 @@ class clientSampler(object):
             }
 
             self.ucbSampler.update_client_util(clientId, feedbacks=feedbacks)
-    
+
     def registerClientScore(self, clientId, reward):
         self.Clients[self.getUniqueId(0, clientId)].registerReward(reward)
 

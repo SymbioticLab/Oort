@@ -21,30 +21,24 @@ from torchvision import datasets, transforms
 import torchvision.models as tormodels
 from torch.utils.data.sampler import WeightedRandomSampler
 from torch_baidu_ctc import CTCLoss
-from transformers import AlbertForSequenceClassification
 
 # libs from FLBench
 from argParser import args
-from utils.openImg import *
 from utils.divide_data import partition_dataset, select_dataset, DataPartitioner
-from utils.models import *
+#from utils.models import *
 from utils.utils_data import get_data_transform
 from utils.utils_model import MySGD, test_model
-from utils.nlp import *
-from utils.inception import *
-from utils.stackoverflow import *
-from utils.transforms_wav import *
-from utils.transforms_stft import *
-from utils.speech import *
-from utils.resnet_speech import *
-from utils.femnist import *
-from helper.clientSampler import clientSampler
-from utils.yogi import *
-import utils.dataloaders as fl_loader
 
-# for voice
-from utils.voice_model import DeepSpeech, supported_rnns
-from utils.voice_data_loader import SpectrogramDataset
+if args.task == 'nlp':
+    from utils.nlp import *
+
+elif args.task == 'speech':
+    from utils.transforms_wav import *
+    from utils.transforms_stft import *
+    from utils.resnet_speech import *
+
+from helper.clientSampler import clientSampler
+from utils.yogi import YoGi
 
 # shared functions of aggregator and clients
 # initiate for nlp
@@ -53,13 +47,13 @@ tokenizer = None
 if args.task == 'nlp' or args.task == 'text_clf':
     tokenizer = AlbertTokenizer.from_pretrained('albert-base-v2', do_lower_case=True)
 
-modelDir = os.path.join(log_path, args.model)#os.getcwd() + "/../../models/"  + args.model
+modelDir = os.path.join(args.log_path, args.model)#os.getcwd() + "/../../models/"  + args.model
 modelPath = modelDir+'/'+str(args.model)+'.pth.tar' if args.model_path is None else args.model_path
 
 def init_dataset():
     global tokenizer
 
-    outputClass = {'Mnist': 10, 'cifar10': 10, "imagenet": 1000, 'emnist': 47, 
+    outputClass = {'Mnist': 10, 'cifar10': 10, "imagenet": 1000, 'emnist': 47,
                     'openImg': 596, 'google_speech': 35, 'femnist': 62, 'yelp': 5
                 }
 
@@ -74,6 +68,8 @@ def init_dataset():
         config.num_labels = outputClass[args.data_set]
         # config.output_attentions = False
         # config.output_hidden_states = False
+        from transformers import AlbertForSequenceClassification
+
         model = AlbertForSequenceClassification(config)
 
     elif args.task == 'tag-one-sample':
@@ -98,6 +94,8 @@ def init_dataset():
             sys.exit(-1)
 
     elif args.task == 'voice':
+        from utils.voice_model import DeepSpeech, supported_rnns
+
         # Initialise new model training
         with open(args.labels_path) as label_file:
             labels = json.load(label_file)
@@ -116,12 +114,7 @@ def init_dataset():
                            audio_conf=audio_conf,
                            bidirectional=args.bidirectional)
     else:
-        if args.model == 'mnasnet':
-            model = MnasNet(num_classes=outputClass[args.data_set])
-        elif args.model == "lr":
-            model = LogisticRegression(args.input_dim, outputClass[args.data_set])
-        else:
-            model = tormodels.__dict__[args.model](num_classes=outputClass[args.data_set])
+        model = tormodels.__dict__[args.model](num_classes=outputClass[args.data_set])
 
     if args.load_model:
         try:
@@ -163,29 +156,41 @@ def init_dataset():
             train_dataset = datasets.EMNIST(args.data_dir, split='balanced', train=True, download=True, transform=transforms.ToTensor())
 
         elif args.data_set == 'femnist':
-            train_transform, test_transform = get_data_transform('mnist') 
+            from utils.femnist import FEMNIST
+
+            train_transform, test_transform = get_data_transform('mnist')
             train_dataset = FEMNIST(args.data_dir, train=True, transform=train_transform)
             test_dataset = FEMNIST(args.data_dir, train=False, transform=test_transform)
 
         elif args.data_set == 'openImg':
+            from utils.openImg import OPENIMG
+
             transformer_ns = 'openImg' if args.model != 'inception_v3' else 'openImgInception'
-            train_transform, test_transform = get_data_transform(transformer_ns) 
+            train_transform, test_transform = get_data_transform(transformer_ns)
             train_dataset = OPENIMG(args.data_dir, train=True, transform=train_transform)
             test_dataset = OPENIMG(args.data_dir, train=False, transform=test_transform)
 
         elif args.data_set == 'blog':
-            train_dataset = load_and_cache_examples(args, tokenizer, evaluate=False) 
+            train_dataset = load_and_cache_examples(args, tokenizer, evaluate=False)
             test_dataset = load_and_cache_examples(args, tokenizer, evaluate=True)
 
         elif args.data_set == 'stackoverflow':
+            from utils.stackoverflow import stackoverflow
+
             train_dataset = stackoverflow(args.data_dir, train=True)
             test_dataset = stackoverflow(args.data_dir, train=False)
-        
+
         elif args.data_set == 'yelp':
+            import utils.dataloaders as fl_loader
+
             train_dataset = fl_loader.TextSentimentDataset(args.data_dir, train=True, tokenizer=tokenizer, max_len=args.clf_block_size)
             test_dataset = fl_loader.TextSentimentDataset(args.data_dir, train=False, tokenizer=tokenizer, max_len=args.clf_block_size)
 
         elif args.data_set == 'google_speech':
+            from utils.speech import SPEECH, BackgroundNoiseDataset
+            # for voice
+            from utils.voice_data_loader import SpectrogramDataset
+
             bkg = '_background_noise_'
             data_aug_transform = transforms.Compose([ChangeAmplitude(), ChangeSpeedAndPitchAudio(), FixAudioLength(), ToSTFT(), StretchAudioOnSTFT(), TimeshiftAudioOnSTFT(), FixSTFTDimension()])
             bg_dataset = BackgroundNoiseDataset(os.path.join(args.data_dir, bkg), data_aug_transform)
