@@ -14,9 +14,10 @@ We outline some numbers on Tesla P100 GPU for each line in our plots when using 
 | ----------- | ----------- | ----------- |
 | Kuiper+YoGi      | 27  GPU hours (~$53)    |    58 GPU hours (~$111)   |
 | YoGi             | 53  GPU hours (~$97)     |    121  GPU hours (~$230) |
+
 Table 1: GPU hours on Openimage
 
-***We recommend the developer to try OpenImage with YoGi setting, which is the most efficient setting.*** Instead, FedProx takes ~2X more GPU hours than YiGi, while the NLP task takes more than 3X GPU hours even with YoGi.  
+***We recommend the developer to try OpenImage with YoGi setting, which is the most efficient setting.*** Instead, FedProx takes ~2X more GPU hours than YoGi, while the NLP task takes more than 3X GPU hours even with YoGi.  
 
 ***Note that the performance of model training (both accuracy and time-to-accuracy performance) often shows certain variations. We report the average results over 5 runs in our paper.***
 
