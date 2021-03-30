@@ -81,7 +81,7 @@ def process_cmd(yaml_file):
             rank_id += 1
 
             subprocess.Popen(f'ssh {submit_user}{worker} "{setup_cmd} {worker_cmd}"',
-                            shell=True, stdout=subprocess.DEVNULL, stderr=subprocess.STDOUT)
+                            shell=True, )#stdout=subprocess.DEVNULL, stderr=subprocess.STDOUT)
 
     # dump the address of running workers
     current_path = os.path.dirname(os.path.abspath(__file__))

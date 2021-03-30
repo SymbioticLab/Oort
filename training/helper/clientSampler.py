@@ -3,6 +3,7 @@ import math
 from random import Random
 import pickle
 from kuiper import create_training_selector
+import logging
 
 class clientSampler(object):
 
@@ -14,7 +15,7 @@ class clientSampler(object):
         self.filter_less = args.filter_less
         self.filter_more = args.filter_more
 
-        self.ucbSampler = create_training_selector(args=args) if self.mode != 'random' else None
+        self.ucbSampler = create_training_selector(args=args) if self.mode == 'kuiper' else None
         self.feasibleClients = []
         self.rng = Random()
         self.rng.seed(sample_seed)
@@ -24,7 +25,7 @@ class clientSampler(object):
         self.args = args
 
         if args.user_trace is not None:
-            with open(args.user_trace, 'rb') as fin:
+            with open(args.user_trace, 'rb') as fin:    
                 self.user_trace = pickle.load(fin)
 
     def registerClient(self, hostId, clientId, dis, size, speed=[1.0, 1.0], duration=1):
@@ -36,8 +37,6 @@ class clientSampler(object):
 
         # remove clients
         if size >= self.filter_less and size <= self.filter_more:
-            #print(clientId, size)
-
             self.feasibleClients.append(clientId)
             self.feasible_samples += size
 
@@ -78,7 +77,8 @@ class clientSampler(object):
             feedbacks = {
                 'reward': reward,
                 'duration': duration,
-                'status': True
+                'status': True,
+                'time_stamp': time_stamp
             }
 
             self.ucbSampler.update_client_util(clientId, feedbacks=feedbacks)
@@ -181,7 +181,7 @@ class clientSampler(object):
             pickled_clients = feasible_clients[:client_len]
 
 
-        for item in pickled_clients:
+        for item in pickled_clients:    
             assert (item in feasible_clients_set)
         return pickled_clients
 
@@ -200,4 +200,3 @@ class clientSampler(object):
         if self.mode == 'kuiper':
             return self.ucbSampler.get_median_reward()
         return 0.
-
