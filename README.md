@@ -80,18 +80,18 @@ Before running below script, you must install gurobi license by:
 
 * Request an [academic license](https://www.gurobi.com/downloads/end-user-license-agreement-academic/) if possible. Otherwise, please contact us for a temporary license. 
 * `grbgetkey [your license]` to install the license 
-* TODO: maybe latex? 
+* TODO: maybe latex? sudo apt-get update and sudo apt-get install texlive-full
 
 ```
 cd testing
-python plot_figure17.py   # > 36 hours
-# or python plot_figure17.py -k # x minutes
+python plot_figure17.py   # > 50 hours
+# or python plot_figure17.py -k # ~ 1.5 hour
 open figure17a.pdf figure17b.pdf
 ``` 
 
 This will produce plots close to Figure 17 (`figure/ref/figure17a.pdf` and `figure/ref/figure17b.pdf`) on page 12 of the paper. You might notice some variation compared to the original figure as we removed a few long-running queries. 
 
-Note: To save reviewers time, `python plot_figure17.py -k` will only run and plot the lines for Kuiper. We hope the runtime will convince you that MILP is extremly slow :) 
+Note: To save reviewers time, `python plot_figure17.py -k` will only run and plot the lines for Kuiper. We hope the runtime will convince you that MILP is extremly slow :).
 
 # Repo Structure
 
