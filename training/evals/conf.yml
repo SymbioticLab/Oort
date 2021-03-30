@@ -2,13 +2,13 @@
 
 # ========== Cluster configuration ========== 
 # ip address of the parameter server (need 1 GPU)
-ps_ip: 10.0.0.2
+ps_ip: 10.0.0.3
 
 # ip address of each worker:# of gpus on this worker
 # Note that if we collocate ps and worker, then we need to decrease this number of gpus by 1
 # E.g., master node has 4 GPUs, then 1 for the ps, and worker should be set to: worker:3
 worker_ips: 
-    - 10.0.0.3:1 # worker_ip: # of gpus
+    - 10.0.0.4:1 # worker_ip: # of gpus
 
 exp_path: ~/Kuiper/training
 
@@ -18,16 +18,15 @@ auth:
 
 # cmd to run before we can indeed run kuiper (in order)
 setup_commands:
-    - source ~/.bashrc
-    - conda activate kuiper  
+    - source $HOME/anaconda3/bin/activate kuiper     
     - export NCCL_SOCKET_IFNAME='enp94s0f0'
 
 # ========== Additional job configuration ========== 
 # Default parameters are specified in argParser.py, wherein more description of the parameter can be found
-max_duration: 24h    # Run this job at most 24 hours
+
 job_conf: 
     - job_name: shufflenet_kuiper   # Generate logs under this folder
-    - log_path: ./log
+    - log_path: /users/fanlai/Kuiper/training/evals
     - total_worker: 100
     - num_class: 596
     - data_set: openImg 

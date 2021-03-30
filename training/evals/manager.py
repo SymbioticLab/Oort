@@ -6,7 +6,7 @@ import sys
 import time
 import random
 import os, subprocess
-import pickle
+import pickle, datetime
 
 def load_yaml_conf(yaml_file):
     with open(yaml_file) as fin:
@@ -19,85 +19,94 @@ def process_cmd(yaml_file):
 
     ps_ip = yaml_conf['ps_ip']
     worker_ips, total_gpus = [], []
+    cmd_script_list = []
 
     for ip_gpu in yaml_conf['worker_ips']:
         ip, num_gpu = ip_gpu.strip().split(':')
         worker_ips.append(ip)
         total_gpus.append(int(num_gpu))
 
-    time_stamp = int(time.time())
+    time_stamp = datetime.datetime.fromtimestamp(time.time()).strftime('%m%d_%H%M%S')
     running_vms = set()
     job_name = 'kuiper_job'
+    log_path = './logs'
     submit_user = f"{yaml_conf['auth']['ssh_user']}@" if len(yaml_conf['auth']['ssh_user']) else ""
 
     job_conf = {'time_stamp':time_stamp,
-            'total_worker': sum(total_gpus),
-            'ps_ip':ps_ip,
-            'ps_port':random.randint(2000, 9000),
-            'manager_port':random.randint(2000, 9000)}
+                'total_worker': sum(total_gpus),
+                'ps_ip':ps_ip,
+                'ps_port':random.randint(1000, 60000),
+                'manager_port':random.randint(1000, 60000)
+                }
 
     for conf in yaml_conf['job_conf']:
         job_conf.update(conf)
 
     conf_script = ''
-    cmd_prefix = ''
+    setup_cmd = ''
     if yaml_conf['setup_commands'] is not None:
-        cmd_prefix = yaml_conf['setup_commands'][0] + ' & '
+        setup_cmd += (yaml_conf['setup_commands'][0] + ' && ')
         for item in yaml_conf['setup_commands'][1:]:
-            cmd_prefix += (item + ' & ')
+            setup_cmd += (item + ' && ')
 
-    cmd_sufix = f" & sleep {yaml_conf['max_duration']}"
+    cmd_sufix = f" "
 
 
     for conf_name in job_conf:
         conf_script = conf_script + f' --{conf_name}={job_conf[conf_name]}'
         if conf_name == "job_name":
             job_name = job_conf[conf_name]
+        if conf_name == "log_path":
+            log_path = os.path.join(job_conf[conf_name], 'log')
 
     learner_conf = '-'.join([str(_) for _ in list(range(1, sum(total_gpus)+1))])
     # =========== Submit job to parameter server ============
     running_vms.add(ps_ip)
-    ps_cmd = cmd_prefix + \
-            f" python {yaml_conf['exp_path']}/param_server.py {conf_script} --this_rank=0 --learner={learner_conf} " + \
-            cmd_sufix
+    ps_cmd = f" python {yaml_conf['exp_path']}/param_server.py {conf_script} --this_rank=0 --learner={learner_conf} "
 
-    print(f"ssh {submit_user}{ps_ip} {ps_cmd}")
-    #subprocess.Popen(f"ssh {submit_user}{ps_ip} {ps_cmd}", shell=True)
+    print("Starting aggregator ...")
+    subprocess.Popen(f'ssh {submit_user}{ps_ip} "{setup_cmd} {ps_cmd}"',
+                    shell=True, stdout=subprocess.DEVNULL, stderr=subprocess.STDOUT)
 
     #time.sleep(2)
-    worker_cmds = []
     # =========== Submit job to each worker ============
     rank_id = 1
     for worker, gpu in zip(worker_ips, total_gpus):
         running_vms.add(worker)
+        print(f"Starting workers on {worker} ...")
         for _  in range(gpu):
-            #time.sleep(1)
-            worker_cmd = cmd_prefix + \
-                    f" python {yaml_conf['exp_path']}/learner.py {conf_script} --this_rank={rank_id} --learner={learner_conf} " + \
-                    cmd_sufix
+            time.sleep(1)
+
+            worker_cmd = f" python {yaml_conf['exp_path']}/learner.py {conf_script} --this_rank={rank_id} --learner={learner_conf} "
             rank_id += 1
-            worker_cmds.append({'ip':worker, 'cmds': worker_cmd, 'user':yaml_conf['auth']['ssh_user']})
-            print(f"ssh {submit_user}{worker} {worker_cmd}")
-            #subprocess.Popen(f"ssh {submit_user}{worker} {worker_cmd}", shell=True)
+
+            subprocess.Popen(f'ssh {submit_user}{worker} "{setup_cmd} {worker_cmd}"',
+                            shell=True, )#stdout=subprocess.DEVNULL, stderr=subprocess.STDOUT)
 
     # dump the address of running workers
+    current_path = os.path.dirname(os.path.abspath(__file__))
+    job_name = os.path.join(current_path, job_name)
     with open(job_name, 'wb') as fout:
         job_meta = {'user':submit_user, 'vms': running_vms}
         pickle.dump(job_meta, fout)
 
-    #return ps_cmd, worker_cmds
+    print(f"Submitted job, please check your logs ({log_path}) for status")
 
 def terminate(job_name):
-    if not os.path.isfile(job_name):
+
+    current_path = os.path.dirname(os.path.abspath(__file__))
+    job_meta_path = os.path.join(current_path, job_name)
+
+    if not os.path.isfile(job_meta_path):
         print(f"Fail to terminate {job_name}, as it does not exist")
 
-    with open(job_name, 'rb') as fin:
+    with open(job_meta_path, 'rb') as fin:
         job_meta = pickle.load(fin)
 
-    scripts = f"""os.system('ps -ef | grep "python" | grep "job_name={job_name}" > temp')\nids=[l.split()[1] for l in open('temp').readlines()]\n[os.system("kill -9 "+id) for id in ids]"""
     for vm_ip in job_meta['vms']:
-        # subprocess.Popen(f'ssh {job_meta["user"]}@{vm_ip} python -c """{scripts}"""')
-        print(f'ssh {job_meta["user"]}{vm_ip} python -c """{scripts}"""')
+        # os.system(f'scp shutdown.py {job_meta["user"]}{vm_ip}:~/')
+        print(f"Shutting down job on {vm_ip}")
+        os.system(f"ssh {job_meta['user']}{vm_ip} 'python {current_path}/shutdown.py {job_name}'")
 
 if sys.argv[1] == 'submit':
     process_cmd(sys.argv[2])

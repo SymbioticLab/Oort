@@ -1,38 +1,22 @@
-# Libraries for central aggregator
+# package for aggregator
 from flLibs import *
 
-job_name = args.job_name if args.job_name is not None else args.time_stamp
-logDir = os.path.join(args.log_path, args.model, job_name, 'aggregator')
+logDir = os.path.join(args.log_path, 'logs', args.job_name, args.time_stamp, 'aggregator')
 logFile = os.path.join(logDir, 'log')
 
 def init_logging():
-    global logDir
-
+    logging.info(f"init_logging dir {logDir}")
     if not os.path.isdir(logDir):
         os.makedirs(logDir, exist_ok=True)
 
-    with open(logFile, 'w') as fin:
-        pass
-
-    logging.basicConfig(format='%(asctime)s,%(msecs)d %(levelname)s %(message)s',
-                        datefmt='%H:%M:%S',
-                        level=logging.DEBUG,
-                        handlers=[
-                            logging.FileHandler(logFile, mode='a'),
-                            logging.StreamHandler()
-                        ])
-
-def dump_ps_ip():
-    hostname_map = {}
-    with open('ipmapping', 'rb') as fin:
-        hostname_map = pickle.load(fin)
-
-    ps_ip = str(hostname_map[str(socket.gethostname())])
-    args.ps_ip = ps_ip
-
-    with open(logDir+'ip', 'wb') as fout:
-        pickle.dump(ps_ip, fout)
+    logging.basicConfig(
+                    format='%(asctime)s,%(msecs)d %(levelname)-8s [%(filename)s:%(lineno)d] %(message)s',
+                    datefmt='%Y-%m-%d:%H:%M:%S',
+                    level=logging.INFO,
+                    handlers=[
+                        logging.FileHandler(logFile, mode='a'),
+                        logging.StreamHandler()
+                    ])
 
 def initiate_aggregator_setting():
     init_logging()
-    #dump_ps_ip()

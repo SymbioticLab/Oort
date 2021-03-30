@@ -2,7 +2,7 @@ import argparse
 
 parser = argparse.ArgumentParser()
 parser.add_argument('--job_name', type=str, default='kuiper_job')
-parser.add_argument('--log_path', type=str, default='./log')
+parser.add_argument('--log_path', type=str, default='../', help="default path is ../log")
 
 # The basic configuration of the cluster
 parser.add_argument('--ps_ip', type=str, default='127.0.0.1')

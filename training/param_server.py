@@ -1,9 +1,8 @@
 # -*- coding: utf-8 -*-
 from fl_aggregator_libs import *
 from random import Random
+
 initiate_aggregator_setting()
-# logging.info("=====MASTER_ADDR: {}, MASTER_PORT: {}, visible GPUs: {}, available counts: {}"
-#                 .format(args.ps_ip, args.ps_port, os.environ['CUDA_VISIBLE_DEVICES'], torch.cuda.device_count()))
 
 for i in range(torch.cuda.device_count()):
     try:
@@ -14,10 +13,6 @@ for i in range(torch.cuda.device_count()):
     except Exception as e:
         assert i == torch.cuda.device_count()-1, 'Can not find a feasible GPU'
 
-# gpu_id = str(0)
-# device = torch.device('cuda')
-# torch.cuda.set_device('cuda:'+gpu_id)
-
 entire_train_data = None
 sample_size_dic = {}
 
@@ -25,7 +20,8 @@ sampledClientSet = set()
 
 os.environ['MASTER_ADDR'] = args.ps_ip
 os.environ['MASTER_PORT'] = args.ps_port
-#os.environ['NCCL_SOCKET_IFNAME'] = 'enp94s0f0'
+os.environ['NCCL_DEBUG'] = 'INFO'
+
 def initiate_sampler_query(queue, numOfClients):
     # Initiate the clientSampler
     if args.sampler_path is None:
@@ -515,4 +511,5 @@ if __name__ == "__main__":
                 )
 
     manager.shutdown()
+
 

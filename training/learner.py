@@ -2,11 +2,6 @@
 from fl_client_libs import *
 
 initiate_client_setting()
-gpu_id = str(0)
-
-# logging.info("=====MASTER_ADDR: {}, MASTER_PORT: {}, visible GPUs: {}, available counts: {}, gpu_id: {}"
-#                 .format(args.ps_ip, args.ps_port, os.environ['CUDA_VISIBLE_DEVICES'], 
-#                         torch.cuda.device_count(), gpu_id))
 
 for i in range(torch.cuda.device_count()):
     try:
@@ -16,9 +11,6 @@ for i in range(torch.cuda.device_count()):
         break
     except Exception as e:
         assert i == torch.cuda.device_count()-1, 'Can not find a feasible GPU'
-
-# device = torch.device('cuda')
-# torch.cuda.set_device('cuda:'+gpu_id)
 
 world_size = 0
 global_trainDB = None
@@ -38,8 +30,6 @@ workers = [int(v) for v in str(args.learners).split('-')]
 
 os.environ['MASTER_ADDR'] = args.ps_ip
 os.environ['MASTER_PORT'] = args.ps_port
-os.environ['NCCL_SOCKET_IFNAME'] = 'ib0'
-os.environ['GLOO_SOCKET_IFNAME'] = 'vlan260'
 os.environ['NCCL_DEBUG'] = 'INFO'
 
 logging.info("===== Experiment start =====")
@@ -114,7 +104,7 @@ def scan_models(path):
 
 # ================== Scorer =================== #
 
-def collate(examples: List[torch.Tensor]):
+def collate(examples):
     global tokenizer
 
     if tokenizer._pad_token is None:
@@ -177,7 +167,7 @@ def run_client(clientId, cmodel, iters, learning_rate, argdicts = {}):
     if args.task == 'voice':
         criterion = CTCLoss(reduction='none').to(device=device)
     else:
-        criterion = torch.nn.CrossEntropyLoss(reduction='none').to(device=device) 
+        criterion = torch.nn.CrossEntropyLoss(reduction='none').to(device=device)
 
     train_data_itr_list = []
     collate_fn = None
@@ -189,8 +179,8 @@ def run_client(clientId, cmodel, iters, learning_rate, argdicts = {}):
 
     if clientId not in global_data_iter:
         client_train_data = select_dataset(
-                                clientId, global_trainDB, 
-                                batch_size=args.batch_size, 
+                                clientId, global_trainDB,
+                                batch_size=args.batch_size,
                                 collate_fn=collate_fn
                             )
 
@@ -250,8 +240,8 @@ def run_client(clientId, cmodel, iters, learning_rate, argdicts = {}):
                         logging.info("====Error {}".format(str(e)))
 
                     tempData = select_dataset(
-                            clientId, global_trainDB, 
-                            batch_size=args.batch_size, 
+                            clientId, global_trainDB,
+                            batch_size=args.batch_size,
                             collate_fn=collate_fn
                         )
 
@@ -303,7 +293,7 @@ def run_client(clientId, cmodel, iters, learning_rate, argdicts = {}):
 
         temp_loss = 0.
         loss_cnt = 1.
-        
+
         #logging.info("Loss to list is {}".format(loss))
         #if itr >= (iters - total_batch_size - 1):
         loss_list = loss.tolist()
@@ -338,20 +328,20 @@ def run_client(clientId, cmodel, iters, learning_rate, argdicts = {}):
                     param.data -= delta_w[idx].to(device=device)
                     param.data += learning_rate * args.proxy_mu * (last_model_tensors[idx] - param.data)
         else:
-            # proxy term 
+            # proxy term
             optimizer.step()
 
             if args.proxy_avg:
                 for idx, param in enumerate(cmodel.parameters()):
-                    param.data += learning_rate * args.proxy_mu * (last_model_tensors[idx] - param.data)         
+                    param.data += learning_rate * args.proxy_mu * (last_model_tensors[idx] - param.data)
 
             cmodel.zero_grad()
 
         comp_duration = (time.time() - comp_start)
-    
+
         logging.info('For client {}, upload iter {}, epoch {}, Batch {}/{}, Loss:{} | TotalTime: {} | CompTime: {} | DataLoader: {} | epoch_train_loss: {} | malicious: {}\n'
                     .format(clientId, argdicts['iters'], int(curBatch/total_batch_size),
-                    (curBatch % total_batch_size), total_batch_size, temp_loss, 
+                    (curBatch % total_batch_size), total_batch_size, temp_loss,
                     round(time.time() - it_start, 4), round(comp_duration, 4), round(comp_start - it_start, 4), epoch_train_loss, is_malicious))
 
     # remove the one with LRU
@@ -376,7 +366,7 @@ def run_client(clientId, cmodel, iters, learning_rate, argdicts = {}):
 
     # we only transfer the delta_weight
     model_param = [(param.data - last_model_tensors[idx]).cpu().numpy() for idx, param in enumerate(cmodel.parameters())]
-    
+
     time_spent = time.time() - run_start
 
     # add bias to the virtual clock, computation x (# of trained samples) + communication
@@ -388,7 +378,7 @@ def run_client(clientId, cmodel, iters, learning_rate, argdicts = {}):
     speed = 0
     isSuccess = True
     if count > 0:
-        speed = time_spent/float(count) 
+        speed = time_spent/float(count)
     else:
         isSuccess = False
         logging.info("====Failed to run client {}".format(clientId))
@@ -400,13 +390,13 @@ def run(rank, model, queue, param_q, stop_flag, client_cfg):
     logging.info("====Worker: Start running")
 
     global nextClientIds, global_trainDB, global_testDB, last_model_tensors
-    criterion = None 
+    criterion = None
 
     if args.task == 'voice':
         criterion = CTCLoss(reduction='mean').to(device=device)
     else:
-        criterion = torch.nn.CrossEntropyLoss().to(device=device) 
-   
+        criterion = torch.nn.CrossEntropyLoss().to(device=device)
+
     startTime = time.time()
 
     # Fetch the initial parameters from the server side (we called it parameter_server)
@@ -416,7 +406,7 @@ def run(rank, model, queue, param_q, stop_flag, client_cfg):
 
     for idx, param in enumerate(model.parameters()):
         dist.broadcast(tensor=param.data, src=0)
-    
+
     if args.load_model:
         try:
             with open(modelPath, 'rb') as fin:
@@ -429,7 +419,7 @@ def run(rank, model, queue, param_q, stop_flag, client_cfg):
             logging.info("====Error: Failed to load model due to {}\n".format(str(e)))
             sys.exit(-1)
 
-    for idx, param in enumerate(model.parameters()): 
+    for idx, param in enumerate(model.parameters()):
         last_model_tensors.append(copy.deepcopy(param.data))
 
     print('Begin!')
@@ -485,9 +475,9 @@ def run(rank, model, queue, param_q, stop_flag, client_cfg):
                         model = pickle.load(fin)
 
                     _model_param, _loss, _trained_size, _speed, _time, _isSuccess = run_client(
-                                clientId=nextClientId, 
-                                cmodel=model, 
-                                learning_rate=learning_rate, 
+                                clientId=nextClientId,
+                                cmodel=model,
+                                learning_rate=learning_rate,
                                 iters=args.upload_epoch,
                                 argdicts={'iters': epoch}
                             )
@@ -532,7 +522,7 @@ def run(rank, model, queue, param_q, stop_flag, client_cfg):
                 # designed for testing only
                 for nextClientId in nextClientIds:
 
-                    client_dataset = select_dataset(nextClientId, global_trainDB, batch_size=args.test_bsz, isTest=True, 
+                    client_dataset = select_dataset(nextClientId, global_trainDB, batch_size=args.test_bsz, isTest=True,
                                                         fractional=False, collate_fn=collate_fn
                                                     )
                     test_loss, acc, acc_5, temp_testResults = test_model(rank, model, client_dataset, criterion=criterion, tokenizer=tokenizer)
@@ -587,13 +577,13 @@ def run(rank, model, queue, param_q, stop_flag, client_cfg):
                 # forward pass of the training data
                 if args.test_train_data:
                     rank_train_data = select_dataset(
-                                        args.this_rank, global_trainDB, batch_size=args.test_bsz, is_rank=rank, 
+                                        args.this_rank, global_trainDB, batch_size=args.test_bsz, is_rank=rank,
                                         collate_fn=collate_fn
                                       )
                     test_loss, acc, acc_5, testResults = test_model(rank, model, rank_train_data, criterion=criterion, tokenizer=tokenizer)
                 else:
                     test_loss, acc, acc_5, testResults = test_model(rank, model, global_testDB, criterion=criterion, tokenizer=tokenizer)
-    
+
                 logging.info("After aggregation epoch {}, CumulTime {}, eval_time {}, test_loss {}, test_accuracy {}, test_5_accuracy {} \n"
                             .format(epoch, round(time.time() - startTime, 4), round(time.time() - evalStart, 4), test_loss, acc, acc_5))
 
@@ -618,7 +608,7 @@ def run(rank, model, queue, param_q, stop_flag, client_cfg):
         if time.time() - last_test > args.test_interval:
             last_test = time.time()
             test_loss, acc = test_model(rank, model, global_testDB, criterion=criterion)
-            
+
             logging.info("For epoch {}, CumulTime {}, test_loss {}, test_accuracy {} \n"
                 .format(epoch, time.time() - startTime, test_loss, acc))
 
@@ -681,7 +671,7 @@ if __name__ == "__main__":
     dataConf = os.path.join(args.data_dir, 'sampleConf') if args.data_set == 'imagenet' else None
 
     logging.info("==== Starting training data partitioner =====")
-    global_trainDB = DataPartitioner(data=train_dataset, splitConfFile=dataConf, 
+    global_trainDB = DataPartitioner(data=train_dataset, splitConfFile=dataConf,
                         numOfClass=args.num_class, dataMapFile=args.data_mapfile)
     logging.info("==== Finished training data partitioner =====")
 
@@ -689,7 +679,7 @@ if __name__ == "__main__":
     distributionParam = [float(x) for x in args.zipf_alpha.split('-')]
 
     for i in range(args.duplicate_data):
-        partition_dataset(global_trainDB, workers, splitTrainRatio, dataDistribution[i], 
+        partition_dataset(global_trainDB, workers, splitTrainRatio, dataDistribution[i],
                                     filter_class=args.filter_class, arg = {'balanced_client':0, 'param': distributionParam[i]})
     global_trainDB.log_selection()
 
