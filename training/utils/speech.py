@@ -7,6 +7,7 @@ import torch
 import codecs
 import string
 import time
+import numba
 import librosa
 from torch.utils.data import Dataset
 
@@ -55,8 +56,8 @@ class SPEECH():
 
     def __init__(self, root, train=True, transform=None, target_transform=None, classes=CLASSES):
 
-        
-        
+
+
         self.train = train  # training set or test set
         self.root = root
         self.transform = transform
@@ -129,7 +130,7 @@ class SPEECH():
         rawData, rawTags = [], []
 
         audioFiles = os.scandir(path)
-        
+
         clientMap = {}
         for idx, audio in enumerate(audioFiles):
             audio = audio.name
