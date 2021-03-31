@@ -40,7 +40,7 @@ The output of the experiment will validate the following major claims in our pap
 #### 	**FL Training:**
 * Kuiper outperforms existing random participant selection by 1.2×-14.1× in time-to-accuracy performance, while achieving 1.3%-9.8% better final model accuracy (§7.2.1) -> Table 1 and Figure 9.
 * Kuiper achieves close-to-optimal model efficiency by adaptively striking the trade-off between statistical and system efficiency with different components (§7.2.2) -> Figure 11 and 12.
-* Kuiper outperforms its counterpart over a wide range of parameters and different scales of experiments, while being robust to outliers (§7.2.3) -> Figure 13, 14 and 15.
+* Kuiper outperforms its counterpart over a wide range of parameters and different scales of experiments, while being robust to outliers (§7.2.3) -> Figure 13, 14.
 
 #### 	**FL Testing:**
 * Kuiper can serve developer testing criteria on data deviation while reducing costs by bounding the number of participants needed even without individual data characteristics(§7.3.1) —> Figure 16.
@@ -48,19 +48,24 @@ The output of the experiment will validate the following major claims in our pap
 
 ## Training
 
-### Table 1 -  Summary of improvements on time to accuracy
+Due to the great variety of training experiments, please follow the training  [README.md](https://github.com/SymbioticLab/Kuiper/blob/master/training/README.md) to initiate new training jobs and get performance results. As each experiment is really time-consuming, we strongly recommend the user to try (Yogi + ShuffleNet) setting on the OpenImage dataset, which is ***much faster*** than other datasets and strategies.
 
-### Figure 9 - Time-to-Accuracy performance
+***Performance of model training (both accuracy and time-to-accuracy performance) often shows certain variations. We evaluate each setting over 5 runs and report the mean value in our paper.***
 
-### Figure 11 - Breakdown of final model accuracy
+### Time to accuracy performance (Table 1 and Figure 9)
 
-### Figure 12 - Breakdown of Time-to-Accuracy performance with YoGi
+Please refer to ```training/evals/configs/DATA_NAME/conf.yml```. We spent > 3000 GPU hours to collection all results. 
 
-### Figure 13 - Impact of number of participants K
+### Performance breakdown (Figure 11 and Figure 12)
 
-### Figure 14 - Impact of penalty factor α on stragglers. 
+Please specify the following parameters in ```training/evals/configs/DATA_NAME/conf.yml``` to start the breakdown experiment:
 
-### Figure 15 - Impact of outliers
+    - Kuiper w/o Sys: - round_penalty: 0
+    - Kuiper w/o Pacer: - pacer_step: 100000
+    
+### Sensitivity Analysis (Figure 13 and Figure 14)
+
+Please specify different ```- round_penalty:``` (\alpha) and ```- total_worker: ``` (different number of participants K) in ```training/evals/configs/DATA_NAME/conf.yml```, and then submit jobs. 
 
 ## Testing
 
@@ -91,13 +96,15 @@ open figure17a.pdf figure17b.pdf
 
 This will produce plots close to Figure 17 (`figure/ref/figure17a.pdf` and `figure/ref/figure17b.pdf`) on page 12 of the paper. You might notice some variation compared to the original figure as we removed a few long-running queries. 
 
-Note: To save reviewers time, `python plot_figure17.py -k` will only run and plot the lines for Kuiper. We hope the runtime will convince you that MILP is extremly slow :).
+Note: To save reviewers time, `python plot_figure17.py -k` will only run and plot the lines for Kuiper. We hope the runtime will convince you that MILP is extremely slow :).
 
 # Repo Structure
 
 ```
 Repo Root
 |---- Training
+    |---- evals     # Submit/terminate training jobs
+        |---- configs   # Configuration examples
 |---- Testing
 |---- Data
        |---- download.sh   # Download all datasets     
@@ -107,5 +114,7 @@ Repo Root
 
 # Acknowledgements
 
+Thanks to Qihua Zhou for his [Falcon repo](https://github.com/kimihe/Falcon).
+
 # Contact
-Fan Lai(fanlai@umich.edu) and Xiangfeng Zhu(xzhu0027@gmail.com)
+Fan Lai (fanlai@umich.edu) and Xiangfeng Zhu (xzhu0027@gmail.com)
