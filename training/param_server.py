@@ -380,8 +380,8 @@ def run(model, queue, param_q, stop_signal, clientSampler):
                                                         )
                         sampledClientSet = set(clientsToRun)
 
-                        logging.info("====Try to resample clients, final takes: \n {} \n virtual duration is {}"
-                                    .format(clientsToRun, virtualClientClock))
+                        logging.info("====Try to resample clients, final takes: \n {}"
+                                    .format(clientsToRun, ))#virtualClientClock))
 
                         allocateClientToWorker = {}
                         allocateClientDict = {rank:0 for rank in workers}

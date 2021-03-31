@@ -57,16 +57,16 @@ def process_cmd(yaml_file):
         if conf_name == "job_name":
             job_name = job_conf[conf_name]
         if conf_name == "log_path":
-            log_path = os.path.join(job_conf[conf_name], 'log')
+            log_path = os.path.join(job_conf[conf_name], 'log', job_name, time_stamp)
 
     learner_conf = '-'.join([str(_) for _ in list(range(1, sum(total_gpus)+1))])
     # =========== Submit job to parameter server ============
     running_vms.add(ps_ip)
     ps_cmd = f" python {yaml_conf['exp_path']}/param_server.py {conf_script} --this_rank=0 --learner={learner_conf} "
 
-    print("Starting aggregator ...")
+    print(f"Starting aggregator on {ps_ip}...")
     subprocess.Popen(f'ssh {submit_user}{ps_ip} "{setup_cmd} {ps_cmd}"',
-                    shell=True, )#stdout=subprocess.DEVNULL, stderr=subprocess.STDOUT)
+                    shell=True, stdout=subprocess.DEVNULL, stderr=subprocess.STDOUT)
 
     #time.sleep(2)
     # =========== Submit job to each worker ============
@@ -81,7 +81,7 @@ def process_cmd(yaml_file):
             rank_id += 1
 
             subprocess.Popen(f'ssh {submit_user}{worker} "{setup_cmd} {worker_cmd}"',
-                            shell=True, )#stdout=subprocess.DEVNULL, stderr=subprocess.STDOUT)
+                            shell=True, stdout=subprocess.DEVNULL, stderr=subprocess.STDOUT)
 
     # dump the address of running workers
     current_path = os.path.dirname(os.path.abspath(__file__))
@@ -114,6 +114,5 @@ elif sys.argv[1] == 'stop':
     terminate(sys.argv[2])
 else:
     print("Unknown cmds ...")
-
 
 

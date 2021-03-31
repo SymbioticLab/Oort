@@ -162,14 +162,14 @@ class _training_selector(object):
             self.unexplored.add(clientId)
 
     def calculateSumUtil(self, clientList):
-        cnt = cntUtil = 0.
+        cnt, cntUtil = 1e-4, 0
 
         for client in clientList:
-            if self.totalArms[client]['time_stamp']==self.training_round-1 and client in self.successfulClients:
+            if client in self.successfulClients:
                 cnt += 1
-                cntUtil += self.totalArms[client][0]
+                cntUtil += self.totalArms[client]['reward']
 
-        return cntUtil/max(cnt, 1e-4)
+        return cntUtil/cnt
 
     def pacer(self):
         # summarize utility in last epoch
@@ -190,15 +190,15 @@ class _training_selector(object):
             if abs(utilCurrentPacerRounds - utilLastPacerRounds) <= utilLastPacerRounds * 0.1:
                 self.round_threshold = min(100., self.round_threshold + self.args.pacer_delta)
                 self.last_util_record = self.training_round - self.args.pacer_step
-                logging.info("Training selector: Pacer changes at {} to {}".format(self.training_round, self.round_threshold))
+                logging.debug("Training selector: Pacer changes at {} to {}".format(self.training_round, self.round_threshold))
 
             # change sharply -> we decrease the pacer step
             elif abs(utilCurrentPacerRounds - utilLastPacerRounds) >= utilLastPacerRounds * 5:
                 self.round_threshold = max(self.args.pacer_delta, self.round_threshold - self.args.pacer_delta)
                 self.last_util_record = self.training_round - self.args.pacer_step
-                logging.info("Training selector: Pacer changes at {} to {}".format(self.training_round, self.round_threshold))
+                logging.debug("Training selector: Pacer changes at {} to {}".format(self.training_round, self.round_threshold))
 
-            logging.info("Training selector: utilLastPacerRounds {}, utilCurrentPacerRounds {} in round {}"
+            logging.debug("Training selector: utilLastPacerRounds {}, utilCurrentPacerRounds {} in round {}"
                 .format(utilLastPacerRounds, utilCurrentPacerRounds, self.training_round))
 
         logging.info("Training selector: Pacer {}: lastExploitationUtil {}, lastExplorationUtil {}, last_util_record {}".
@@ -212,7 +212,7 @@ class _training_selector(object):
         '''
         self.totalArms[clientId]['reward'] = feedbacks['reward']
         self.totalArms[clientId]['duration'] = feedbacks['duration']
-        self.totalArms[clientId]['time_stamp'] = self.training_round
+        self.totalArms[clientId]['time_stamp'] = feedbacks['time_stamp']
         self.totalArms[clientId]['count'] += 1
         self.totalArms[clientId]['status'] = feedbacks['status']
 
@@ -267,6 +267,7 @@ class _training_selector(object):
         client_list = list(self.totalArms.keys())
         orderedKeys = [x for x in client_list if int(x) in feasible_clients and int(x) not in self.blacklist]
 
+
         if self.round_threshold < 100.:
             sortedDuration = sorted([self.totalArms[key]['duration'] for key in client_list])
             self.round_prefer_duration = sortedDuration[min(int(len(sortedDuration) * self.round_threshold/100.), len(sortedDuration)-1)]
@@ -281,6 +282,7 @@ class _training_selector(object):
                 moving_reward.append(creward)
                 staleness.append(cur_time - self.totalArms[clientId]['time_stamp'])
 
+
         max_reward, min_reward, range_reward, avg_reward, clip_value = self.get_norm(moving_reward, self.args.clip_bound)
         max_staleness, min_staleness, range_staleness, avg_staleness, _ = self.get_norm(staleness, thres=1)
 
@@ -293,16 +295,15 @@ class _training_selector(object):
                 sc = (creward - min_reward)/float(range_reward) \
                     + math.sqrt(0.1*math.log(cur_time)/self.totalArms[key]['time_stamp']) # temporal uncertainty
 
-                    #self.alpha*((cur_time-self.totalArms[key][1]) - min_staleness)/float(range_staleness)
-
                 clientDuration = self.totalArms[key]['duration']
                 if clientDuration > self.round_prefer_duration:
-                    sc *= ((float(self.round_prefer_duration)/clientDuration) ** self.args.round_penalty)
+                    sc *= ((float(self.round_prefer_duration)/max(1e-4, clientDuration)) ** self.args.round_penalty)
 
-                if self.totalArms[key]['time_stamp']==cur_time-1:
+                if self.totalArms[key]['time_stamp']==cur_time:
                     allloss[key] = sc
 
                 scores[key] = sc
+
 
         clientLakes = list(scores.keys())
         self.exploration = max(self.exploration*self.decay_factor, self.exploration_min)
@@ -322,7 +323,7 @@ class _training_selector(object):
 
         augment_factor = len(pickedClients)
 
-        totalSc = float(sum([scores[key] for key in pickedClients]))
+        totalSc = max(1e-4, float(sum([scores[key] for key in pickedClients])))
         pickedClients = list(np2.random.choice(pickedClients, exploitLen, p=[scores[key]/totalSc for key in pickedClients], replace=False))
         self.exploitClients = pickedClients
 
@@ -336,7 +337,7 @@ class _training_selector(object):
                 clientDuration = self.totalArms[cl]['duration']
 
                 if clientDuration > self.round_prefer_duration:
-                    init_reward[cl] *= ((float(self.round_prefer_duration)/clientDuration) ** self.args.round_penalty)
+                    init_reward[cl] *= ((float(self.round_prefer_duration)/max(1e-4, clientDuration)) ** self.args.round_penalty)
 
             # prioritize w/ some rewards (i.e., size)
             exploreLen = min(len(_unexplored), numOfSamples - len(pickedClients))
@@ -345,7 +346,7 @@ class _training_selector(object):
             unexploredSc = float(sum([init_reward[key] for key in pickedUnexploredClients]))
 
             pickedUnexplored = list(np2.random.choice(pickedUnexploredClients, exploreLen,
-                            p=[init_reward[key]/unexploredSc for key in pickedUnexploredClients], replace=False))
+                            p=[init_reward[key]/max(1e-4, unexploredSc) for key in pickedUnexploredClients], replace=False))
 
             self.exploreClients = pickedUnexplored
             pickedClients = pickedClients + pickedUnexplored
@@ -362,17 +363,13 @@ class _training_selector(object):
         top_k_score = []
         for i in range(min(3, len(pickedClients))):
             clientId = pickedClients[i]
-            _score = (self.totalArms[clientId]['reward'] - min_reward)/float(range_reward)
-            _staleness = math.sqrt(0.1*math.log(cur_time)/self.totalArms[clientId]['time_stamp']) #self.alpha*((cur_time-self.totalArms[clientId][1]) - min_staleness)/float(range_staleness)
-            top_k_score.append(self.totalArms[clientId] + [_score, _staleness])
+            _score = (self.totalArms[clientId]['reward'] - min_reward)/range_reward
+            _staleness = math.sqrt(0.1*math.log(cur_time)/max(1e-4, self.totalArms[clientId]['time_stamp'])) #self.alpha*((cur_time-self.totalArms[clientId][1]) - min_staleness)/float(range_staleness)
+            top_k_score.append((self.totalArms[clientId], [_score, _staleness]))
 
-        last_exploit = pickedClients[exploitLen-1]
-        top_k_score.append(self.totalArms[last_exploit] + \
-            [(self.totalArms[last_exploit]['reward'] - min_reward)/float(range_reward), self.alpha*((cur_time-self.totalArms[last_exploit]['time_stamp']) - min_staleness)/float(range_staleness)])
-
-        logging.info("At time {}, UCB exploited {}, augment_factor {}, exploreLen {}, un-explored {}, indeed un-explored {}, exploration {}, round_threshold {}, top-k score is {}"
-            .format(cur_time, numOfExploited, augment_factor/exploitLen, exploreLen, len(self.totalArms) - numOfExploited, len(self.unexplored), self.exploration, self.round_threshold, top_k_score))
-        logging.info("At time {}, all rewards are {}".format(cur_time, allloss))
+        logging.info("At round {}, UCB exploited {}, augment_factor {}, exploreLen {}, un-explored {}, exploration {}, round_threshold {}, sampled score is {}"
+            .format(cur_time, numOfExploited, augment_factor/max(1e-4, exploitLen), exploreLen, len(self.unexplored), self.exploration, self.round_threshold, top_k_score))
+        # logging.info("At time {}, all rewards are {}".format(cur_time, allloss))
 
         return pickedClients
 
@@ -391,13 +388,13 @@ class _training_selector(object):
     def getAllMetrics(self):
         return self.totalArms
 
-    def get_norm(self, aList, clip_bound=0.95, thres=0):
+    def get_norm(self, aList, clip_bound=0.95, thres=1e-4):
         aList.sort()
         clip_value = aList[min(int(len(aList)*clip_bound), len(aList)-1)]
 
         _max = max(aList)
         _min = min(aList)*0.999
         _range = max(_max - _min, thres)
-        _avg = sum(aList)/float(len(aList))
+        _avg = sum(aList)/max(1e-4, float(len(aList)))
 
         return float(_max), float(_min), float(_range), float(_avg), float(clip_value)
