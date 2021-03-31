@@ -37,12 +37,12 @@ python setup.py install  # install kuiper
 
 The output of the experiment will validate the following major claims in our paper:
 
-#### 	**FL Training:**
+####    **FL Training:**
 * Kuiper outperforms existing random participant selection by 1.2×-14.1× in time-to-accuracy performance, while achieving 1.3%-9.8% better final model accuracy (§7.2.1) -> Table 1 and Figure 9.
 * Kuiper achieves close-to-optimal model efficiency by adaptively striking the trade-off between statistical and system efficiency with different components (§7.2.2) -> Figure 11 and 12.
 * Kuiper outperforms its counterpart over a wide range of parameters and different scales of experiments, while being robust to outliers (§7.2.3) -> Figure 13, 14.
 
-#### 	**FL Testing:**
+####    **FL Testing:**
 * Kuiper can serve developer testing criteria on data deviation while reducing costs by bounding the number of participants needed even without individual data characteristics(§7.3.1) —> Figure 16.
 * With the individual information, Kuiper improves the testing duration by 4.7× w.r.t. Mixed Integer Linear Programming (MILP) solver, and is able to efficiently enforce developer preferences across millions of clients (§7.3.2) -> Figure 17.
 
@@ -54,18 +54,16 @@ Due to the great variety of training experiments, please follow the training  [R
 
 ### Time to accuracy performance (Table 1 and Figure 9)
 
-Please refer to ```training/evals/configs/DATA_NAME/conf.yml```. We spent > 3000 GPU hours to collection all results. 
+Please refer to ```training/evals/configs/DATA_NAME/conf.yml```. We spent > 3000 GPU hours to collection all results :). 
 
 ### Performance breakdown (Figure 11 and Figure 12)
 
-Please specify the following parameters in ```training/evals/configs/DATA_NAME/conf.yml``` to start the breakdown experiment:
+Please specify the following parameters in ```training/evals/configs/DATA_NAME/conf.yml``` to start the breakdown experiment. 
+Kuiper w/o Sys setting ```- round_penalty: 0```. Kuiper w/o Pacer setting: ```- pacer_step: 100000```
 
-    - Kuiper w/o Sys: - round_penalty: 0
-    - Kuiper w/o Pacer: - pacer_step: 100000
-    
 ### Sensitivity Analysis (Figure 13 and Figure 14)
 
-Please specify different ```- round_penalty:``` (\alpha) and ```- total_worker: ``` (different number of participants K) in ```training/evals/configs/DATA_NAME/conf.yml```, and then submit jobs. 
+Please specify different ```- round_penalty:``` (\alpha for Figure 13) and ```- total_worker: ``` (different number of participants K for Figure 14) in ```training/evals/configs/DATA_NAME/conf.yml```, and then submit jobs. 
 
 ## Testing
 
