@@ -33,11 +33,6 @@ from utils.utils_model import MySGD, test_model
 if args.task == 'nlp':
     from utils.nlp import *
 
-elif args.task == 'speech':
-    from utils.transforms_wav import *
-    from utils.transforms_stft import *
-    from utils.resnet_speech import *
-
 from helper.clientSampler import clientSampler
 from utils.yogi import YoGi
 
@@ -48,7 +43,7 @@ tokenizer = None
 if args.task == 'nlp' or args.task == 'text_clf':
     tokenizer = AlbertTokenizer.from_pretrained('albert-base-v2', do_lower_case=True)
 
-modelDir = os.path.join(args.log_path, args.model)#os.getcwd() + "/../../models/"  + args.model
+modelDir = os.path.join(args.log_path, args.model)
 modelPath = modelDir+'/'+str(args.model)+'.pth.tar' if args.model_path is None else args.model_path
 
 def init_dataset():
@@ -78,16 +73,22 @@ def init_dataset():
         model = LogisticRegression(args.vocab_token_size, args.vocab_tag_size)
     elif args.task == 'speech':
         if args.model == 'mobilenet':
+            from utils.resnet_speech import mobilenet_v2
             model = mobilenet_v2(num_classes=outputClass[args.data_set], inchannels=1)
         elif args.model == "resnet18":
+            from utils.resnet_speech import resnet18
             model = resnet18(num_classes=outputClass[args.data_set], in_channels=1)
         elif args.model == "resnet34":
+            from utils.resnet_speech import resnet34
             model = resnet34(num_classes=outputClass[args.data_set], in_channels=1)
         elif args.model == "resnet50":
+            from utils.resnet_speech import resnet50
             model = resnet50(num_classes=outputClass[args.data_set], in_channels=1)
         elif args.model == "resnet101":
+            from utils.resnet_speech import resnet101
             model = resnet101(num_classes=outputClass[args.data_set], in_channels=1)
         elif args.model == "resnet152":
+            from utils.resnet_speech import resnet152
             model = resnet152(num_classes=outputClass[args.data_set], in_channels=1)
         else:
             # Should not reach here
@@ -188,10 +189,16 @@ def init_dataset():
             test_dataset = fl_loader.TextSentimentDataset(args.data_dir, train=False, tokenizer=tokenizer, max_len=args.clf_block_size)
 
         elif args.data_set == 'google_speech':
-            from utils.speech import SPEECH, BackgroundNoiseDataset
+            print('import ...speech')
+            from utils.speech import SPEECH
             # for voice
-            from utils.voice_data_loader import SpectrogramDataset
-
+            print('c0')
+            from utils.transforms_wav import ChangeSpeedAndPitchAudio, ChangeAmplitude, FixAudioLength, ToMelSpectrogram, LoadAudio
+            print('c1')
+            from utils.transforms_stft import ToSTFT, StretchAudioOnSTFT, TimeshiftAudioOnSTFT, FixSTFTDimension, ToMelSpectrogramFromSTFT, DeleteSTFT
+            print('c2...')
+            from utils.speech import BackgroundNoiseDataset
+            print('cc...')
             bkg = '_background_noise_'
             data_aug_transform = transforms.Compose([ChangeAmplitude(), ChangeSpeedAndPitchAudio(), FixAudioLength(), ToSTFT(), StretchAudioOnSTFT(), TimeshiftAudioOnSTFT(), FixSTFTDimension()])
             bg_dataset = BackgroundNoiseDataset(os.path.join(args.data_dir, bkg), data_aug_transform)
@@ -208,6 +215,7 @@ def init_dataset():
                                              FixAudioLength(),
                                              valid_feature_transform]))
         elif args.data_set == 'common_voice':
+            from utils.voice_data_loader import SpectrogramDataset
             train_dataset = SpectrogramDataset(audio_conf=model.audio_conf,
                                            manifest_filepath=args.train_manifest,
                                            labels=model.labels,

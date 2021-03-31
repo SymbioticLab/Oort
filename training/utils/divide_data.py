@@ -289,7 +289,7 @@ class DataPartitioner(object):
         for clientId in clientToData:
             clientNumSamples[clientId] = [1] * numOfLabels
 
-        numOfClients = len(clientToData.keys())
+        numOfClients = len(clientToData)
         self.classPerWorker = np.zeros([numOfClients+1, numOfLabels])
 
         for clientId in range(numOfClients):

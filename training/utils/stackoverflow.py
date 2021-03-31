@@ -51,7 +51,7 @@ class stackoverflow():
     def __init__(self, root, train=True):
         self.train = train  # training set or test set
         self.root = root
-        
+
         self.train_file = 'stackoverflow_train.h5'
         self.test_file = 'stackoverflow_test.h5'
         self.train = train
@@ -144,7 +144,7 @@ class stackoverflow():
     def create_tag_vocab(self, vocab_size, path):
         """Creates vocab from `vocab_size` most common tags in Stackoverflow."""
         tags_file = "vocab_tags.txt"
-        with open(path + tags_file, 'rb') as f:
+        with open(os.path.join(path,tags_file), 'rb') as f:
             tags = pickle.load(f)
         return tags[:vocab_size]
 
@@ -152,7 +152,7 @@ class stackoverflow():
     def create_token_vocab(self, vocab_size, path):
         """Creates vocab from `vocab_size` most common words in Stackoverflow."""
         tokens_file = "vocab_tokens.txt"
-        with open(path + tokens_file, 'rb') as f:
+        with open(os.path.join(path, tokens_file), 'rb') as f:
             tokens = pickle.load(f)
         return tokens[:vocab_size]
 
@@ -184,9 +184,9 @@ class stackoverflow():
 
             # Load the traning data
             if self.train:
-                train_file = h5.File(path + self.train_file, "r")
+                train_file = h5.File(os.path.join(path, self.train_file), "r")
             else:
-                train_file = h5.File(path + self.test_file, "r")
+                train_file = h5.File(os.path.join(path, self.test_file), "r")
             print(self.train)
 
             count = 0
@@ -203,7 +203,7 @@ class stackoverflow():
                     tags_list = [vocab_tags_dict[s] for s in tags.decode("utf-8").split('|') if s in vocab_tags_dict]
                     if not tags_list:
                         continue
-                    
+
                     tokens_list = [vocab_tokens_dict[s] for s in (tokens.decode("utf-8").split()+title.decode("utf-8").split()) if s in vocab_tokens_dict]
                     if not tokens_list:
                         continue
@@ -213,13 +213,13 @@ class stackoverflow():
                     target_tags.append(tags_list)
 
                     count += 1
-                
+
                 clientCount += 1
 
                 num_of_remains = len(client_list) - clientId
                 #print("====In loading data, remains {} clients, may take {} sec".format(num_of_remains, (time.time() - start_time)/clientCount * num_of_remains))
                 # logging.info("====In loading  data, remains {} clients".format(num_of_remains)
-                
+
                 if clientId % 5000 == 0:
                     # dump the cache
                     with open(cache_path, 'wb') as fout:
