@@ -104,7 +104,7 @@ def prune_client_tasks(clientSampler, sampledClientsRealTemp, numToRealRun, glob
     for virtualClient in sampledClientsRealTemp:
         roundDuration = clientSampler.getCompletionTime(virtualClient,
                                 batch_size=args.batch_size, upload_epoch=args.upload_epoch,
-                                model_size=args.model_size)
+                                model_size=args.model_size) * args.clock_factor
 
         if clientSampler.isClientActive(virtualClient, roundDuration + global_virtual_clock):
             sampledClientsReal.append(virtualClient)
@@ -115,7 +115,7 @@ def prune_client_tasks(clientSampler, sampledClientsRealTemp, numToRealRun, glob
     for virtualClient in sampledClientsReal:
         roundDuration = clientSampler.getCompletionTime(virtualClient,
                                 batch_size=args.batch_size, upload_epoch=args.upload_epoch,
-                                model_size=args.model_size)
+                                model_size=args.model_size) * args.clock_factor
         completionTimes.append(roundDuration)
         virtual_client_clock[virtualClient] = roundDuration
 
@@ -512,6 +512,4 @@ if __name__ == "__main__":
                 )
 
     manager.shutdown()
-
-
 

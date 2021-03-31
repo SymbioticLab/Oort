@@ -38,11 +38,11 @@ job_conf:
     - model: albert-base-v2                            # Models: shufflenet_v2_x2_0, mobilenet_v2, resnet34, albert-base-v2
     - gradient_policy: yogi                 # Commenting out this line will turn to "Fedprox"
     - round_penalty: 2.0                    # Penalty factor in our paper (\alpha), \alpha -> 0 turns to (Kuiper w/o sys)
-    - eval_interval: 20                     # How many rounds to run a testing on the testing set
+    - eval_interval: 5                     # How many rounds to run a testing on the testing set
     - epochs: 500                           # Number of rounds to run this training. We use 1000 in our paper, while it may converge w/ ~400 rounds
     - task: nlp
-    - test_bsz: 64
-    - test_ratio: 0.1
+    - test_bsz: 32
+    - test_ratio: 0.2
     - learning_rate: 5e-5
     - min_learning_rate: 2e-5
     - pacer_delta: 0.3

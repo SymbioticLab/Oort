@@ -247,7 +247,7 @@ def run_client(clientId, cmodel, iters, learning_rate, argdicts = {}):
                             collate_fn=collate_fn
                         )
 
-                    #logging.info(f"====Error {str(ex)}")
+                    logging.info(f"====Error {str(ex)}")
                     train_data_itr_list = [iter(tempData)]
 
             except Exception as e:
@@ -296,9 +296,7 @@ def run_client(clientId, cmodel, iters, learning_rate, argdicts = {}):
         temp_loss = 0.
         loss_cnt = 1.
 
-        #logging.info("Loss to list is {}".format(loss))
-        #if itr >= (iters - total_batch_size - 1):
-        loss_list = loss.tolist()
+        loss_list = loss.tolist() if args.task != 'nlp' else [loss.item()]
         for l in loss_list:
             temp_loss += l**2
 
@@ -341,7 +339,7 @@ def run_client(clientId, cmodel, iters, learning_rate, argdicts = {}):
 
         comp_duration = (time.time() - comp_start)
 
-        logging.debug('For client {}, upload iter {}, epoch {}, Batch {}/{}, Loss:{} | TotalTime: {} | CompTime: {} | DataLoader: {} | epoch_train_loss: {} | malicious: {}\n'
+        logging.info('For client {}, upload iter {}, epoch {}, Batch {}/{}, Loss:{} | TotalTime: {} | CompTime: {} | DataLoader: {} | epoch_train_loss: {} | malicious: {}\n'
                     .format(clientId, argdicts['iters'], int(curBatch/total_batch_size),
                     (curBatch % total_batch_size), total_batch_size, temp_loss,
                     round(time.time() - it_start, 4), round(comp_duration, 4), round(comp_start - it_start, 4), epoch_train_loss, is_malicious))
@@ -608,15 +606,6 @@ def run(rank, model, queue, param_q, stop_flag, client_cfg):
             fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
             logging.info("====Error: {}, {}, {}, {}".format(e, exc_type, fname, exc_tb.tb_lineno))
             break
-
-        if time.time() - last_test > args.test_interval:
-            last_test = time.time()
-            test_loss, acc = test_model(rank, model, global_testDB, criterion=criterion)
-
-            logging.info("For epoch {}, CumulTime {}, test_loss {}, test_accuracy {} \n"
-                .format(epoch, time.time() - startTime, test_loss, acc))
-
-            last_test = time.time()
 
         if stop_flag.value:
             break

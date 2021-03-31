@@ -138,7 +138,7 @@ def test_model(rank, model, test_data, criterion=nn.NLLLoss(), tokenizer=None):
             data, target = mask_tokens(data, tokenizer, args) if args.mlm else (data, data)
             data, target = Variable(data).cuda(), Variable(target).cuda()
 
-            outputs = model(data, masked_lm_labels=target, loss_type='mean') if args.mlm else model(data, labels=target, loss_type='mean')
+            outputs = model(data, masked_lm_labels=target) if args.mlm else model(data, labels=target)
 
             loss = outputs[0]
             #criterion(outputs[1].view(-1, 30000), target.view(-1))
@@ -180,7 +180,7 @@ def test_model(rank, model, test_data, criterion=nn.NLLLoss(), tokenizer=None):
         elif args.task == 'text_clf':
             (inputs, masks) = data
             inputs, masks, target = Variable(inputs).cuda(), Variable(masks).cuda(), Variable(target).cuda()
-            loss, output = model(inputs, token_type_ids=None, attention_mask=masks, labels=target, loss_type='mean')
+            loss, output = model(inputs, token_type_ids=None, attention_mask=masks, labels=target)
 
             #loss = torch.mean(loss)
             test_loss += loss.item()  # Variable.data
@@ -294,3 +294,4 @@ class RandomParams(object):
         part_len = int(math.floor(self.ratio * len(params_indices)))
         result = indexes[0: part_len]
         return [params_indices[i] for i in result]
+
