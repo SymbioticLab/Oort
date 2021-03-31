@@ -10,6 +10,7 @@ import numpy as np
 from collections import deque
 from collections import OrderedDict
 import collections
+import numba
 
 # PyTorch libs
 import torch
@@ -32,6 +33,11 @@ from utils.utils_model import MySGD, test_model
 
 if args.task == 'nlp':
     from utils.nlp import *
+elif args.task == 'speech':
+    from utils.speech import SPEECH
+    from utils.transforms_wav import ChangeSpeedAndPitchAudio, ChangeAmplitude, FixAudioLength, ToMelSpectrogram, LoadAudio
+    from utils.transforms_stft import ToSTFT, StretchAudioOnSTFT, TimeshiftAudioOnSTFT, FixSTFTDimension, ToMelSpectrogramFromSTFT, DeleteSTFT
+    from utils.speech import BackgroundNoiseDataset
 
 from helper.clientSampler import clientSampler
 from utils.yogi import YoGi
@@ -189,16 +195,6 @@ def init_dataset():
             test_dataset = fl_loader.TextSentimentDataset(args.data_dir, train=False, tokenizer=tokenizer, max_len=args.clf_block_size)
 
         elif args.data_set == 'google_speech':
-            print('import ...speech')
-            from utils.speech import SPEECH
-            # for voice
-            print('c0')
-            from utils.transforms_wav import ChangeSpeedAndPitchAudio, ChangeAmplitude, FixAudioLength, ToMelSpectrogram, LoadAudio
-            print('c1')
-            from utils.transforms_stft import ToSTFT, StretchAudioOnSTFT, TimeshiftAudioOnSTFT, FixSTFTDimension, ToMelSpectrogramFromSTFT, DeleteSTFT
-            print('c2...')
-            from utils.speech import BackgroundNoiseDataset
-            print('cc...')
             bkg = '_background_noise_'
             data_aug_transform = transforms.Compose([ChangeAmplitude(), ChangeSpeedAndPitchAudio(), FixAudioLength(), ToSTFT(), StretchAudioOnSTFT(), TimeshiftAudioOnSTFT(), FixSTFTDimension()])
             bg_dataset = BackgroundNoiseDataset(os.path.join(args.data_dir, bkg), data_aug_transform)
