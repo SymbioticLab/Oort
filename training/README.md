@@ -17,9 +17,10 @@ We outline some numbers on Tesla P100 GPU for each line in our plots when using 
 
 Table 1: GPU hours on Openimage
 
-***We recommend the developer to try OpenImage with YoGi setting, which is the most efficient setting.*** Instead, FedProx takes ~2X more GPU hours than YoGi, while the NLP task takes more than 3X GPU hours even with YoGi.  
+***We recommend the developer to try OpenImage with YoGi setting, which is the most efficient setting.*** Instead, FedProx takes ~2X more GPU hours than YoGi, while the NLP task takes more than 4X GPU hours even with YoGi.  
 
 ***Note that the performance of model training (both accuracy and time-to-accuracy performance) often shows certain variations. We report the average results over 5 runs in our paper.***
+We spent more than 6000 GPU hours on our evaluations.
 
 # Getting Started 
 
@@ -46,6 +47,7 @@ They are close to the settings used in our evaluations. Comments in our example 
 
 
 ***All logs will be dumped to ```log_path``` (specified in the configuration file) on each node. 
-```training_perf``` locates at the PS node under this path, and the user can load it with ```pickle``` to check the time-to-accuracy performance。***
+```training_perf``` locates at the PS node under this path, and the user can load it with ```pickle``` to check the time-to-accuracy performance.***
+We also provide a script to plot this result ```python plot_perf.py PATH_OF_training_perf_1 PATH_OF_training_perf_2```. This will save the performance in ```time_to_acc.pdf```.
 
 This example is a temporary trial and we plan to optimize it soon. 

@@ -25,7 +25,7 @@ parser.add_argument('--exploration_decay', type=float, default=0.95)
 parser.add_argument('--fixed_clients', type=bool, default=False)
 parser.add_argument('--user_trace', type=str, default=None)
 parser.add_argument('--release_cache', type=bool, default=False)
-parser.add_argument('--clock_factor', type=float, default=1.0, help="Refactor the clock time given the profile")
+parser.add_argument('--clock_factor', type=float, default=2.5, help="Refactor the clock time given the profile")
 
 # The configuration of model and dataset
 parser.add_argument('--data_dir', type=str, default='~/cifar10/')
@@ -296,7 +296,7 @@ args = parser.parse_args()
 datasetCategories = {'Mnist': 10, 'cifar10': 10, "imagenet": 1000, 'emnist': 47,
                     'openImg': 596, 'google_speech': 35, 'femnist': 62, 'yelp': 5
                     }
-                    
+
 model_factor = {'shufflenet': 0.0644/0.0554,
     'albert': 0.335/0.0554,
     'resnet': 0.1127/0.0554,

@@ -2,13 +2,13 @@
 
 # ========== Cluster configuration ========== 
 # ip address of the parameter server (need 1 GPU)
-ps_ip: 10.0.0.7
+ps_ip: 10.0.0.8
 
 # ip address of each worker:# of gpus on this worker
 # Note that if we collocate ps and worker, then we need to decrease this number of gpus by 1
 # E.g., master node has 4 GPUs, then 1 for the ps, and worker should be set to: worker:3
 worker_ips: 
-    - 10.0.0.6:1 # worker_ip: # of gpus
+    - 10.0.0.9:1 # worker_ip: # of gpus
       #- 10.0.0.4:1 
       #- 10.0.0.2:1
 

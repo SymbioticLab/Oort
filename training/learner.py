@@ -247,7 +247,7 @@ def run_client(clientId, cmodel, iters, learning_rate, argdicts = {}):
                             collate_fn=collate_fn
                         )
 
-                    logging.info(f"====Error {str(ex)}")
+                    #logging.info(f"====Error {str(ex)}")
                     train_data_itr_list = [iter(tempData)]
 
             except Exception as e:
@@ -339,10 +339,10 @@ def run_client(clientId, cmodel, iters, learning_rate, argdicts = {}):
 
         comp_duration = (time.time() - comp_start)
 
-        logging.info('For client {}, upload iter {}, epoch {}, Batch {}/{}, Loss:{} | TotalTime: {} | CompTime: {} | DataLoader: {} | epoch_train_loss: {} | malicious: {}\n'
-                    .format(clientId, argdicts['iters'], int(curBatch/total_batch_size),
-                    (curBatch % total_batch_size), total_batch_size, temp_loss,
-                    round(time.time() - it_start, 4), round(comp_duration, 4), round(comp_start - it_start, 4), epoch_train_loss, is_malicious))
+        #logging.info('For client {}, upload iter {}, epoch {}, Batch {}/{}, Loss:{} | TotalTime: {} | CompTime: {} | DataLoader: {} | epoch_train_loss: {} | malicious: {}\n'
+         #           .format(clientId, argdicts['iters'], int(curBatch/total_batch_size),
+         #           (curBatch % total_batch_size), total_batch_size, temp_loss,
+         #           round(time.time() - it_start, 4), round(comp_duration, 4), round(comp_start - it_start, 4), epoch_train_loss, is_malicious))
 
     # remove the one with LRU
     if len(global_client_profile) > args.max_iter_store:
