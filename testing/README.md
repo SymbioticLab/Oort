@@ -6,7 +6,7 @@ This folder contains scripts and instructions for reproducing the FL testing exp
 
 Testing evaluations in our paper run on a single machine (32 CPU cores, 384GB RAM). 
 
-Before attempting to run testing script, you must download the datasets by running `./download.sh -A`.
+Before attempting to run testing script, you must download the datasets by running `bash download_result.sh`.
 
 ### Figure 16 - Preserving Data Representativeness 
 
@@ -25,7 +25,6 @@ Before running below script, you must install gurobi license by:
 * `grbgetkey [your license]` to install the license 
 
 ```
-cd testing
 python plot_figure17.py   # > 50 hours
 # or python plot_figure17.py -k # ~ 1.5 hour
 open figure17a.pdf figure17b.pdf

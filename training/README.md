@@ -1,7 +1,7 @@
 # Kuiper-Training
 
 This folder contains scripts and instructions for reproducing the FL training experiments in our OSDI '21 paper. 
-***Note that the performance of model training (both accuracy and time-to-accuracy performance) often shows certain variations. We report the mean value over 5 runs for each experiment in our paper.***
+***Note that model training performance (both accuracy and time-to-accuracy performance) often shows certain variations. We report the mean value over five runs for each experiment in our paper.***
 
 # Preliminary
 
@@ -9,7 +9,7 @@ Our training evaluations rely on a distributed setting of ***multiple GPUs*** vi
 In our paper, we used up to 68 GPUs to simulate the FL aggregation of 1300 participants in each round. 
 Each training experiment is pretty time-consuming, as each GPU has to run multiple clients (1300/68 in our case) for each round. 
 
-We outline some numbers on Tesla P100 GPUs for each line in our plots when using 100 participants/round for reference (we also provide estimated price on [Google Cloud](https://cloud.google.com/products/calculator), but they may be inaccurate): 
+We outline some numbers on Tesla P100 GPUs for each line in our plots when using 100 participants/round for reference (we also provide estimated prices on [Google Cloud](https://cloud.google.com/products/calculator), but they may be inaccurate): 
 
 | Setting      | Time to Target Accuracy  | Time to Converge |
 | ----------- | ----------- | ----------- |
@@ -18,8 +18,8 @@ We outline some numbers on Tesla P100 GPUs for each line in our plots when using
 
 Table 1: GPU hours on Openimage dataset with ShuffleNet
 
-***Due to the high computation load on each GPU, we recommend the reviewers to make sure that each GPU is simulating no more than 20 clients. 
-i.e., if the number of participants in each round is K, then we would better to use at least K/20 GPUs.***
+***Due to the high computation load on each GPU, we recommend the reviewers make sure that each GPU is simulating no more than 20 clients. 
+i.e., if the number of participants in each round is K, then we would better use at least K/20 GPUs.***
 
 # Getting Started 
 
@@ -35,7 +35,9 @@ i.e., if the number of participants in each round is K, then we would better to 
 ```
 git clone git@github.com:SymbioticLab/FLPerf.git
 cd FLPerf
-./download.sh -A    # Make sure you have at least 150 GB capacity, or check ./download.sh -h for different subsets.
+# Download the open image dataset. Make sure you have at least 150 GB of storage capacity.
+# Check ./download.sh -h for downloading different datasets.
+./download.sh -o    
 ```
 
 
@@ -53,14 +55,14 @@ They are close to the settings used in our evaluations. Comments in our example 
 ***All logs will be dumped to ```log_path``` (specified in the config file) on each node. 
 ```training_perf``` locates at the master node under this path, and the user can load it with ```pickle``` to check the time-to-accuracy performance.***
 
-# Validate Results
+# Run Experiment and Validate Results
 
-***NOTE: To save reviewers' time, we recommend the reviewers only run Kuiper with YoGi on OpenImage dataset, as it validates our major claim about Kuiper's improvement over random selection and is the most efficient setting. Instead, FedProx takes ~2x more GPU hours than YoGi, while the NLP task takes more than 4x GPU hours even with YoGi. However, please feel free to run other experiments if time permits. Running all experiments require > 4300 GPU hours.***
+***NOTE: To save reviewers' time, we recommend the reviewers only run Kuiper with YoGi on OpenImage dataset, as it validates our major claim about Kuiper's improvement over random selection and is the most efficient setting. Instead, FedProx takes ~2x more GPU hours than YoGi, while the NLP task takes more than 4x GPU hours even with YoGi. However, please feel free to run other experiments if time permits. Running all experiments requires > 4300 GPU hours.***
 
 The output of the experiment will validate the following major claims in our paper:
 1. Kuiper outperforms existing random participant selection by 1.2×-14.1× in time-to-accuracy performance, while achieving 1.3%-9.8% better final model accuracy (§7.2.1) -> Table 1 and Figure 9.
 2. Kuiper achieves close-to-optimal model efficiency by adaptively striking the trade-off between statistical and system efficiency with different components (§7.2.2) -> Figure 11 and 12.
-3. Kuiper outperforms its counterpart over a wide range of parameters and different scales of experiments, while being robust to outliers (§7.2.3) -> Figure 13, 14 and 15.
+3. Kuiper outperforms its counterpart over a wide range of parameters and different scales of experiments, while being robust to outliers (§7.2.3) -> Figure 13, 14, and 15.
 
 ## Time to accuracy performance (Table 1 and Figure 9)
 
@@ -87,7 +89,7 @@ After the experiments finishes, you can find `training_perf` of both experiment 
 python plot_perf.py [path_to_training_perf_random/training_perf] [path_to_training_perf_kuiper/training_perf] 
 ```
 
-This will a produce plot close to Figure 11(b) on page 10 of the paper. You might notice some variation compared to the original figure due to randomness of the experiments.
+This will produce a plot close to Figure 11(b) on page 10 of the paper. You might notice some variation compared to the original figure due to the randomness of the experiments.
 
 ## Performance breakdown (Figure 12)
 
@@ -97,7 +99,7 @@ Run Kuiper w/o Sys by setting [round_penalty](https://github.com/SymbioticLab/Ku
 
 Run Kuiper w/o Pacer by setting [pacer_delta](https://github.com/SymbioticLab/Kuiper/blob/master/training/evals/configs/openimage/conf.yml#L44) to 0
 
-## Sensitivity Analysis (Figure 13, Figure 14 and Figure 15)
+## Sensitivity Analysis (Figure 13, Figure 14, and Figure 15)
 
 ### Figure 14 
 

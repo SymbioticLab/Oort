@@ -42,11 +42,11 @@ The output of the experiment will validate the following major claims in our pap
 
 ## Training
 
-Please follow training [README](https://github.com/SymbioticLab/Kuiper/blob/master/training/README.md) to run training scripts.
+Please go to `./training` directory and follow the training [README](https://github.com/SymbioticLab/Kuiper/blob/master/training/README.md) to run training scripts.
 
 ## Testing
 
-Please follow testing [README](https://github.com/SymbioticLab/Kuiper/blob/master/testing/README.md) to run testing scripts.
+Please go to `./testing` directory and follow the testing [README](https://github.com/SymbioticLab/Kuiper/blob/master/testing/README.md) to run testing scripts.
 
 # Repo Structure
 
