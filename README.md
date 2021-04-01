@@ -4,8 +4,8 @@ This repository contains scripts and instructions for reproducing the experiment
 
 # Overview
 
-* [Getting Started (5 human-minutes + 3 compute-hours)](#getting-started)
-* [Run Experiments and Validate Results (x human-minutes + x compute-hour)](#run-experiments-and-validate-results)
+* [Getting Started](#getting-started)
+* [Run Experiments and Validate Results](#run-experiments-and-validate-results)
 * [Repo Structure](#repo-structure)
 * [Acknowledgements](#acknowledgements)
 * [Contact](#contact)
