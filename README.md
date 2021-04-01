@@ -10,8 +10,6 @@ This repository contains scripts and instructions for reproducing the experiment
 * [Acknowledgements](#acknowledgements)
 * [Contact](#contact)
 
-
-
 # Getting Started 
 
 Before attempting to install Kuiper, you must have the following:
@@ -21,7 +19,7 @@ Before attempting to install Kuiper, you must have the following:
 
 NOTE: we also provide commands to install conda and CUDA. See comments in `install.sh` for details.
 
-Run the following commands to install kuiper and download the [datasets](https://drive.google.com/drive/folders/12s44-VmbLozTsU9oM4RGzXpBfgoeFqmy?usp=sharing). (You need to run these commands in all nodes.)
+Run the following commands to install kuiper and download the [datasets](https://drive.google.com/drive/folders/12s44-VmbLozTsU9oM4RGzXpBfgoeFqmy?usp=sharing). 
 
 ```
 git clone https://github.com/SymbioticLab/Kuiper
@@ -44,11 +42,11 @@ The output of the experiment will validate the following major claims in our pap
 
 ## Training
 
-Please follow training README to run training scripts.
+Please follow training [README](https://github.com/SymbioticLab/Kuiper/blob/master/training/README.md) to run training scripts.
 
 ## Testing
 
-Please follow testing README to run testing scripts.
+Please follow testing [README](https://github.com/SymbioticLab/Kuiper/blob/master/testing/README.md) to run testing scripts.
 
 # Repo Structure
 

@@ -34,7 +34,7 @@ job_conf:
     - data_dir: /mnt/dataset/open_images    # Path of the dataset
     - data_mapfile: /mnt/dataset/open_images/clientDataMap              # Allocation of data to each client, turn to iid setting if not provided
     - client_path: $HOME/Kuiper/data/device_info/client_profile.pkl     # Path of the client trace
-    - sample_mode: kuiper                                  # Client selection: random, kuiper
+    - sample_mode: random                                  # Client selection: random, kuiper
     - model: shufflenet_v2_x2_0                            # Models: shufflenet_v2_x2_0, mobilenet_v2, resnet34, albert-base-v2
     - gradient_policy: yogi                 # Commenting out this line will turn to "Fedprox"
     - round_penalty: 2.0                    # Penalty factor in our paper (\alpha), \alpha -> 0 turns to (Kuiper w/o sys)

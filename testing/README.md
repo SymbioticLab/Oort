@@ -1,7 +1,12 @@
+# Kuiper-Testing
+
+This folder contains scripts and instructions for reproducing the FL testing experiments in our OSDI '21 paper. 
+
+NOTE: Before attempting to run testing script, you must download the datasets by running `./download.sh -A`.
+
 ### Figure 16 - Preserving Data Representativeness 
 
 ```
-cd testing
 python plot_figure16.py     # few seconds
 open figure16.pdf
 ```
