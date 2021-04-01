@@ -160,5 +160,5 @@ def process_dev(data_file):
     #print(Ns)
     return norm_dev, Ns
 
-norm_dev, Ns = process_dev(data_file='../data/speech_sample_f16.pkl')
+norm_dev, Ns = process_dev(data_file='./speech_sample_f16.pkl')
 plot([norm_dev], array(Ns), linelabels = [''],  label = "Deviation Target", y_label='# of Sampled Clients', name='figure16.pdf')

@@ -93,7 +93,7 @@ def run_query(kuiper_only):
     """
     Generate queries for fig 17 and plot results
     """
-    data, systems, distr = load_profiles('./data/openimg_distr.pkl', './data/client_profile.pkl')
+    data, systems, distr = load_profiles('./openimg_distr.pkl', './client_profile.pkl')
 
     budgets = [100, 500, 1000, 1500, 2000, 2500, 3000, 3500, 4000, 4500, 5000]
     query_samples = [1000 * i for i in range(1, 11)] + [10000 * i for i in range(2, 20)]
