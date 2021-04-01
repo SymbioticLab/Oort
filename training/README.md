@@ -1,6 +1,7 @@
 # Kuiper-Training
 
-This folder contains scripts and instructions for reproducing the FL training experiments in our OSDI '21 paper.
+This folder contains scripts and instructions for reproducing the FL training experiments in our OSDI '21 paper. 
+***Note that the performance of model training (both accuracy and time-to-accuracy performance) often shows certain variations. We report the mean value over 5 runs for each experiment in our paper.***
 
 # Preliminary
 
@@ -17,8 +18,6 @@ We outline some numbers on Tesla P100 GPUs for each line in our plots when using
 
 Table 1: GPU hours on Openimage dataset with ShuffleNet
 
-***Note that the performance of model training (both accuracy and time-to-accuracy performance) often shows certain variations. We report the average results over 5 runs in our paper.***
-<!-- We spent more than 6000 GPU hours on our evaluations. -->
 
 # Getting Started 
 
@@ -57,7 +56,7 @@ They are close to the settings used in our evaluations. Comments in our example 
 
 # Validate Results
 
-***NOTE: To save reviewers' time, we recommend the reviewers only run Kuiper with YoGi on OpenImage dataset, as it validates our major claim about Kuiper's improvement over random selection and is the most efficient setting. Instead, FedProx takes ~2x more GPU hours than YoGi, while the NLP task takes more than 4x GPU hours even with YoGi. However, please feel free to run other experiments if time permits. Running all experiments require > 3000 GPU hours.***
+***NOTE: To save reviewers' time, we recommend the reviewers only run Kuiper with YoGi on OpenImage dataset, as it validates our major claim about Kuiper's improvement over random selection and is the most efficient setting. Instead, FedProx takes ~2x more GPU hours than YoGi, while the NLP task takes more than 4x GPU hours even with YoGi. However, please feel free to run other experiments if time permits. Running all experiments require > 4300 GPU hours.***
 
 The output of the experiment will validate the following major claims in our paper:
 1. Kuiper outperforms existing random participant selection by 1.2×-14.1× in time-to-accuracy performance, while achieving 1.3%-9.8% better final model accuracy (§7.2.1) -> Table 1 and Figure 9.
@@ -70,7 +69,7 @@ Please refer to ```Kuiper/training/evals/configs/{DATASET_NAME}/conf.yml```.
 
 For example, to run Kuiper with YoGi on OpenImage dataset and plot the figure, execute the following commands:
 
-```
+``` 
 cd training/evals/
 ```
 
@@ -84,12 +83,12 @@ After the completion of training, then change [sample_mode](https://github.com/S
 python manager.py submit configs/openimage/conf.yml 
 ```
 
-After the experiments finishes, you can find `training_perf` of both experiment on master node's `log_path`. For example, if default config is used, `training_perf`s is avaliable at `Kuiper/training/evals/logs/resnet34_kuiper/{time_stamp}/aggregator`. Run the following command to plot the figure: 
+After the experiments finishes, you can find `training_perf` of both experiment on master node's `log_path`. For example, if default config is used, `training_perf`s is available at `Kuiper/training/evals/logs/openimage_kuiper/{time_stamp}/aggregator/`. Run the following command to plot the figure: 
 ```
-python plot_perf.py [path_to_training_perf_random] [path_to_training_perf_kuiper] 
+python plot_perf.py [path_to_training_perf_random/training_perf] [path_to_training_perf_kuiper/training_perf] 
 ```
 
-This will a produce plot close to Figure 11(b) `Kuiper/figure/ref/figure12b.pdf` on page 10 of the paper. You might notice some variation compared to the original figure due to randomness of the experiments.
+This will a produce plot close to Figure 11(b) on page 10 of the paper. You might notice some variation compared to the original figure due to randomness of the experiments.
 
 ## Performance breakdown (Figure 12)
 
@@ -112,7 +111,6 @@ Change [total_worker](https://github.com/SymbioticLab/Kuiper/blob/master/trainin
 ### Figure 15
 
 ***Experiments of outliers are extremely slow as we need to get the final accuracy of the training, so we recommend the reviewer to put this to the last.***
-To run this, please first add ```- blacklist_rounds: 10``` to the config file in order to enable the blacklist. Then specify different degrees of outliers ```- malicious_clients: 0.1``` (i.e., 10% clients are corrputed). 
-
+To run this, please first add ```- blacklist_rounds: 10``` to the config file in order to enable the blacklist. Then specify different degrees of outliers ```- malicious_clients: 0.1``` (i.e., 10% clients are corrupted). 
 
 
