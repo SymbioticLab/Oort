@@ -292,8 +292,11 @@ class _training_selector(object):
                 creward = min(self.totalArms[key]['reward'], clip_value)
                 numOfExploited += 1
 
+                # sc = (creward - min_reward)/float(range_reward) \
+                #     + math.sqrt(0.1*math.log(cur_time)/self.totalArms[key]['time_stamp']) # temporal uncertainty
+
                 sc = (creward - min_reward)/float(range_reward) \
-                    + math.sqrt(0.1*math.log(cur_time)/self.totalArms[key]['time_stamp']) # temporal uncertainty
+                    + self.alpha*((cur_time-self.totalArms[key]['time_stamp']) - min_staleness)/float(range_staleness) 
 
                 clientDuration = self.totalArms[key]['duration']
                 if clientDuration > self.round_prefer_duration:
@@ -364,7 +367,7 @@ class _training_selector(object):
         for i in range(min(3, len(pickedClients))):
             clientId = pickedClients[i]
             _score = (self.totalArms[clientId]['reward'] - min_reward)/range_reward
-            _staleness = math.sqrt(0.1*math.log(cur_time)/max(1e-4, self.totalArms[clientId]['time_stamp'])) #self.alpha*((cur_time-self.totalArms[clientId][1]) - min_staleness)/float(range_staleness)
+            _staleness = self.alpha*((cur_time-self.totalArms[clientId]['time_stamp']) - min_staleness)/float(range_staleness) #math.sqrt(0.1*math.log(cur_time)/max(1e-4, self.totalArms[clientId]['time_stamp']))
             top_k_score.append((self.totalArms[clientId], [_score, _staleness]))
 
         logging.info("At round {}, UCB exploited {}, augment_factor {}, exploreLen {}, un-explored {}, exploration {}, round_threshold {}, sampled score is {}"
