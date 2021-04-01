@@ -3,24 +3,17 @@ import numpy as np
 import gurobipy as gp
 from gurobipy import *
 import time, sys, gc
-from queue import PriorityQueue
 from numpy import *
 import sys
 import logging
 import pickle
 import argparse
-sys.path.insert(0,'..')
+
 from kuiper import create_testing_selector
 
 import os
 import matplotlib.pyplot as plt
 from matplotlib import rc
-
-rc('font',**{'family':'serif','serif':['Times']})
-rc('text', usetex=True)
-
-#logging.basicConfig(format='%(asctime)s - %(message)s', level=logging.INFO)
-
 
 def plot_cdf(datas, linelabels = None, label = None, y_label = "CDF", name = "ss"):
 
@@ -100,7 +93,7 @@ def run_query(kuiper_only):
     """
     Generate queries for fig 17 and plot results
     """
-    data, systems, distr = load_profiles('openimg_distr.pkl', 'client_profile.pkl')
+    data, systems, distr = load_profiles('./data/openimg_distr.pkl', './data/client_profile.pkl')
 
     budgets = [100, 500, 1000, 1500, 2000, 2500, 3000, 3500, 4000, 4500, 5000]
     query_samples = [1000 * i for i in range(1, 11)] + [10000 * i for i in range(2, 20)]
@@ -174,4 +167,4 @@ if __name__ == '__main__':
     else:
         plot_cdf([results['kuiper_e2e'], results['lp_e2e']], ['Kuiper', 'MILP'], "End-to-End Time (s)", "CDF across Queries", "figure17a.pdf")
         plot_cdf([results['kuiper_overhead'], results['lp_overhead']], ['Kuiper', 'MILP'], "Overhead (s)", "CDF across Queries", "figure17b.pdf")
-        
+

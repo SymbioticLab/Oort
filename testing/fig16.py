@@ -1,7 +1,6 @@
 import pickle
 import random, gc
 import numpy as np
-from scipy.spatial import distance
 from numpy import *
 
 from matplotlib import rcParams
@@ -11,12 +10,8 @@ import matplotlib
 from collections import OrderedDict
 import math
 import sys
-sys.path.insert(0,'..')
-
 from kuiper import create_testing_selector
 
-rc('font',**{'family':'serif','serif':['Times']})
-#rc('text', usetex=True)
 
 N = []
 global_ys = None
@@ -165,5 +160,5 @@ def process_dev(data_file):
     #print(Ns)
     return norm_dev, Ns
 
-norm_dev, Ns = process_dev(data_file='../data/misc/speech_sample_f16.pkl')
-plot([norm_dev], array(Ns), linelabels = [''],  label = "Deviation Target", y_label='\# of Sampled Clients', name='figure16.pdf')
+norm_dev, Ns = process_dev(data_file='../data/speech_sample_f16.pkl')
+plot([norm_dev], array(Ns), linelabels = [''],  label = "Deviation Target", y_label='# of Sampled Clients', name='figure16.pdf')
