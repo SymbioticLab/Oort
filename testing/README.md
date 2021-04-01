@@ -2,7 +2,11 @@
 
 This folder contains scripts and instructions for reproducing the FL testing experiments in our OSDI '21 paper. 
 
-NOTE: Before attempting to run testing script, you must download the datasets by running `./download.sh -A`.
+### Preliminary
+
+Testing evaluations in our paper run on a single machine (32 CPU cores, 384GB RAM). 
+
+Before attempting to run testing script, you must download the datasets by running `./download.sh -A`.
 
 ### Figure 16 - Preserving Data Representativeness 
 

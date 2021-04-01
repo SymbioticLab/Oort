@@ -19,7 +19,7 @@ Before attempting to install Kuiper, you must have the following:
 
 Note: we also provide commands to install conda and CUDA. See comments in `install.sh` for details.
 
-Run the following commands to install kuiper and download the [datasets](https://drive.google.com/drive/folders/12s44-VmbLozTsU9oM4RGzXpBfgoeFqmy?usp=sharing). 
+Run the following commands to install kuiper. 
 
 ```
 git clone https://github.com/SymbioticLab/Kuiper

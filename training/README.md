@@ -4,12 +4,6 @@ This folder contains scripts and instructions for reproducing the FL training ex
 
 # Preliminary
 
-Before attempting to run training scripts, you must run the following command to download the datasets:
-
-```
-./download.sh -A    # Make sure you have at least 150 GB capacity
-```
-
 Our training evaluations rely on a distributed setting of ***multiple GPUs*** via the Parameter-Server (PS) architecture. 
 In our paper, we used up to 68 GPUs to simulate the FL aggregation of 1300 participants in each round. 
 Each training experiment is pretty time-consuming, as each GPU has to run multiple clients (1300/68 in our case) for each round. 
@@ -33,9 +27,16 @@ Table 1: GPU hours on Openimage dataset with ShuffleNet
 
 ***Please assure that these paths are consistent across all nodes so that the simulator can find the right path.***
 
-- Make sure that the parameter-server node has access to other worker nodes via ```ssh```. 
+- ***Master Node***: Make sure that the master node (parameter server) has access to other worker nodes via ```ssh```. 
 
-- Follow [this](https://github.com/SymbioticLab/Kuiper#getting-started) to install all necessary libs on all nodes.
+- ***All Nodes***: Follow [this](https://github.com/SymbioticLab/Kuiper#getting-started) to install all necessary libs, and then run the following command to download the datasets (We use the benchmarking dataset in the [FLPerf](https://github.com/SymbioticLab/FLPerf) repo.):
+
+```
+git clone git@github.com:SymbioticLab/FLPerf.git
+cd FLPerf
+./download.sh -A    # Make sure you have at least 150 GB capacity, or check ./download.sh -h for different subsets.
+```
+
 
 Due to the high computation load on each GPU, we recommend the reviewers to make sure that each GPU is simulating no more than 20 clients. i.e., if the number of participants in each round is K, then we would better to use at least K/20 GPUs. 
 
@@ -94,7 +95,7 @@ This will a produce plot close to Figure 11(b) `Kuiper/figure/ref/figure12b.pdf`
 
 Please specify the following parameters in ```Kuiper/training/evals/configs/{DATASET_NAME}/conf.yml``` to run the breakdown experiment:  
 
-Run Kuiper w/o Sys by setting [round_penalty](https://github.com/SymbioticLab/Kuiper/blob/master/training/evals/configs/openimage/conf.yml#L40) to 0
+Run Kuiper w/o Sys by setting [round_penalty](https://github.com/SymbioticLab/Kuiper/blob/master/training/evals/configs/openimage/conf.yml#L41) to 0
 
 Run Kuiper w/o Pacer by setting [pacer_delta](https://github.com/SymbioticLab/Kuiper/blob/master/training/evals/configs/openimage/conf.yml#L44) to 0
 
@@ -102,7 +103,7 @@ Run Kuiper w/o Pacer by setting [pacer_delta](https://github.com/SymbioticLab/Ku
 
 ### Figure 14 
 
-Change [round_penalty](https://github.com/SymbioticLab/Kuiper/blob/master/training/evals/configs/openimage/conf.yml#L40) (\alpha in Figure 13), while keeping other configurations the same. 
+Change [round_penalty](https://github.com/SymbioticLab/Kuiper/blob/master/training/evals/configs/openimage/conf.yml#L41) (\alpha in Figure 13), while keeping other configurations the same. 
 
 ### Figure 13
 
@@ -112,4 +113,6 @@ Change [total_worker](https://github.com/SymbioticLab/Kuiper/blob/master/trainin
 
 ***Experiments of outliers are extremely slow as we need to get the final accuracy of the training, so we recommend the reviewer to put this to the last.***
 To run this, please first add ```- blacklist_rounds: 10``` to the config file in order to enable the blacklist. Then specify different degrees of outliers ```- malicious_clients: 0.1``` (i.e., 10% clients are corrputed). 
+
+
 
