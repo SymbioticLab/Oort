@@ -2,6 +2,27 @@
 
 This repository contains scripts and instructions for reproducing the FL training experiments in our OSDI '21 paper.
 
+
+Due to the great variety of training experiments, please follow the training  [README.md](https://github.com/SymbioticLab/Kuiper/blob/master/training/README.md) to initiate new training jobs and get performance results. As each experiment is really time-consuming, we strongly recommend the user to try (Yogi + ShuffleNet) setting on the OpenImage dataset, which is ***much faster*** than other datasets and strategies.
+
+***Performance of model training (both accuracy and time-to-accuracy performance) often shows certain variations. We evaluate each setting over 5 runs and report the mean value in our paper.***
+
+### Time to accuracy performance (Table 1 and Figure 9)
+
+Please refer to ```training/evals/configs/DATA_NAME/conf.yml```. We spent > 3000 GPU hours to collection all results :). 
+
+### Performance breakdown (Figure 11 and Figure 12)
+
+Please specify the following parameters in ```training/evals/configs/DATA_NAME/conf.yml``` to start the breakdown experiment:  
+Kuiper w/o Sys setting ```- round_penalty: 0```. Kuiper w/o Pacer setting: ```- pacer_step: 100000```
+
+### Sensitivity Analysis (Figure 13, Figure 14 and Figure 15)
+
+Please specify different ```- round_penalty:``` (\alpha for Figure 13) or ```- total_worker: ``` (different number of participants K for Figure 14) in ```training/evals/configs/DATA_NAME/conf.yml```, while keeping other configurations the same. 
+
+Experiments of outliers are extremely slow as we need to get the final accuracy of the training, so we recommend the user to put this to the last. To run this, please first add ```- blacklist_rounds: 10``` to your configuration in order to enable the blacklist. Then specify different degrees of outliers ```- malicious_clients: 0.1``` (i.e., 10% clients are corrputed). 
+
+
 # Preliminary
 
 Our training evaluations rely on a distributed setting of ***multiple GPUs*** via the Parameter-Server (PS) architecture. 

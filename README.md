@@ -1,39 +1,35 @@
 # Kuiper
 
-This repository contains scripts and instructions for reproducing the experiments in our OSDI '21 paper "Efficient Federated Learning via Guided Participant Selection" (TODO: Provide a link to the final paper)
+This repository contains scripts and instructions for reproducing the experiments in our OSDI '21 paper "Efficient Federated Learning via Guided Participant Selection" 
 
 # Overview
 
-* [Getting Started (30 human-minutes + 3 compute-hours)](#getting-started)
-* [Run Experiments (x human-minutes + x compute-hour)](#run-experiments)
-* [Validate Results (x human-minutes + x compute-minutes)](#validate-results)
+* [Getting Started (5 human-minutes + 3 compute-hours)](#getting-started)
+* [Run Experiments and Validate Results (x human-minutes + x compute-hour)](#run-experiments-and-validate-results)
 * [Repo Structure](#repo-structure)
+* [Acknowledgements](#acknowledgements)
 * [Contact](#contact)
 
 
 
 # Getting Started 
-Expected runtime: x human-minutes + x compute-minutes
 
 Before attempting to install Kuiper, you must have the following:
 
-* [Anaconda Package Manager](https://anaconda.org/)
+* Anaconda Package Manager
+* CUDA 10.2
 
-Run the following commands to install kuiper and download the [datasets](https://www.dropbox.com/sh/lti7j1g4a1jgr4r/AAD802HuoxjZi8Xy7xXZbDs8a?dl=0).
+NOTE: we also provide commands to install conda and CUDA. See comments in `install.sh` for details.
+
+Run the following commands to install kuiper and download the [datasets](https://drive.google.com/drive/folders/12s44-VmbLozTsU9oM4RGzXpBfgoeFqmy?usp=sharing). (You need to run these commands in all nodes.)
 
 ```
 git clone https://github.com/SymbioticLab/Kuiper
 cd Kuiper
-conda env create -f environment.yml # Install dependencies
-conda activate kuiper
-python setup.py install  # install kuiper
-./data/download.sh -A    # download datasets 
+source install.sh 
 ```
 
-# Run Experiments
-
-
-# Validate Results
+# Run Experiments and Validate Results
 
 The output of the experiment will validate the following major claims in our paper:
 
@@ -48,67 +44,23 @@ The output of the experiment will validate the following major claims in our pap
 
 ## Training
 
-Due to the great variety of training experiments, please follow the training  [README.md](https://github.com/SymbioticLab/Kuiper/blob/master/training/README.md) to initiate new training jobs and get performance results. As each experiment is really time-consuming, we strongly recommend the user to try (Yogi + ShuffleNet) setting on the OpenImage dataset, which is ***much faster*** than other datasets and strategies.
-
-***Performance of model training (both accuracy and time-to-accuracy performance) often shows certain variations. We evaluate each setting over 5 runs and report the mean value in our paper.***
-
-### Time to accuracy performance (Table 1 and Figure 9)
-
-Please refer to ```training/evals/configs/DATA_NAME/conf.yml```. We spent > 3000 GPU hours to collection all results :). 
-
-### Performance breakdown (Figure 11 and Figure 12)
-
-Please specify the following parameters in ```training/evals/configs/DATA_NAME/conf.yml``` to start the breakdown experiment:  
-Kuiper w/o Sys setting ```- round_penalty: 0```. Kuiper w/o Pacer setting: ```- pacer_step: 100000```
-
-### Sensitivity Analysis (Figure 13, Figure 14 and Figure 15)
-
-Please specify different ```- round_penalty:``` (\alpha for Figure 13) or ```- total_worker: ``` (different number of participants K for Figure 14) in ```training/evals/configs/DATA_NAME/conf.yml```, while keeping other configurations the same. 
-
-Experiments of outliers are extremely slow as we need to get the final accuracy of the training, so we recommend the user to put this to the last. To run this, please first add ```- blacklist_rounds: 10``` to your configuration in order to enable the blacklist. Then specify different degrees of outliers ```- malicious_clients: 0.1``` (i.e., 10% clients are corrputed). 
+Please follow training README to run training scripts.
 
 ## Testing
 
-### Figure 16 - Preserving Data Representativeness 
-
-```
-cd testing
-python plot_figure16.py     # few seconds
-open figure16.pdf
-```
-
-This will produce plots close to Figure 16 (`figure/ref/figure16a.pdf` and `figure/ref/figure16b.pdf`) on page 12 of the paper. You might notice some variation compared to the original figure due to randomness of the experiments.
-
-### Figure 17 - Enforcing Diverse Data Distribution 
-
-Before running below script, you must install gurobi license by:
-
-* Request an [academic license](https://www.gurobi.com/downloads/end-user-license-agreement-academic/) if possible. Otherwise, please contact us for a temporary license. 
-* `grbgetkey [your license]` to install the license 
-* TODO: maybe latex? sudo apt-get update and sudo apt-get install texlive-full
-
-```
-cd testing
-python plot_figure17.py   # > 50 hours
-# or python plot_figure17.py -k # ~ 1.5 hour
-open figure17a.pdf figure17b.pdf
-``` 
-
-This will produce plots close to Figure 17 (`figure/ref/figure17a.pdf` and `figure/ref/figure17b.pdf`) on page 12 of the paper. You might notice some variation compared to the original figure as we removed a few long-running queries. 
-
-Note: To save reviewers time, `python plot_figure17.py -k` will only run and plot the lines for Kuiper. We hope the runtime will convince you that MILP is extremely slow :).
+Please follow testing README to run testing scripts.
 
 # Repo Structure
 
 ```
 Repo Root
-|---- Training
+|---- training
     |---- evals     # Submit/terminate training jobs
         |---- configs   # Configuration examples
-|---- Testing
-|---- Data
+|---- testing      # Testing scripts
+|---- data
        |---- download.sh   # Download all datasets     
-|---- Kuiper          # Kuiper code base.
+|---- kuiper          # Kuiper code base.
     
 ```
 
