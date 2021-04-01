@@ -55,9 +55,7 @@ Repo Root
 |---- training
     |---- evals     # Submit/terminate training jobs
         |---- configs   # Configuration examples
-|---- testing      # Testing scripts
-|---- data
-       |---- download.sh   # Download all datasets     
+|---- testing      # Testing scripts    
 |---- kuiper          # Kuiper code base.
     
 ```
@@ -68,3 +66,4 @@ Thanks to Qihua Zhou for his [Falcon repo](https://github.com/kimihe/Falcon).
 
 # Contact
 Fan Lai (fanlai@umich.edu) and Xiangfeng Zhu (xzhu0027@gmail.com)
+

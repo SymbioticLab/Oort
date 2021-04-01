@@ -297,9 +297,10 @@ datasetCategories = {'Mnist': 10, 'cifar10': 10, "imagenet": 1000, 'emnist': 47,
                     'openImg': 596, 'google_speech': 35, 'femnist': 62, 'yelp': 5
                     }
 
+# Profiled relative speech w.r.t. Mobilenet
 model_factor = {'shufflenet': 0.0644/0.0554,
     'albert': 0.335/0.0554,
-    'resnet': 0.045/0.0554,
+    'resnet': 0.135/0.0554,
 }
 
 args.num_class = datasetCategories[args.data_set] if args.data_set in datasetCategories else 10
@@ -307,5 +308,3 @@ for model_name in model_factor:
     if model_name in args.model:
         args.clock_factor = args.clock_factor * model_factor[model_name]
         break
-
-
