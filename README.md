@@ -29,7 +29,7 @@ source install.sh
 
 # Run Experiments and Validate Results
 
-The output of the experiment will validate the following major claims in our paper:
+The output of the experiment will validate the following major claims in our evaluation (section 7 in paper):
 
 ####    **FL Training:**
 1. Kuiper outperforms existing random participant selection by 1.2×-14.1× in time-to-accuracy performance, while achieving 1.3%-9.8% better final model accuracy (§7.2.1) -> Table 1 and Figure 9.
