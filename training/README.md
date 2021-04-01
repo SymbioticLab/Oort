@@ -18,6 +18,8 @@ We outline some numbers on Tesla P100 GPUs for each line in our plots when using
 
 Table 1: GPU hours on Openimage dataset with ShuffleNet
 
+***Due to the high computation load on each GPU, we recommend the reviewers to make sure that each GPU is simulating no more than 20 clients. 
+i.e., if the number of participants in each round is K, then we would better to use at least K/20 GPUs.***
 
 # Getting Started 
 
@@ -37,8 +39,6 @@ cd FLPerf
 ```
 
 
-Due to the high computation load on each GPU, we recommend the reviewers to make sure that each GPU is simulating no more than 20 clients. i.e., if the number of participants in each round is K, then we would better to use at least K/20 GPUs. 
-
 ## Setting Job Configuration
 
 We provide an example of submitting a training job in ```Kuiper/training/evals/manager.py```, whereby the user can submit jobs on the master node. 
@@ -52,7 +52,6 @@ They are close to the settings used in our evaluations. Comments in our example 
 
 ***All logs will be dumped to ```log_path``` (specified in the config file) on each node. 
 ```training_perf``` locates at the master node under this path, and the user can load it with ```pickle``` to check the time-to-accuracy performance.***
-<!-- We also provide a script to plot this result ```python plot_openimage.py PATH_OF_training_perf_1 PATH_OF_training_perf_2```. This will save the performance in ```time_to_acc.pdf```. -->
 
 # Validate Results
 
