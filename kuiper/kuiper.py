@@ -292,11 +292,11 @@ class _training_selector(object):
                 creward = min(self.totalArms[key]['reward'], clip_value)
                 numOfExploited += 1
 
-                # sc = (creward - min_reward)/float(range_reward) \
-                #     + math.sqrt(0.1*math.log(cur_time)/self.totalArms[key]['time_stamp']) # temporal uncertainty
-
                 sc = (creward - min_reward)/float(range_reward) \
-                    + self.alpha*((cur_time-self.totalArms[key]['time_stamp']) - min_staleness)/float(range_staleness) 
+                     + math.sqrt(0.1*math.log(cur_time)/self.totalArms[key]['time_stamp']) # temporal uncertainty
+
+                #sc = (creward - min_reward)/float(range_reward) \
+                #    + self.alpha*((cur_time-self.totalArms[key]['time_stamp']) - min_staleness)/float(range_staleness)
 
                 clientDuration = self.totalArms[key]['duration']
                 if clientDuration > self.round_prefer_duration:

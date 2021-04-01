@@ -33,7 +33,7 @@ i.e., if the number of participants in each round is K, then we would better use
 - ***All Nodes***: Follow [this](https://github.com/SymbioticLab/Kuiper#getting-started) to install all necessary libs, and then run the following command to download the datasets (We use the benchmarking dataset in the [FLPerf](https://github.com/SymbioticLab/FLPerf) repo.):
 
 ```
-git clone git@github.com:SymbioticLab/FLPerf.git
+git clone https://github.com/SymbioticLab/FLPerf.git
 cd FLPerf
 # Download the open image dataset. Make sure you have at least 150 GB of storage capacity.
 # Check ./download.sh -h for downloading different datasets.

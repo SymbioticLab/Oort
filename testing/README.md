@@ -25,7 +25,7 @@ Before running below script, you must install gurobi license by:
 * `grbgetkey [your license]` to install the license 
 
 ```
-python plot_figure17.py   # > 50 hours
+python plot_figure17.py   # > 70 hours
 # or python plot_figure17.py -k # ~ 1.5 hour
 open figure17a.pdf figure17b.pdf
 ``` 
