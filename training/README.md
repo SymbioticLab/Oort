@@ -48,6 +48,6 @@ They are close to the settings used in our evaluations. Comments in our example 
 
 ***All logs will be dumped to ```log_path``` (specified in the configuration file) on each node. 
 ```training_perf``` locates at the PS node under this path, and the user can load it with ```pickle``` to check the time-to-accuracy performance.***
-We also provide a script to plot this result ```python plot_perf.py PATH_OF_training_perf_1 PATH_OF_training_perf_2```. This will save the performance in ```time_to_acc.pdf```.
+We also provide a script to plot this result ```python plot_openimage.py PATH_OF_training_perf_1 PATH_OF_training_perf_2```. This will save the performance in ```time_to_acc.pdf```.
 
 This example is a temporary trial and we plan to optimize it soon. 
