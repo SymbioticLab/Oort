@@ -40,7 +40,7 @@ The output of the experiment will validate the following major claims in our pap
 ####    **FL Training:**
 * Kuiper outperforms existing random participant selection by 1.2×-14.1× in time-to-accuracy performance, while achieving 1.3%-9.8% better final model accuracy (§7.2.1) -> Table 1 and Figure 9.
 * Kuiper achieves close-to-optimal model efficiency by adaptively striking the trade-off between statistical and system efficiency with different components (§7.2.2) -> Figure 11 and 12.
-* Kuiper outperforms its counterpart over a wide range of parameters and different scales of experiments, while being robust to outliers (§7.2.3) -> Figure 13, 14.
+* Kuiper outperforms its counterpart over a wide range of parameters and different scales of experiments, while being robust to outliers (§7.2.3) -> Figure 13, 14 and 15.
 
 ####    **FL Testing:**
 * Kuiper can serve developer testing criteria on data deviation while reducing costs by bounding the number of participants needed even without individual data characteristics(§7.3.1) —> Figure 16.
@@ -58,12 +58,14 @@ Please refer to ```training/evals/configs/DATA_NAME/conf.yml```. We spent > 3000
 
 ### Performance breakdown (Figure 11 and Figure 12)
 
-Please specify the following parameters in ```training/evals/configs/DATA_NAME/conf.yml``` to start the breakdown experiment. 
+Please specify the following parameters in ```training/evals/configs/DATA_NAME/conf.yml``` to start the breakdown experiment:  
 Kuiper w/o Sys setting ```- round_penalty: 0```. Kuiper w/o Pacer setting: ```- pacer_step: 100000```
 
-### Sensitivity Analysis (Figure 13 and Figure 14)
+### Sensitivity Analysis (Figure 13, Figure 14 and Figure 15)
 
-Please specify different ```- round_penalty:``` (\alpha for Figure 13) and ```- total_worker: ``` (different number of participants K for Figure 14) in ```training/evals/configs/DATA_NAME/conf.yml```, and then submit jobs. 
+Please specify different ```- round_penalty:``` (\alpha for Figure 13) or ```- total_worker: ``` (different number of participants K for Figure 14) in ```training/evals/configs/DATA_NAME/conf.yml```, while keeping other configurations the same. 
+
+Experiments of outliers are extremely slow as we need to get the final accuracy of the training, so we recommend the user to put this to the last. To run this, please first add ```- blacklist_rounds: 10``` to your configuration in order to enable the blacklist. Then specify different degrees of outliers ```- malicious_clients: 0.1``` (i.e., 10% clients are corrputed). 
 
 ## Testing
 
