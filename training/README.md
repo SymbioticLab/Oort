@@ -7,7 +7,7 @@ This folder contains scripts and instructions for reproducing the FL training ex
 Before attempting to run training scripts, you must run the following command to download the datasets:
 
 ```
-./download.sh -A
+./download.sh -A    # Make sure you have at least 150 GB capacity
 ```
 
 Our training evaluations rely on a distributed setting of ***multiple GPUs*** via the Parameter-Server (PS) architecture. 
@@ -21,7 +21,7 @@ We outline some numbers on Tesla P100 GPUs for each line in our plots when using
 | Kuiper+YoGi      | 27  GPU hours (~$53)    |    58 GPU hours (~$111)   |
 | YoGi             | 53  GPU hours (~$97)     |    121  GPU hours (~$230) |
 
-Table 1: GPU hours on Openimage dataset
+Table 1: GPU hours on Openimage dataset with ShuffleNet
 
 ***Note that the performance of model training (both accuracy and time-to-accuracy performance) often shows certain variations. We report the average results over 5 runs in our paper.***
 <!-- We spent more than 6000 GPU hours on our evaluations. -->
@@ -78,14 +78,14 @@ Change [sample_mode](https://github.com/SymbioticLab/Kuiper/blob/master/training
 python manager.py submit configs/openimage/conf.yml 
 ```
 
-Change [sample_mode](https://github.com/SymbioticLab/Kuiper/blob/master/training/evals/configs/openimage/conf.yml#L37) to kuiper and run the following command(again) to run YoGi with Kuiper: 
+After the completion of training, then change [sample_mode](https://github.com/SymbioticLab/Kuiper/blob/master/training/evals/configs/openimage/conf.yml#L37) to kuiper and run the following command(again) to run YoGi with Kuiper: 
 ```
 python manager.py submit configs/openimage/conf.yml 
 ```
 
 After the experiments finishes, you can find `training_perf` of both experiment on master node's `log_path`. For example, if default config is used, `training_perf`s is avaliable at `Kuiper/training/evals/logs/resnet34_kuiper/{time_stamp}/aggregator`. Run the following command to plot the figure: 
 ```
-python plot_openimage.py [path_to_training_perf_random] [path_to_training_perf_kuiper] 
+python plot_perf.py [path_to_training_perf_random] [path_to_training_perf_kuiper] 
 ```
 
 This will a produce plot close to Figure 11(b) `Kuiper/figure/ref/figure12b.pdf` on page 10 of the paper. You might notice some variation compared to the original figure due to randomness of the experiments.
@@ -96,7 +96,7 @@ Please specify the following parameters in ```Kuiper/training/evals/configs/{DAT
 
 Run Kuiper w/o Sys by setting [round_penalty](https://github.com/SymbioticLab/Kuiper/blob/master/training/evals/configs/openimage/conf.yml#L40) to 0
 
-Run Kuiper w/o Pacer by setting [pacer_step]() to 100000
+Run Kuiper w/o Pacer by setting [pacer_delta](https://github.com/SymbioticLab/Kuiper/blob/master/training/evals/configs/openimage/conf.yml#L44) to 0
 
 ## Sensitivity Analysis (Figure 13, Figure 14 and Figure 15)
 
@@ -110,5 +110,6 @@ Change [total_worker](https://github.com/SymbioticLab/Kuiper/blob/master/trainin
 
 ### Figure 15
 
-***Experiments of outliers are extremely slow as we need to get the final accuracy of the training, so we recommend the user to put this to the last.***
+***Experiments of outliers are extremely slow as we need to get the final accuracy of the training, so we recommend the reviewer to put this to the last.***
 To run this, please first add ```- blacklist_rounds: 10``` to the config file in order to enable the blacklist. Then specify different degrees of outliers ```- malicious_clients: 0.1``` (i.e., 10% clients are corrputed). 
+

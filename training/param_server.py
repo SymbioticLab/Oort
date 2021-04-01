@@ -184,7 +184,12 @@ def run(model, queue, param_q, stop_signal, clientSampler):
     with open(clientInfoFile, 'wb') as fout:
         pickle.dump(clientSampler.getClientsInfo(), fout)
 
-    training_history = collections.OrderedDict()
+    training_history = {'data_set': args.dataset,
+                        'model': args.model,
+                        'sample_mode': args.sample_mode, 
+                        'gradient_policy': args.gradient_policy, 
+                        'task': args.task, 
+                        'perf': collections.OrderedDict()}
 
     while True:
         if not queue.empty():
@@ -293,7 +298,7 @@ def run(model, queue, param_q, stop_signal, clientSampler):
                                     .format(updateEpoch, global_virtual_clock, top_1_str, round(test_results[updateEpoch][0]/test_results[updateEpoch][3]*100.0, 4),
                                     test_results[updateEpoch][0], top_5_str, round(test_results[updateEpoch][1]/test_results[updateEpoch][3]*100.0, 4),
                                     test_results[updateEpoch][1], test_results[updateEpoch][2]/test_results[updateEpoch][3], test_results[updateEpoch][3]))
-                            training_history[updateEpoch] = {'round': updateEpoch, 'clock': global_virtual_clock,
+                            training_history['perf'][updateEpoch] = {'round': updateEpoch, 'clock': global_virtual_clock,
                                 top_1_str: round(test_results[updateEpoch][0]/test_results[updateEpoch][3]*100.0, 4),
                                 top_5_str: round(test_results[updateEpoch][1]/test_results[updateEpoch][3]*100.0, 4),
                                 'loss': test_results[updateEpoch][2]/test_results[updateEpoch][3],
@@ -512,4 +517,5 @@ if __name__ == "__main__":
                 )
 
     manager.shutdown()
+
 

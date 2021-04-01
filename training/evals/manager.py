@@ -64,9 +64,13 @@ def process_cmd(yaml_file):
     running_vms.add(ps_ip)
     ps_cmd = f" python {yaml_conf['exp_path']}/param_server.py {conf_script} --this_rank=0 --learner={learner_conf} "
 
+    with open(f"{job_name}_logging", 'wb') as fout:
+        pass
+        
     print(f"Starting aggregator on {ps_ip}...")
-    subprocess.Popen(f'ssh {submit_user}{ps_ip} "{setup_cmd} {ps_cmd}"',
-                    shell=True, )#stdout=subprocess.DEVNULL, stderr=subprocess.STDOUT)
+    with open(f"{job_name}_logging", 'a') as fout:
+        subprocess.Popen(f'ssh {submit_user}{ps_ip} "{setup_cmd} {ps_cmd}"',
+                        shell=True, stdout=fout, stderr=fout)
 
     #time.sleep(2)
     # =========== Submit job to each worker ============
@@ -80,8 +84,9 @@ def process_cmd(yaml_file):
             worker_cmd = f" python {yaml_conf['exp_path']}/learner.py {conf_script} --this_rank={rank_id} --learner={learner_conf} "
             rank_id += 1
 
-            subprocess.Popen(f'ssh {submit_user}{worker} "{setup_cmd} {worker_cmd}"',
-                            shell=True, )#stdout=subprocess.DEVNULL, stderr=subprocess.STDOUT)
+            with open(f"{job_name}_logging", 'a') as fout:
+                subprocess.Popen(f'ssh {submit_user}{worker} "{setup_cmd} {worker_cmd}"',
+                                shell=True, stdout=fout, stderr=fout)
 
     # dump the address of running workers
     current_path = os.path.dirname(os.path.abspath(__file__))
@@ -114,5 +119,4 @@ elif sys.argv[1] == 'stop':
     terminate(sys.argv[2])
 else:
     print("Unknown cmds ...")
-
 

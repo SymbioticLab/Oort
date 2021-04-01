@@ -83,19 +83,33 @@ def movingAvg(arr, windows):
 def main(files):
     walltime = []
     metrics = []
-    metric_name = 'top_5: '
+    setting_labels = []
+    task_type = None
+    task_metrics = {'cv': 'top_5: ', 'speech': 'top_1: ', 'nlp': 'loss'}
+    metrics_label = {'cv': 'Accuracy (%)', 'speech': 'Accuracy (%)', 'nlp': 'Perplexity'}
+    plot_metric = None
 
     for file in files:
         history = load_results(file)
+        if task_type is None:
+            task_type = history['task']
+        else:
+            assert task_type == history['task'], "Please plot the same type of task (openimage, speech or nlp)"
+
         walltime.append([])
         metrics.append([])
-        for r in history.keys():
-            walltime[-1].append(history[r]['clock']/3600.)
-            metrics[-1].append(history[r][metric_name])
+        setting_labels.append(f"{history['sample_mode']}+{'Prox' if history['sample_mode'] is None else history['sample_mode']}")
+
+        metric_name = task_metrics[task_type]
+
+        for r in history['perf'].keys():
+            walltime[-1].append(history['perf'][r]['clock']/3600.)
+            metrics[-1].append(history['perf'][r][metric_name] if task_type != 'nlp' else history['perf'][r][metric_name] ** 2)
 
         metrics[-1] = movingAvg(metrics[-1], 2)
         walltime[-1] = walltime[-1][:len(metrics[-1])]
+        plot_metric = metrics_label[history['task']]
 
-    plot_line(metrics, walltime, ['Setting ' + str(i) for i in list(range(1, 1+len(metrics)))], 'Training Time (hours)', 'Accuracy (%)', 'time_to_acc.pdf')
+    plot_line(metrics, walltime, setting_labels, 'Training Time (hours)', plot_metric, 'time_to_acc.pdf')
 
 main(sys.argv[1:])
