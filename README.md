@@ -17,7 +17,7 @@ Before attempting to install Kuiper, you must have the following:
 * Anaconda Package Manager
 * CUDA 10.2
 
-NOTE: we also provide commands to install conda and CUDA. See comments in `install.sh` for details.
+Note: we also provide commands to install conda and CUDA. See comments in `install.sh` for details.
 
 Run the following commands to install kuiper and download the [datasets](https://drive.google.com/drive/folders/12s44-VmbLozTsU9oM4RGzXpBfgoeFqmy?usp=sharing). 
 
@@ -32,13 +32,13 @@ source install.sh
 The output of the experiment will validate the following major claims in our paper:
 
 ####    **FL Training:**
-* Kuiper outperforms existing random participant selection by 1.2×-14.1× in time-to-accuracy performance, while achieving 1.3%-9.8% better final model accuracy (§7.2.1) -> Table 1 and Figure 9.
-* Kuiper achieves close-to-optimal model efficiency by adaptively striking the trade-off between statistical and system efficiency with different components (§7.2.2) -> Figure 11 and 12.
-* Kuiper outperforms its counterpart over a wide range of parameters and different scales of experiments, while being robust to outliers (§7.2.3) -> Figure 13, 14 and 15.
+1. Kuiper outperforms existing random participant selection by 1.2×-14.1× in time-to-accuracy performance, while achieving 1.3%-9.8% better final model accuracy (§7.2.1) -> Table 1 and Figure 9.
+2. Kuiper achieves close-to-optimal model efficiency by adaptively striking the trade-off between statistical and system efficiency with different components (§7.2.2) -> Figure 11 and 12.
+3. Kuiper outperforms its counterpart over a wide range of parameters and different scales of experiments, while being robust to outliers (§7.2.3) -> Figure 13, 14 and 15.
 
 ####    **FL Testing:**
-* Kuiper can serve developer testing criteria on data deviation while reducing costs by bounding the number of participants needed even without individual data characteristics(§7.3.1) —> Figure 16.
-* With the individual information, Kuiper improves the testing duration by 4.7× w.r.t. Mixed Integer Linear Programming (MILP) solver, and is able to efficiently enforce developer preferences across millions of clients (§7.3.2) -> Figure 17.
+1. Kuiper can serve developer testing criteria on data deviation while reducing costs by bounding the number of participants needed even without individual data characteristics(§7.3.1) —> Figure 16.
+2. With the individual information, Kuiper improves the testing duration by 4.7× w.r.t. Mixed Integer Linear Programming (MILP) solver, and is able to efficiently enforce developer preferences across millions of clients (§7.3.2) -> Figure 17.
 
 ## Training
 

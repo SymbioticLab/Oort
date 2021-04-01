@@ -96,7 +96,7 @@ Please specify the following parameters in ```Kuiper/training/evals/configs/{DAT
 
 Run Kuiper w/o Sys by setting [round_penalty](https://github.com/SymbioticLab/Kuiper/blob/master/training/evals/configs/openimage/conf.yml#L40) to 0
 
-Run Kuiper w/o Pacer by setting [pacer_step] to 100000
+Run Kuiper w/o Pacer by setting [pacer_step]() to 100000
 
 ## Sensitivity Analysis (Figure 13, Figure 14 and Figure 15)
 
