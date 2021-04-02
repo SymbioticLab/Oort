@@ -184,11 +184,11 @@ def run(model, queue, param_q, stop_signal, clientSampler):
     with open(clientInfoFile, 'wb') as fout:
         pickle.dump(clientSampler.getClientsInfo(), fout)
 
-    training_history = {'data_set': args.dataset,
+    training_history = {'data_set': args.data_set,
                         'model': args.model,
-                        'sample_mode': args.sample_mode, 
-                        'gradient_policy': args.gradient_policy, 
-                        'task': args.task, 
+                        'sample_mode': args.sample_mode,
+                        'gradient_policy': args.gradient_policy,
+                        'task': args.task,
                         'perf': collections.OrderedDict()}
 
     while True:

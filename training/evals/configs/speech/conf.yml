@@ -2,15 +2,16 @@
 
 # ========== Cluster configuration ========== 
 # ip address of the parameter server (need 1 GPU)
-ps_ip: 10.0.0.8
+ps_ip: 10.0.0.6
 
 # ip address of each worker:# of gpus on this worker
 # Note that if we collocate ps and worker, then we need to decrease this number of gpus by 1
 # E.g., master node has 4 GPUs, then 1 for the ps, and worker should be set to: worker:3
 worker_ips: 
-    - 10.0.0.9:1 # worker_ip: # of gpus
-      #- 10.0.0.4:1 
-      #- 10.0.0.2:1
+    - 10.0.0.7:1 # worker_ip: # of gpus
+    - 10.0.0.8:1 
+    - 10.0.0.9:1
+    - 10.0.0.10:1
 
 exp_path: $HOME/Kuiper/training
 
@@ -29,7 +30,7 @@ setup_commands:
 job_conf: 
     - log_path: $HOME/Kuiper/training/evals # Path of log files
     - job_name: resnet34_kuiper            # Generate logs under this folder: log_path/job_name/time_stamp
-    - total_worker: 5                      # Number of participants per round, we use K=100 in our paper, large K will be much slower
+    - total_worker: 100                      # Number of participants per round, we use K=100 in our paper, large K will be much slower
     - data_set: google_speech                     # Dataset: openImg, google_speech, stackoverflow
     - data_dir: /mnt/dataset/google_speech    # Path of the dataset
     - data_mapfile: /mnt/dataset/google_speech/clientDataMap              # Allocation of data to each client, turn to iid setting if not provided
@@ -38,6 +39,7 @@ job_conf:
     - model: resnet34                            # Models: shufflenet_v2_x2_0, mobilenet_v2, resnet34, albert-base-v2
     - gradient_policy: yogi                 # Commenting out this line will turn to "Fedprox"
     - round_penalty: 2.0                    # Penalty factor in our paper (\alpha), \alpha -> 0 turns to (Kuiper w/o sys)
-    - eval_interval: 20                     # How many rounds to run a testing on the testing set
+    - eval_interval: 10                     # How many rounds to run a testing on the testing set
     - epochs: 500                           # Number of rounds to run this training. We use 1000 in our paper, while it may converge w/ ~400 rounds
     - task: speech
+    - pacer_delta: 40                       # Set to include the next WxK clients
