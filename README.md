@@ -1,6 +1,6 @@
 # Kuiper
 
-This repository contains scripts and instructions for reproducing the experiments in our OSDI '21 paper "Efficient Federated Learning via Guided Participant Selection" 
+This repository contains scripts and instructions for reproducing the experiments in our OSDI '21 paper "Efficient Federated Learning via Guided Participant Selection". 
 
 # Overview
 
@@ -52,12 +52,23 @@ Please go to `./testing` directory and follow the testing [README](https://githu
 
 ```
 Repo Root
+|---- kuiper        # Kuiper code base.
 |---- training
     |---- evals     # Submit/terminate training jobs
         |---- configs   # Configuration examples
-|---- testing      # Testing scripts    
-|---- kuiper          # Kuiper code base.
+|---- testing       # Testing scripts    
     
+```
+
+# Notes
+please consider to cite our paper if you use the code or data in your research project.
+```
+@inproceedings{kuiper-osdi21,
+  title={Kuiper: Efficient Federated Learning via Guided Participant Selection},
+  author={Fan Lai, Xiangfeng Zhu, Harsha V. Madhyastha, Mosharaf Chowdhury},
+  booktitle={USENIX Symposium on Operating Systems Design and Implementation (OSDI)},
+  year={2021}
+}
 ```
 
 # Acknowledgements
@@ -66,4 +77,5 @@ Thanks to Qihua Zhou for his [Falcon repo](https://github.com/kimihe/Falcon).
 
 # Contact
 Fan Lai (fanlai@umich.edu) and Xiangfeng Zhu (xzhu0027@gmail.com)
+
 

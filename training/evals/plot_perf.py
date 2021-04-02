@@ -98,7 +98,7 @@ def main(files):
 
         walltime.append([])
         metrics.append([])
-        setting_labels.append(f"{history['sample_mode']}+{'Prox' if history['sample_mode'] is None else history['sample_mode']}")
+        setting_labels.append(f"{history['sample_mode']}+{'Prox' if history['gradient_policy'] is None else history['gradient_policy']}")
 
         metric_name = task_metrics[task_type]
 
@@ -113,3 +113,4 @@ def main(files):
     plot_line(metrics, walltime, setting_labels, 'Training Time (hours)', plot_metric, 'time_to_acc.pdf')
 
 main(sys.argv[1:])
+

@@ -67,7 +67,7 @@ The output of the experiment will validate the following major claims in our pap
 
 ## Time to accuracy performance (Table 1 and Figure 9)
 
-Please refer to ```Kuiper/training/evals/configs/{DATASET_NAME}/conf.yml```.  
+Please refer to ```Kuiper/training/evals/configs/{DATASET_NAME}/conf.yml``` to configurate the [node ips](https://github.com/SymbioticLab/Kuiper/blob/master/training/evals/configs/openimage/conf.yml#L5), and [NIC](https://github.com/SymbioticLab/Kuiper/blob/master/training/evals/configs/openimage/conf.yml#L25) for communication. 
 
 For example, to run Kuiper with YoGi on OpenImage dataset and plot the figure, execute the following commands:
 
@@ -75,12 +75,12 @@ For example, to run Kuiper with YoGi on OpenImage dataset and plot the figure, e
 cd training/evals/
 ```
 
-Change [sample_mode](https://github.com/SymbioticLab/Kuiper/blob/master/training/evals/configs/openimage/conf.yml#L37) to random and run the following command to run YoGi with random selection : 
+Change [sample_mode](https://github.com/SymbioticLab/Kuiper/blob/master/training/evals/configs/openimage/conf.yml#L38) to random and run the following command to run YoGi with random selection : 
 ```
 python manager.py submit configs/openimage/conf.yml 
 ```
 
-After the completion of training, then change [sample_mode](https://github.com/SymbioticLab/Kuiper/blob/master/training/evals/configs/openimage/conf.yml#L37) to kuiper and run the following command(again) to run YoGi with Kuiper: 
+After the completion of training, then change [sample_mode](https://github.com/SymbioticLab/Kuiper/blob/master/training/evals/configs/openimage/conf.yml#L38) to kuiper and run the following command(again) to run YoGi with Kuiper: 
 ```
 python manager.py submit configs/openimage/conf.yml 
 ```
@@ -108,11 +108,12 @@ Change [round_penalty](https://github.com/SymbioticLab/Kuiper/blob/master/traini
 
 ### Figure 13
 
-Change [total_worker](https://github.com/SymbioticLab/Kuiper/blob/master/training/evals/configs/speech/conf.yml#L32) (different number of participants K for Figure 14), while keeping other configurations the same. 
+Change [total_worker](https://github.com/SymbioticLab/Kuiper/blob/master/training/evals/configs/openimage/conf.yml#L33) (different number of participants K for Figure 14), while keeping other configurations the same. 
 
 ### Figure 15
 
 ***Experiments of outliers are extremely slow as we need to get the final accuracy of the training, so we recommend the reviewer to put this to the last.***
 To run this, please first add ```- blacklist_rounds: 10``` to the config file in order to enable the blacklist. Then specify different degrees of outliers ```- malicious_clients: 0.1``` (i.e., 10% clients are corrupted). 
+
 
 

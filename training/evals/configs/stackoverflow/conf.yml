@@ -31,19 +31,19 @@ job_conf:
     - job_name: lm_kuiper            # Generate logs under this folder: log_path/job_name/time_stamp
     - total_worker: 5                      # Number of participants per round, we use K=100 in our paper, large K will be much slower
     - data_set: blog                     # Dataset: openImg, google_speech, stackoverflow
-    - data_dir: /mnt/dataset/stackoverflow    # Path of the dataset
+    - data_dir: $HOME/Kuiper/FLPerf/data/stackoverflow    # Path of the dataset
     - data_mapfile: .              # Allocation of data to each client, turn to iid setting if not provided
-    - client_path: $HOME/Kuiper/data/device_info/client_profile.pkl     # Path of the client trace
+    - client_path: $HOME/Kuiper/FLPerf/data/device_info/client_profile.pkl     # Path of the client trace
     - sample_mode: kuiper                                  # Client selection: random, kuiper
     - model: albert-base-v2                            # Models: shufflenet_v2_x2_0, mobilenet_v2, resnet34, albert-base-v2
     - gradient_policy: yogi                 # Commenting out this line will turn to "Fedprox"
     - round_penalty: 2.0                    # Penalty factor in our paper (\alpha), \alpha -> 0 turns to (Kuiper w/o sys)
-    - eval_interval: 5                     # How many rounds to run a testing on the testing set
+    - eval_interval: 20                     # How many rounds to run a testing on the testing set
     - epochs: 500                           # Number of rounds to run this training. We use 1000 in our paper, while it may converge w/ ~400 rounds
     - task: nlp
     - test_bsz: 32
     - test_ratio: 0.2
-    - learning_rate: 5e-5
+    - learning_rate: 4e-5
     - min_learning_rate: 2e-5
     - pacer_delta: 0.3
     - exploration_min: 0.4
