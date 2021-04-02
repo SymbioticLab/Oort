@@ -29,11 +29,11 @@ setup_commands:
 
 job_conf: 
     - log_path: $HOME/Kuiper/training/evals # Path of log files
-    - job_name: resnet34_kuiper            # Generate logs under this folder: log_path/job_name/time_stamp
-    - total_worker: 100                      # Number of participants per round, we use K=100 in our paper, large K will be much slower
+    - job_name: google_speech               # Generate logs under this folder: log_path/job_name/time_stamp
+    - total_worker: 100                     # Number of participants per round, we use K=100 in our paper, large K will be much slower
     - data_set: google_speech                     # Dataset: openImg, google_speech, stackoverflow
-    - data_dir: /mnt/dataset/google_speech    # Path of the dataset
-    - data_mapfile: /mnt/dataset/google_speech/clientDataMap              # Allocation of data to each client, turn to iid setting if not provided
+    - data_dir: $HOME/Kuiper/FLPerf/google_speech    # Path of the dataset
+    - data_mapfile: $HOME/Kuiper/FLPerf/google_speech/clientDataMap              # Allocation of data to each client, turn to iid setting if not provided
     - client_path: $HOME/Kuiper/FLPerf/data/device_info/client_profile.pkl     # Path of the client trace
     - sample_mode: random                                  # Client selection: random, kuiper
     - model: resnet34                            # Models: shufflenet_v2_x2_0, mobilenet_v2, resnet34, albert-base-v2
@@ -47,4 +47,4 @@ job_conf:
     - batch_size: 15
     - decay_epoch: 15
     - round_threshold: 30                   # the first W * K
-
+    - cut_off_util: 0.4                     # Determined by W * K

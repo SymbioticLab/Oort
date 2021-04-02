@@ -36,8 +36,8 @@ i.e., if the number of participants in each round is K, then we would better use
 git clone https://github.com/SymbioticLab/FLPerf.git
 cd FLPerf
 # Download the open image dataset. Make sure you have at least 150 GB of storage capacity.
-# Check ./download.sh -h for downloading different datasets.
-./download.sh -o    
+# Check ./download.sh -h for downloading different datasets. Refer to FLPerf if failed.
+bash download.sh -o    
 ```
 
 
@@ -113,7 +113,5 @@ Change [total_worker](https://github.com/SymbioticLab/Kuiper/blob/master/trainin
 ### Figure 15
 
 ***Experiments of outliers are extremely slow as we need to get the final accuracy of the training, so we recommend the reviewer to put this to the last.***
-To run this, please first add ```- blacklist_rounds: 10``` to the config file in order to enable the blacklist. Then specify different degrees of outliers ```- malicious_clients: 0.1``` (i.e., 10% clients are corrupted). 
-
-
+To run this, please first add ```- blacklist_rounds: 50``` to the config file in order to enable the blacklist. Then specify different degrees of outliers ```- malicious_clients: 0.1``` (i.e., 10% clients are corrupted). 
 
