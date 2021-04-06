@@ -12,12 +12,12 @@ This repository contains scripts and instructions for reproducing the experiment
 
 # Getting Started 
 
-Before attempting to install Kuiper, you must have the following:
+Our ```install.sh``` will install the following automatically:
 
 * Anaconda Package Manager
 * CUDA 10.2
 
-Note: we also provide commands to install conda and CUDA. See comments in `install.sh` for details.
+Note: if you prefer different versions of conda and CUDA, please check  comments in `install.sh` for details.
 
 Run the following commands to install kuiper. 
 
