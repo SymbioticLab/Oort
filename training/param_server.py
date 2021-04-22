@@ -11,7 +11,7 @@ for i in range(torch.cuda.device_count()):
         logging.info(f'End up with cuda device {torch.rand(1).to(device=device)}')
         break
     except Exception as e:
-        assert i == torch.cuda.device_count()-1, 'Can not find a feasible GPU'
+        assert i != torch.cuda.device_count()-1, 'Can not find a feasible GPU'
 
 entire_train_data = None
 sample_size_dic = {}
