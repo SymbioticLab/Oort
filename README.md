@@ -62,10 +62,10 @@ Repo Root
 
 # Notes
 please consider to cite our paper if you use the code or data in your research project.
-```
+```bibtex
 @inproceedings{kuiper-osdi21,
-  title={Kuiper: Efficient Federated Learning via Guided Participant Selection},
-  author={Fan Lai, Xiangfeng Zhu, Harsha V. Madhyastha, Mosharaf Chowdhury},
+  title={Efficient Federated Learning via Guided Participant Selection},
+  author={Fan Lai and Xiangfeng Zhu and Harsha V. Madhyastha and Mosharaf Chowdhury},
   booktitle={USENIX Symposium on Operating Systems Design and Implementation (OSDI)},
   year={2021}
 }
@@ -77,5 +77,6 @@ Thanks to Qihua Zhou for his [Falcon repo](https://github.com/kimihe/Falcon).
 
 # Contact
 Fan Lai (fanlai@umich.edu) and Xiangfeng Zhu (xzhu0027@gmail.com)
+
 
 
