@@ -1,4 +1,3 @@
-<<<<<<< HEAD
 # Kuiper
 
 This repository contains scripts and instructions for reproducing the experiments in our OSDI '21 paper "Efficient Federated Learning via Guided Participant Selection". 
@@ -80,8 +79,3 @@ Thanks to Qihua Zhou for his [Falcon repo](https://github.com/kimihe/Falcon).
 Fan Lai (fanlai@umich.edu) and Xiangfeng Zhu (xzhu0027@gmail.com)
 
 
-=======
-
-# A Data Management Framework For Federated Learning
-Manage the client selection to tackle device/data heterogeneity.
->>>>>>> Kuiper-Private/master
