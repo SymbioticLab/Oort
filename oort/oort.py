@@ -13,7 +13,7 @@ def create_testing_selector(data_distribution=None, client_info=None, model_size
     return _testing_selector(data_distribution, client_info, model_size)
 
 class _testing_selector:
-    """Kuiper's testing selector
+    """Oort's testing selector
 
     We provide two kinds of selector:
     select_by_deviation: testing participant selection that preserves data representativeness.
@@ -41,7 +41,7 @@ class _testing_selector:
         """Update clients' profile(system speed and network bandwidth)
 
         Since the clients' info is dynamic, developers can use this function
-        to update clients' profile. If the client id does not exist, Kuiper will
+        to update clients' profile. If the client id does not exist, Oort will
         create a new entry for this client.
 
         Args:
@@ -77,7 +77,7 @@ class _testing_selector:
             confidence=0.8, overcommit=1.1):
         """Testing selector that preserves data representativeness.
 
-        Given the developer-specified tolerance `dev_target`, Kuiper can estimate the number
+        Given the developer-specified tolerance `dev_target`, Oort can estimate the number
         of participants needed such that the deviation from the representative categorical
         distribution is bounded.
 
@@ -97,14 +97,14 @@ class _testing_selector:
     def select_by_category(self, request_list, max_num_clients=None, greedy_heuristic=True):
         """Testing selection based on requested number of samples per category.
 
-        When individual data characteristics(distribution) is provided, Kuiper can
+        When individual data characteristics(distribution) is provided, Oort can
         enforce client's request on the number of samples per category.
 
         Args:
             request_list: a list that specifies the desired number of samples per category.
                 i.e., [num_requested_samples_class_x for class_x in request_list].
             max_num_clients: Optional; the maximum number of participants .
-            greedy_heuristic: Optional; whether to use Kuiper-based solver. Otherwise, Mix-Integer Linear Programming
+            greedy_heuristic: Optional; whether to use Oort-based solver. Otherwise, Mix-Integer Linear Programming
         Returns:
             A list of selected participants ids.
 
@@ -119,7 +119,7 @@ class _testing_selector:
 
 
 class _training_selector(object):
-    """Kuiper's training selector
+    """Oort's training selector
     """
     def __init__(self, args, sample_seed=233):
 

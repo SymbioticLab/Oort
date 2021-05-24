@@ -2,7 +2,7 @@ from helper.client import Client
 import math
 from random import Random
 import pickle
-from kuiper import create_training_selector
+from oort import create_training_selector
 import logging
 
 class clientSampler(object):
@@ -15,7 +15,7 @@ class clientSampler(object):
         self.filter_less = args.filter_less
         self.filter_more = args.filter_more
 
-        self.ucbSampler = create_training_selector(args=args) if self.mode == 'kuiper' else None
+        self.ucbSampler = create_training_selector(args=args) if self.mode == 'oort' else None
         self.feasibleClients = []
         self.rng = Random()
         self.rng.seed(sample_seed)
@@ -40,7 +40,7 @@ class clientSampler(object):
             self.feasibleClients.append(clientId)
             self.feasible_samples += size
 
-            if self.mode == "kuiper":
+            if self.mode == "oort":
                 feedbacks = {'reward':min(size, self.args.upload_epoch*self.args.batch_size),
                             'duration':duration,
                             }
@@ -56,7 +56,7 @@ class clientSampler(object):
         return self.Clients[self.getUniqueId(0, clientId)]
 
     def registerDuration(self, clientId, batch_size, upload_epoch, model_size):
-        if self.mode == "kuiper":
+        if self.mode == "oort":
             roundDuration = self.Clients[self.getUniqueId(0, clientId)].getCompletionTime(
                     batch_size=batch_size, upload_epoch=upload_epoch, model_size=model_size
             )
@@ -73,7 +73,7 @@ class clientSampler(object):
 
     def registerScore(self, clientId, reward, auxi=1.0, time_stamp=0, duration=1., success=True):
         # currently, we only use distance as reward
-        if self.mode == "kuiper":
+        if self.mode == "oort":
             feedbacks = {
                 'reward': reward,
                 'duration': duration,
@@ -173,7 +173,7 @@ class clientSampler(object):
         pickled_clients = None
         feasible_clients_set = set(feasible_clients)
 
-        if self.mode == "kuiper" and self.count > 1:
+        if self.mode == "oort" and self.count > 1:
             pickled_clients = self.ucbSampler.select_participant(numOfClients, feasible_clients=feasible_clients_set)
         else:
             self.rng.shuffle(feasible_clients)
@@ -186,7 +186,7 @@ class clientSampler(object):
         return pickled_clients
 
     def getAllMetrics(self):
-        if self.mode == "kuiper":
+        if self.mode == "oort":
             return self.ucbSampler.getAllMetrics()
         return {}
 
@@ -197,6 +197,6 @@ class clientSampler(object):
         return self.ucbSampler.get_client_reward(clientId)
 
     def get_median_reward(self):
-        if self.mode == 'kuiper':
+        if self.mode == 'oort':
             return self.ucbSampler.get_median_reward()
         return 0.

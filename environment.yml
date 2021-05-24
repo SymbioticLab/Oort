@@ -1,4 +1,4 @@
-name: kuiper
+name: oort
 channels:
   - pytorch
   - conda-forge

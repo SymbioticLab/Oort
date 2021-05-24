@@ -1,4 +1,4 @@
-# Kuiper-Testing
+# Oort-Testing
 
 This folder contains scripts and instructions for reproducing the FL testing experiments in our OSDI '21 paper. 
 
@@ -32,4 +32,4 @@ open figure17a.pdf figure17b.pdf
 
 This will produce plots close to Figure 17 on page 12 of the paper. You might notice some variation compared to the original figure as 1) we removed a few long-running queries; 2) gurobi performance shows certain variations. 
 
-Note: To save reviewers time, `python plot_figure17.py -k` will only run and plot the lines for Kuiper. We hope the runtime will convince you that MILP is extremely slow :).
+Note: To save reviewers time, `python plot_figure17.py -k` will only run and plot the lines for Oort. We hope the runtime will convince you that MILP is extremely slow :).

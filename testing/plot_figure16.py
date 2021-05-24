@@ -10,7 +10,7 @@ import matplotlib
 from collections import OrderedDict
 import math
 import sys
-from kuiper import create_testing_selector
+from oort import create_testing_selector
 
 
 N = []
@@ -52,7 +52,7 @@ def plot(datas, xs, linelabels = None, label = None, y_label = "CDF", name = "ss
         global_ys = array(global_ys)
 
         plt.fill_betweenx(xs, x1=_max, x2=_min, alpha=0.3, color=colors[_type%len(colors)], label='Empirical Dev.')
-        plt.plot(global_xs, global_ys, '-', color='blueviolet', linewidth=1., label='Kuiper')
+        plt.plot(global_xs, global_ys, '-', color='blueviolet', linewidth=1., label='Oort')
 
 
     ax.set_yscale('log')

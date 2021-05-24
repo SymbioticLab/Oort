@@ -9,7 +9,7 @@ import logging
 import pickle
 import argparse
 
-from kuiper import create_testing_selector
+from oort import create_testing_selector
 
 import os
 import matplotlib.pyplot as plt
@@ -89,7 +89,7 @@ def load_profiles(datafile, sysfile):
 
     return datas, systems, distr
 
-def run_query(kuiper_only):
+def run_query(oort_only):
     """
     Generate queries for fig 17 and plot results
     """
@@ -103,9 +103,9 @@ def run_query(kuiper_only):
     failed_queries = []
     results = {}
 
-    #============ Run Kuiper  =============#
-    kuiper_e2e_result = []
-    kuiper_overhead_result = []
+    #============ Run Oort  =============#
+    oort_e2e_result = []
+    oort_overhead_result = []
     for budget in budgets:
         for req in query_samples:
             #logging.info("Running budget " + str(budget) + " query_samples " + str(req))
@@ -116,14 +116,14 @@ def run_query(kuiper_only):
 
             #  test_duration == -1 indicates failure
             if test_duration != -1:
-                kuiper_e2e_result.append(test_duration+lp_overhead)
-                kuiper_overhead_result.append(lp_overhead)
+                oort_e2e_result.append(test_duration+lp_overhead)
+                oort_overhead_result.append(lp_overhead)
             else:
                 failed_queries.append((budget, req))
-    results['kuiper_e2e'] = kuiper_e2e_result
-    results['kuiper_overhead'] = kuiper_overhead_result
+    results['oort_e2e'] = oort_e2e_result
+    results['oort_overhead'] = oort_overhead_result
 
-    if not kuiper_only:
+    if not oort_only:
         #============ Run MILP =============#
         # E2E = test_durationn + lp_overhead
         lp_e2e_result = []
@@ -156,15 +156,15 @@ def run_query(kuiper_only):
 if __name__ == '__main__':
 
     parser = argparse.ArgumentParser()
-    parser.add_argument('-k', '--kuiper', action='store_true')
+    parser.add_argument('-k', '--oort', action='store_true')
     args = parser.parse_args()
 
-    results = run_query(args.kuiper)
+    results = run_query(args.oort)
     # ============ Plot E2E time and overhead ============= 
-    if args.kuiper:
-        plot_cdf([results['kuiper_e2e']], ['Kuiper'], "End-to-End Time (s)", "CDF across Queries", "figure17a.pdf")
-        plot_cdf([results['kuiper_overhead']], ['Kuiper'], "Overhead (s)", "CDF across Queries", "figure17b.pdf")
+    if args.oort:
+        plot_cdf([results['oort_e2e']], ['Oort'], "End-to-End Time (s)", "CDF across Queries", "figure17a.pdf")
+        plot_cdf([results['oort_overhead']], ['Oort'], "Overhead (s)", "CDF across Queries", "figure17b.pdf")
     else:
-        plot_cdf([results['kuiper_e2e'], results['lp_e2e']], ['Kuiper', 'MILP'], "End-to-End Time (s)", "CDF across Queries", "figure17a.pdf")
-        plot_cdf([results['kuiper_overhead'], results['lp_overhead']], ['Kuiper', 'MILP'], "Overhead (s)", "CDF across Queries", "figure17b.pdf")
+        plot_cdf([results['oort_e2e'], results['lp_e2e']], ['Oort', 'MILP'], "End-to-End Time (s)", "CDF across Queries", "figure17a.pdf")
+        plot_cdf([results['oort_overhead'], results['lp_overhead']], ['Oort', 'MILP'], "Overhead (s)", "CDF across Queries", "figure17b.pdf")
 
