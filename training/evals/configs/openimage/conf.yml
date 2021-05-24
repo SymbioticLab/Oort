@@ -35,7 +35,7 @@ job_conf:
     - data_dir: $HOME/Oort/FLPerf/open_images    # Path of the dataset
     - data_mapfile: $HOME/Oort/FLPerf/open_images/clientDataMap              # Allocation of data to each client, turn to iid setting if not provided
     - client_path: $HOME/Oort/FLPerf/data/device_info/client_profile.pkl     # Path of the client trace
-    - sample_mode: kuoortiper                                  # Client selection: random, oort
+    - sample_mode: oort                                  # Client selection: random, oort
     - model: shufflenet_v2_x2_0                            # Models: shufflenet_v2_x2_0, mobilenet_v2, resnet34, albert-base-v2
     - gradient_policy: yogi                 # Commenting out this line will turn to "Fedprox"
     - round_penalty: 2.0                    # Penalty factor in our paper (\alpha), \alpha -> 0 turns to (Oort w/o sys)
