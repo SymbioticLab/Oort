@@ -23,7 +23,7 @@ Run the following commands to install Oort.
 
 ```
 git clone https://github.com/SymbioticLab/Oort
-cd oort
+cd Oort
 source install.sh 
 ```
 
