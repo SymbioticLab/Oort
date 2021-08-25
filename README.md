@@ -1,8 +1,11 @@
 # Oort
 
-This repository contains scripts and instructions for reproducing the experiments in our OSDI '21 paper "[Oort: Efficient Federated Learning via Guided Participant Selection](https://www.usenix.org/conference/osdi21/presentation/lai)". 
+This repository contains scripts and instructions for reproducing the experiments in our OSDI '21 paper "[Oort: Efficient Federated Learning via Guided Participant Selection](https://www.usenix.org/conference/osdi21/presentation/lai)".
+
+If you have any questions or comments, please join our [Slack](https://join.slack.com/t/fedscale/shared_invite/zt-uzouv5wh-ON8ONCGIzwjXwMYDC2fiKw) channel.
 
 **Oort won the Distinguished Artifact Award at OSDI'2021!**
+
 
 # Overview
 
