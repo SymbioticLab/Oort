@@ -6,6 +6,7 @@ If you have any questions or comments, please join our [Slack](https://join.slac
 
 **Oort won the Distinguished Artifact Award at OSDI'2021!**
 
+**This repo is expired. Instead, Oort has been merged as part of [FedScale](https://github.com/SymbioticLab/FedScale), a diverse set of challenging and realistic FL benchmark. Please try it!**
 
 # Overview
 
@@ -15,7 +16,7 @@ If you have any questions or comments, please join our [Slack](https://join.slac
 * [Acknowledgements](#acknowledgements)
 * [Contact](#contact)
 
-# Getting Started 
+# Getting Started
 
 Our ```install.sh``` will install the following automatically:
 
@@ -36,12 +37,12 @@ source install.sh
 
 The output of the experiment will validate the following major claims in our evaluation (section 7 in paper):
 
-####    **FL Training:**
+#### **FL Training:**
 1. Oort outperforms existing random participant selection by 1.2×-14.1× in time-to-accuracy performance, while achieving 1.3%-9.8% better final model accuracy (§7.2.1) -> Table 1 and Figure 9.
 2. Oort achieves close-to-optimal model efficiency by adaptively striking the trade-off between statistical and system efficiency with different components (§7.2.2) -> Figure 11 and 12.
 3. Oort outperforms its counterpart over a wide range of parameters and different scales of experiments, while being robust to outliers (§7.2.3) -> Figure 13, 14 and 15.
 
-####    **FL Testing:**
+#### **FL Testing:**
 1. Oort can serve developer testing criteria on data deviation while reducing costs by bounding the number of participants needed even without individual data characteristics(§7.3.1) —> Figure 16.
 2. With the individual information, Oort improves the testing duration by 4.7× w.r.t. Mixed Integer Linear Programming (MILP) solver, and is able to efficiently enforce developer preferences across millions of clients (§7.3.2) -> Figure 17.
 
