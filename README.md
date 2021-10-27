@@ -6,7 +6,7 @@ If you have any questions or comments, please join our [Slack](https://join.slac
 
 **Oort won the Distinguished Artifact Award at OSDI'2021!**
 
-**This repo is expired. Instead, Oort has been merged as part of [FedScale](https://github.com/SymbioticLab/FedScale), a diverse set of challenging and realistic FL benchmark. Please try it!**
+**This repo is outdated and no longer actively maintained. Instead, Oort has been merged as part of [FedScale](https://github.com/SymbioticLab/FedScale), a diverse set of challenging and realistic FL benchmark. Please try it!**
 
 # Overview
 
